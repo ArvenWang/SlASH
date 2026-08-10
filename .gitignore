@@ -1,0 +1,23 @@
+node_modules/
+dist/
+test-results/
+screenshots/
+.playwright-cli/
+output/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Generated visual evidence stays local. Keep the reusable harnesses and the
+# compact license audit in source control.
+validation/*
+!validation/README.md
+!validation/tools/
+!validation/tools/**
+!validation/licenses/
+!validation/licenses/**
+
+# Failed/candidate provider downloads are local until a model is selected.
+art/characters/generated/

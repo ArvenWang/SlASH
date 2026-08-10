@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#05080d" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>PROJECT SLASH — Visual Slice</title>
+  </head>
+  <body>
+    <main id="game-shell">
+      <canvas id="game-canvas" aria-label="Project Slash 3D game"></canvas>
+      <div id="hud" aria-hidden="true">
+        <div class="brand"><span>PROJECT</span><strong>SLASH</strong></div>
+        <div class="status"><span id="stage-label">STAGE 01</span><i></i><span id="enemy-label">08 HOSTILES</span></div>
+        <div class="hint">CLICK TO CUT THE LINE <kbd>F</kbd> FULLSCREEN <kbd>M</kbd> SOUND</div>
+      </div>
+      <div id="phase-banner" aria-hidden="true">
+        <span id="phase-eyebrow">STAGE 01</span>
+        <strong id="phase-title">ARRIVAL</strong>
+        <small id="phase-subtitle">ELIMINATE ALL HOSTILES</small>
+      </div>
+      <div id="reticle" aria-hidden="true"><span></span></div>
+      <div id="loading">
+        <div class="loader-mark"></div>
+        <p id="loading-label">INITIALIZING RENDERER</p>
+        <div class="loading-track" aria-hidden="true"><span id="loading-progress"></span></div>
+      </div>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

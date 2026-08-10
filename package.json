@@ -1,0 +1,32 @@
+{
+  "name": "project-slash",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "check": "tsc --noEmit",
+    "verify:full-run": "node validation/tools/capture-full-run.mjs",
+    "verify:gameplay": "node validation/tools/run-gameplay-acceptance.mjs",
+    "verify:input": "node validation/tools/profile-input-latency.mjs",
+    "verify:lifecycle": "node validation/tools/verify-lifecycle-stability.mjs",
+    "verify:memory": "node validation/tools/profile-memory-stability.mjs",
+    "verify:performance": "node validation/tools/profile-acceptance-performance.mjs",
+    "verify:raf-baseline": "node validation/tools/profile-raf-baseline.mjs",
+    "verify:browsers": "node validation/tools/verify-browser-matrix.mjs",
+    "verify:audio": "node validation/tools/capture-audio-evidence.mjs",
+    "verify:assets": "node validation/tools/audit-runtime-assets.mjs"
+  },
+  "dependencies": {
+    "lil-gui": "0.21.0",
+    "three": "0.185.1"
+  },
+  "devDependencies": {
+    "@types/three": "0.185.4",
+    "playwright": "1.62.1",
+    "typescript": "7.0.2",
+    "vite": "8.2.1"
+  }
+}

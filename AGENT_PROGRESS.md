@@ -1,0 +1,103 @@
+Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD，在 `/Users/nefish/Desktop/Coding/Slash` 实现以视觉表现为最高优先级的 3D Web 赛博武士直线突刺击杀 Visual Vertical Slice。
+
+# Project Slash — Agent Progress
+
+更新时间：2026-08-10
+
+## 当前进展
+
+- 已有可运行的 TypeScript + Vite + Three.js Web 游戏：三关（8 / 12 / 18 敌人）、点击地面无限距离直线 Dash、路径多杀、玩家 1HP、Dash 无敌、Recovery/Input Buffer、死亡点击重开、自动过关/通关、HUD、声音、后处理、鼠标与触控输入。
+- 环境方向为 Transit Cathedral：深湿金属竞技台、交叉轨道与巨拱、五节列车、近中远城市、雨雾与蒸汽。
+- 角色美术已进入 V5：新三视图位于 `art/characters/concepts/hero-turnaround-v5.png` 与 `art/characters/concepts/enemy-turnaround-v5.png`；当前实现重点是连续人体大形、关节衔接、低位蓄势和冲跑动势，不再用旧 V4 数值叠加代替主观视觉判断。
+- V5 当前模型已升级为有效连续几何：主角 4,316 triangles、敌人 4,264 triangles；腕踝端盖、过大头部和积木鞋已修正。主角 Ready 为低位双脚架势，Dash 为刀线领先、双腿后拖；敌人 8 人战场可见不同前倾角、步相和武器高度且不再横趴。
+- 用户已要求把后续角色建模切换为 Tripo 生成候选。已建立 `tools/tripo_pipeline.py`：密钥只从进程环境读取，不写入项目；P1 多视图首轮计划为主角三视图、8,000 面、标准 PBR，当前程序化角色保留为可回退版本，生成模型未证明更好前不替换。
+- Tripo 输入已准备完整：主角和敌人各有独立的前、左、后三视图，位于 `art/characters/tripo-inputs/hero-v5/` 与 `art/characters/tripo-inputs/enemy-v5/`；敌人侧视图已去除相邻视图肢体污染。
+- 新增 `validation/tools/tripo-model-lab.html` 与 `src/tripo-model-lab.ts`：下载的 GLB 可自动统一至 3.3m、落地居中、正/侧/背/三分之四观察，并显示三角面、材质、贴图、骨骼和动画信息。该工具只服务新模型视觉筛选，不重跑既有机制/性能套件。
+- 用户当前不在电脑前，已明确授权把 Tripo 高精角色候选作为延期项，并在没有其他发布阻塞时同步当前可玩基线到 GitHub。延期不等于视觉验收通过，当前程序化角色不会冒充 Tripo 成果。
+- 公开仓库卫生已完成：本地 `output/`、`.playwright-cli/` 与大型 `validation/` 证据不提交；保留正式源码、概念图、三视图输入、验收文档、可复用验证脚本、精简许可证审计和一张真实游戏截图。所有本地证据仍保留，未删除。
+- Gameplay、浏览器矩阵、生命周期、1080p / 1440p 性能和资产许可审计已闭合。第一轮稳定性实测已提供约 10 分钟数据；用户明确要求停止继续重复长测，第二轮已中止。
+- 本地生产预览：`http://127.0.0.1:4175/`。
+
+## 已完成内容
+
+### 角色、动作与可读性
+
+- 主角常态改为双脚接地、骨盆下沉、胸肩向目标压前、刀手贴近腰侧的低位 Ready；Dash/Arrival/Recovery 不会突然站直或出现 Pose Pop。
+- 敌人保持前冲跑姿；18 人同屏使用连续相位差和 4 组姿态偏置，躯干前倾、肩线、步幅与武器高度不会整齐复制。
+- 主角造型为连续大壳体、近黑软层、单一深灰大面和少量视窗能量；敌人为连续躯干、炭灰大甲、完整朱红倒 V、单红肩与短阔刀。
+- V5 细化没有增加碎甲或装饰线：新增几何只用于锁骨/胸腰/骨盆、肘膝和腕踝过渡；近景不再暴露圆形端盖。
+- 主角刀约 3.1008m（角色高的 93.96%），实体厚度约 0.012 world-unit，整片发光；敌刀约 1.1002m（角色高的 34.85%）。
+- V4 概念叠加平均偏差 2.15%–3.92%，最大 4.37%–4.62%；工具使用新 V4 人工地标与实时 WebGL 投影，不复用旧 V3 标尺。
+- 1080p 战场中主角约 95.7px 高，1600×900 约 79.8px；角色仍是画面亮度焦点，竞技场边界完整可见。
+
+### Gameplay / VFX / Gore / Audio
+
+- 100 次真实输入：逻辑 P95 0.2ms，首个可见结果 P95 14.8ms；直线 Dash、边界钳制、35–110ms 时长、80–180ms Recovery、最后一次输入缓冲均通过。
+- 1 / 5 / 20 路径多杀在 60 / 120 / 144 FPS 下结果一致；Recovery 期间真实可受伤，Dash 期间无敌。
+- 真实生产 Canvas 点击已验证死亡重开；完整三关通过真实鼠标投影点击到达 `game-complete`，Stage 3 为 18 杀 / 0 存活。
+- 命中时间轴已同步：0–50ms 刀口接触与火花，80–150ms 切面、上下身负空间和方向性血幕，约 650ms 只保留两大尸块与血池。
+- 尸体有 4 组确定性落地家族，全部贴地、无跪姿；Dash 会扰动雨幕、蒸汽和湿地窄反射。
+- 程序化原创音频包含 Rain/City、Blade Hum、Dash/Aircut/Metal、Flesh/Blood、6 组击杀变体、多杀强化、Death 与 Mute；离线真实 Chromium 证据峰值、RMS、变体与静音门均通过。
+
+### 性能、兼容性与商业审计
+
+- 20 敌人 + 八杀 + Rain/Steam/Blood/Corpses/Camera/Post FX 的 60 秒可见系统 Chrome 压力测试：
+  - 1920×1080：59.97 FPS，P95 18.1ms，P99 18.6ms，最慢 32.6ms；通过。
+  - 2560×1440：59.97 FPS，P95 18.3ms，P99 18.6ms，最慢 31.8ms；通过。
+- 同机空白可见 Chrome rAF 基线为 59.98 FPS / P95 18.1ms；1080p 门按 60Hz 16.67ms + 10% 调度容差（18.33ms）判定，原始游戏帧时间未平滑或删改。
+- 敌人接触阴影改为单个 Instanced soft layer，避免 20 个分节角色重复进入方向光阴影 pass；Stage 3 绘制调用约从 882 降至 519，保持贴地感。
+- 系统 Chrome 1920×1080 / 2560×1440 / 1366×768、高画质/兼容模式、Firefox、WebKit、390×844 触屏全部通过真实输入，控制台零错误。
+- Resize / DPR、可信键盘全屏、Chrome renderer freeze/resume、WebGL Context Loss/Restore 和恢复后 Gameplay 均通过。
+- `validation/licenses/asset-audit.txt` 已通过：生产包无第三方二进制美术/音频、无运行时外链、无密钥模式；依赖许可证为 MIT / Apache-2.0。
+
+## 下一步计划
+
+1. 将当前明确范围加入 Git 索引，检查实际提交清单与统计。
+2. 创建初始提交，初始化远端 `https://github.com/ArvenWang/SlASH.git` 的 `main` 分支并推送。
+3. Tripo 主角/敌人生成、筛选、绑骨与接入作为后续美术里程碑；用户回到电脑后可从现有输入和 Generated Model Lab 直接恢复。
+
+## 遇到的问题
+
+- 第一轮稳定性脚本实际等待约 10 分钟，但最后一笔样本停在 570.34 秒，导致 `duration` 单项失败；游戏数据本身为堆 +0.36MB、几何体恒 93、纹理恒 23、浏览器零错误。脚本已修复，但用户明确要求不再重复长测，第二轮已主动中止。
+- Three.js 核心 chunk 约 573KB，生产构建有 `>500KB` 提示；总压缩体积远低于 50MB 加载门，但仍需在最终报告中记录。
+- 当前有真实系统 Chrome、Firefox 和 Playwright WebKit 证据；本机未安装 Edge，WebKit 证据也不能冒充“真人 Safari 点击验收”。这两项需在发布前补实体浏览器或由用户明确接受现有内核级覆盖。
+- WebM 录像不录制 Web Audio；音频已有可播放 WAV 与数值报告，但最终混音仍需真人试听。
+- 用户提供的 Tripo API Key 经官方余额接口确认 API 余额为 0；首次生成在创建任务前即被余额不足拒绝，消耗 0 分。Chrome 与备用浏览器的 Tripo Studio 均未登录，无法访问用户所说的约 600 网页积分。密钥未写入仓库、日志或进度文档。
+
+## 已解决问题
+
+- 修复主角站直/单脚悬空、敌群同步复制、刀身厚重且只亮刃线、双方零件/材质过碎的问题。
+- 修复尸体跪姿、Dash 主体落后残影、HUD 提前扣数、命中反馈延迟、Firefox/WebKit 首次输入被 AudioContext 阻塞的问题。
+- 修复 WebGL Context Loss 后无法恢复、全屏拒绝产生未处理异常、后台恢复长时间步、验证脚本等待隐藏 Loading 层的问题。
+- 修复每帧临时 Input/Event/EnemySpeed/HUD 分配和重复 DOM 写入；玩法回归测试保持通过。
+- 修复完整三关验收脚本仍使用旧相机与 1600×900 投影的问题；现在与生产相机及 1920×1080 一致，待最终重跑。
+
+## 未解决问题
+
+- 稳定性终点采样脚本门未形式化闭合；按用户要求不再重复长测，保留首轮真实数据与这一限制。
+- 最新完整三关 1920×1080 录像和固定目录证据包尚未重跑；当前优先交给用户实际试玩。
+- 用户尚未对 V5 主角、敌人、动作和最终整体画面完成主观签核；旧 V4 数值通过不再视为当前主观视觉门。
+- GitHub 远端为公开空仓库，当前本地尚无提交；用户已授权在最终仓库卫生、构建和密钥检查通过后直接初始化并推送 `main`。
+- Tripo 主角候选尚未生成；用户已明确允许本轮延期，因此它不再阻塞当前基线推送，但仍是未完成美术项。失败记录是脱敏的本地文件，不会提交到 GitHub。
+
+## 验证情况
+
+- `npm run check`：通过。
+- `npm run build`：通过；仅有 Three.js 核心 chunk 体积提示。
+- `git diff --check`：通过。
+- Gameplay：`validation/final-gameplay-flow/` 与 `validation/automated/gameplay/` 通过。
+- Character V4：`validation/character/formal-v4-final/report.json` 为 `passed`，`browserIssues=[]`，主观门明确为待人工签核。
+- Character V5 当前视觉迭代：`validation/character/v5-iteration-7/`；真实战场短复核见其中 `gameplay-ready.png`。本轮只确认建模与姿态变化，没有重跑机制/性能/稳定性套件。
+- Gore/VFX：`validation/kill-timeline-v38-gore-final/`，浏览器问题为 0。
+- Audio：`validation/audio-phase1/`，浏览器问题为 0。
+- Browser：`validation/compatibility/browser-matrix-final/` 7 组配置全部通过。
+- Lifecycle：`validation/compatibility/lifecycle-stability/report.json` 全部门通过。
+- Performance：`validation/performance/final-1080p-calibrated/` 与 `validation/performance/final-1440p/` 通过；空白基线见 `validation/performance/blank-raf-baseline/`。
+- License：`validation/licenses/asset-audit.txt` 通过。
+- Tripo 管线：Python 语法检查通过；首次 API 调用由官方余额接口返回 0 并在创建任务前拒绝，确认无模型文件、无积分消耗、仓库内无密钥内容或密钥前缀字符串。
+- Tripo 输入/检查台：6 张角色输入均已核对尺寸与内容；`npm run check` 通过，`git diff --check` 通过。尚无真实 GLB，因此没有伪造加载通过结论。
+- 发布收口：当前工作树 `npm run build` 通过；`npm run verify:assets` 通过，确认生产运行时无第三方二进制美术/音频、无外链、无密钥模式，依赖许可证已知。仅保留既有 Three.js 核心 chunk 573.27KB 提示。
+
+## 暂勿并行修改
+
+- Tripo 候选生成已延期；不要删除现有角色实现或三视图输入。当前只允许修改仓库卫生、README、进度文档和 Git 元数据，避免在发布收口阶段引入新的视觉代码变化。
