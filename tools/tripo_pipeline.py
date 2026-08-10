@@ -33,6 +33,51 @@ def write_manifest(path: Path, payload: Dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+async def wait_for_task_resilient(
+    api_key: str,
+    task_id: str,
+    timeout: float,
+) -> Any:
+    deadline = asyncio.get_running_loop().time() + timeout
+    retry_count = 0
+    polling_interval = 3.0
+
+    while True:
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            raise asyncio.TimeoutError(f"Task {task_id} did not complete within {timeout} seconds")
+
+        polling_client = TripoClient(api_key=api_key)
+        try:
+            task = await polling_client.get_task(task_id)
+            retry_count = 0
+        except (ConnectionError, OSError) as exc:
+            retry_count += 1
+            if retry_count > 8:
+                raise
+            retry_delay = min(2.0 * retry_count, 15.0)
+            print(
+                f"transient_wait_error={type(exc).__name__}; "
+                f"retry={retry_count}; delay={retry_delay:.1f}s",
+                flush=True,
+            )
+            await asyncio.sleep(retry_delay)
+            continue
+        finally:
+            await polling_client.close()
+
+        status = enum_value(task.status).lower()
+        if status in {"success", "failed", "cancelled", "banned", "expired"}:
+            return task
+
+        running_left_time = getattr(task, "running_left_time", None)
+        if running_left_time is not None:
+            polling_interval = max(2.0, min(float(running_left_time) * 0.5, 30.0))
+        else:
+            polling_interval = min(polling_interval * 1.5, 30.0)
+        await asyncio.sleep(min(polling_interval, max(0.0, remaining)))
+
+
 async def generate_multiview(args: argparse.Namespace) -> int:
     api_key = os.environ.get("TRIPO_API_KEY")
     if not api_key:
@@ -55,11 +100,17 @@ async def generate_multiview(args: argparse.Namespace) -> int:
     balance_before = await client.get_balance()
     print(f"balance_before={balance_before.balance:.2f}", flush=True)
 
-    task_id: Optional[str] = None
+    task_id: Optional[str] = args.resume_task_id
     manifest_path = output_dir / "manifest.json"
+    prior_manifest: Dict[str, Any] = {}
+    if task_id and manifest_path.is_file():
+        try:
+            prior_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            prior_manifest = {}
     common_manifest: Dict[str, Any] = {
         "pipeline": "tripo-p1-multiview",
-        "createdAt": datetime.now(timezone.utc).isoformat(),
+        "createdAt": prior_manifest.get("createdAt", datetime.now(timezone.utc).isoformat()),
         "candidate": args.candidate,
         "modelVersion": MODEL_VERSION,
         "faceLimit": args.face_limit,
@@ -74,36 +125,34 @@ async def generate_multiview(args: argparse.Namespace) -> int:
             "back": relative_to_workspace(back, workspace),
             "right": None,
         },
-        "balanceBefore": balance_before.balance,
+        "balanceBefore": prior_manifest.get("balanceBefore", balance_before.balance),
     }
 
     try:
-        task_id = await client.multiview_to_model(
-            images=[str(front), str(left), str(back), None],
-            model_version=MODEL_VERSION,
-            face_limit=args.face_limit,
-            texture=True,
-            pbr=True,
-            model_seed=args.seed,
-            texture_seed=args.texture_seed,
-            texture_quality="standard",
-            geometry_quality="standard",
-            texture_alignment="original_image",
-            auto_size=False,
-            orientation="align_image",
-            quad=False,
-            compress=False,
-            generate_parts=False,
-            smart_low_poly=False,
-            export_uv=True,
-        )
-        print(f"task_id={task_id}", flush=True)
-        task = await client.wait_for_task(
-            task_id,
-            polling_interval=3.0,
-            timeout=args.timeout,
-            verbose=False,
-        )
+        if task_id:
+            print(f"resuming_task_id={task_id}", flush=True)
+        else:
+            task_id = await client.multiview_to_model(
+                images=[str(front), str(left), str(back), None],
+                model_version=MODEL_VERSION,
+                face_limit=args.face_limit,
+                texture=True,
+                pbr=True,
+                model_seed=args.seed,
+                texture_seed=args.texture_seed,
+                texture_quality="standard",
+                geometry_quality="standard",
+                texture_alignment="original_image",
+                auto_size=False,
+                orientation="align_image",
+                quad=False,
+                compress=False,
+                generate_parts=False,
+                smart_low_poly=False,
+                export_uv=True,
+            )
+            print(f"task_id={task_id}", flush=True)
+        task = await wait_for_task_resilient(api_key, task_id, args.timeout)
         status = enum_value(task.status)
         print(f"status={status}", flush=True)
 
@@ -129,7 +178,10 @@ async def generate_multiview(args: argparse.Namespace) -> int:
             "taskId": task_id,
             "status": status,
             "balanceAfter": balance_after.balance,
-            "creditsConsumed": round(balance_before.balance - balance_after.balance, 4),
+            "creditsConsumed": round(
+                float(common_manifest["balanceBefore"]) - balance_after.balance,
+                4,
+            ),
             "downloads": clean_downloads,
         }
         write_manifest(manifest_path, manifest)
@@ -150,6 +202,8 @@ async def generate_multiview(args: argparse.Namespace) -> int:
         write_manifest(manifest_path, failure)
         print(f"pipeline_error={type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
+    finally:
+        await client.close()
 
 
 def parse_args() -> argparse.Namespace:
@@ -164,6 +218,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=314159)
     parser.add_argument("--texture-seed", type=int, default=271828)
     parser.add_argument("--timeout", type=float, default=1200.0)
+    parser.add_argument("--resume-task-id")
     return parser.parse_args()
 
 

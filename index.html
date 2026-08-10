@@ -13,7 +13,15 @@
       <div id="hud" aria-hidden="true">
         <div class="brand"><span>PROJECT</span><strong>SLASH</strong></div>
         <div class="status"><span id="stage-label">STAGE 01</span><i></i><span id="enemy-label">08 HOSTILES</span></div>
-        <div class="hint">CLICK TO CUT THE LINE <kbd>F</kbd> FULLSCREEN <kbd>M</kbd> SOUND</div>
+        <div id="focus-hud" class="focus-hud">
+          <div class="focus-copy"><span>VECTOR FOCUS</span><strong id="focus-value">000</strong></div>
+          <div class="focus-track"><span id="focus-progress"></span><i></i><i></i></div>
+          <div class="focus-route" aria-hidden="true">
+            <b data-focus-slot="0">01</b><b data-focus-slot="1">02</b><b data-focus-slot="2">03</b>
+          </div>
+          <small id="focus-prompt">CHAIN KILLS TO CHARGE</small>
+        </div>
+        <div class="hint">CLICK TO CUT <kbd>SPACE</kbd> VECTOR FOCUS <kbd>F</kbd> FULLSCREEN <kbd>M</kbd> SOUND</div>
       </div>
       <div id="phase-banner" aria-hidden="true">
         <span id="phase-eyebrow">STAGE 01</span>

@@ -40,6 +40,19 @@ export interface DashState {
   to: Vec2;
   durationMs: number;
   elapsedMs: number;
+  kind: "normal" | "chain";
+  segmentIndex: number;
+  killCount: number;
+}
+
+export interface FocusState {
+  points: Vec2[];
+  elapsedMs: number;
+}
+
+export interface ChainState {
+  route: Vec2[];
+  segmentIndex: number;
 }
 
 export interface PlayerState {
@@ -48,6 +61,9 @@ export interface PlayerState {
   radius: number;
   hp: 0 | 1;
   dash: DashState | null;
+  focus: FocusState | null;
+  chain: ChainState | null;
+  focusEnergy: number;
   recoveryRemainingMs: number;
   /** The newest input replaces any older input while dashing/recovering. */
   bufferedDashTarget: Vec2 | null;
@@ -80,15 +96,47 @@ export type GameEvent =
       from: Vec2;
       to: Vec2;
       durationMs: number;
+      kind: "normal" | "chain";
+      segmentIndex: number;
     }
   | {
       type: "enemy-killed";
       atMs: number;
       enemyId: string;
       position: Vec2;
+      source: "normal" | "chain";
+      segmentIndex: number;
     }
   | {
       type: "dash-ended";
+      atMs: number;
+      position: Vec2;
+      kind: "normal" | "chain";
+      killCount: number;
+      energyGain: number;
+    }
+  | {
+      type: "focus-started";
+      atMs: number;
+    }
+  | {
+      type: "focus-point-added";
+      atMs: number;
+      point: Vec2;
+      index: number;
+    }
+  | {
+      type: "focus-cancelled";
+      atMs: number;
+      reason: "input" | "timeout" | "death";
+    }
+  | {
+      type: "chain-started";
+      atMs: number;
+      route: Vec2[];
+    }
+  | {
+      type: "chain-ended";
       atMs: number;
       position: Vec2;
     }
@@ -126,6 +174,8 @@ export interface GameState {
 
 export interface GameRules {
   recoveryMs: number;
+  focusWorldTimeScale: number;
+  focusSelectionMs: number;
 }
 
 export interface GameInput {
@@ -140,7 +190,7 @@ const EMPTY_GAME_INPUT: Readonly<GameInput> = Object.freeze({});
 
 export type DashRequestResult = "started" | "buffered" | "ignored";
 
-export type PlayerAction = "ready" | "dashing" | "recovering" | "dead";
+export type PlayerAction = "ready" | "dashing" | "focusing" | "chain-dashing" | "recovering" | "dead";
 
 export interface GameSnapshot {
   stage: {
@@ -175,6 +225,14 @@ export interface GameSnapshot {
     durationMs: number;
   } | null;
   bufferedTarget: Vec2 | null;
+  focus: {
+    energy: number;
+    ready: boolean;
+    selecting: boolean;
+    points: Vec2[];
+    elapsedMs: number;
+    worldTimeScale: number;
+  };
   kills: number;
   enemyCount: number;
   aliveEnemies: Array<{ id: string; x: number; z: number }>;
@@ -209,13 +267,22 @@ export const DASH_RECOVERY_MS = 120;
 export const MIN_DASH_DURATION_MS = 35;
 export const MAX_DASH_DURATION_MS = 110;
 export const DASH_SPEED_UNITS_PER_SECOND = 330;
+export const FOCUS_ENERGY_MAX = 100;
+export const FOCUS_WORLD_TIME_SCALE = 0.12;
+export const FOCUS_SELECTION_MS = 3000;
+export const CHAIN_RECOVERY_MS = 180;
+export const MIN_CHAIN_DURATION_MS = 48;
+export const MAX_CHAIN_DURATION_MS = 75;
+export const CHAIN_SPEED_UNITS_PER_SECOND = 650;
+export const ARENA_WIDTH = 56;
+export const ARENA_DEPTH = 34;
 
 const EPSILON = 1e-8;
 const ARENA: ArenaBounds = {
-  minX: -20,
-  maxX: 20,
-  minZ: -12.5,
-  maxZ: 12.5,
+  minX: -ARENA_WIDTH / 2,
+  maxX: ARENA_WIDTH / 2,
+  minZ: -ARENA_DEPTH / 2,
+  maxZ: ARENA_DEPTH / 2,
 };
 
 function point(x: number, z: number): Vec2 {
@@ -242,54 +309,33 @@ function normalizeRules(rules: Partial<GameRules> = {}): GameRules {
       MAX_DASH_RECOVERY_MS,
       Math.max(MIN_DASH_RECOVERY_MS, requestedRecovery),
     ),
+    focusWorldTimeScale: FOCUS_WORLD_TIME_SCALE,
+    focusSelectionMs: FOCUS_SELECTION_MS,
   };
 }
 
 const STAGE_ONE_SPAWNS: Vec2[] = [
-  point(-17, 0),
-  point(-11, 0),
-  point(11, 0),
-  point(17, 0),
-  point(0, -10.5),
-  point(0, 10.5),
-  point(-14.5, -8.5),
-  point(14.5, 8.5),
+  point(-24, 0),
+  point(-15.5, 0),
+  point(15.5, 0),
+  point(24, 0),
+  point(0, -14.3),
+  point(0, 14.3),
+  point(-20.5, -11.7),
+  point(20.5, 11.7),
 ];
 
 const STAGE_TWO_SPAWNS: Vec2[] = [
-  point(-18, -6),
-  point(-13, -6),
-  point(-18, 6),
-  point(-13, 6),
-  point(13, -6),
-  point(18, -6),
-  point(13, 6),
-  point(18, 6),
-  point(-7, -10.5),
-  point(7, -10.5),
-  point(-7, 10.5),
-  point(7, 10.5),
+  point(-25, -8.2), point(-18, -8.2), point(-25, 8.2), point(-18, 8.2),
+  point(18, -8.2), point(25, -8.2), point(18, 8.2), point(25, 8.2),
+  point(-9.5, -14.4), point(9.5, -14.4), point(-9.5, 14.4), point(9.5, 14.4),
 ];
 
 const STAGE_THREE_SPAWNS: Vec2[] = [
-  point(-18, -8),
-  point(-13, -8),
-  point(-8, -8),
-  point(8, -8),
-  point(13, -8),
-  point(18, -8),
-  point(-18, 0),
-  point(-12, 0),
-  point(12, 0),
-  point(18, 0),
-  point(-18, 8),
-  point(-13, 8),
-  point(-8, 8),
-  point(8, 8),
-  point(13, 8),
-  point(18, 8),
-  point(0, -11),
-  point(0, 11),
+  point(-25, -11), point(-18, -11), point(-11, -11), point(11, -11), point(18, -11), point(25, -11),
+  point(-25, 0), point(-17, 0), point(17, 0), point(25, 0),
+  point(-25, 11), point(-18, 11), point(-11, 11), point(11, 11), point(18, 11), point(25, 11),
+  point(0, -14.8), point(0, 14.8),
 ];
 
 /** Three authored Phase 1 waves: 8, 12, then 18 enemies. */
@@ -382,6 +428,9 @@ export function createGame(stageIndex = 0, rules: Partial<GameRules> = {}): Game
       radius: PLAYER_RADIUS,
       hp: 1,
       dash: null,
+      focus: null,
+      chain: null,
+      focusEnergy: 0,
       recoveryRemainingMs: 0,
       bufferedDashTarget: null,
     },
@@ -410,16 +459,16 @@ export function createGame(stageIndex = 0, rules: Partial<GameRules> = {}): Game
 export function createStressGame(enemyCount = 20, rules: Partial<GameRules> = {}): GameState {
   const state = createGame(2, rules);
   const safeCount = Math.min(40, Math.max(8, Math.round(finiteOr(enemyCount, 20))));
-  const firstRowX = [-16, -12, -8, -4, 4, 8, 12, 16];
-  const positions: Vec2[] = firstRowX.map((x) => point(x, -8));
+  const firstRowX = [-24, -18, -12, -6, 6, 12, 18, 24];
+  const positions: Vec2[] = firstRowX.map((x) => point(x, -11));
   for (let index = positions.length; index < safeCount; index += 1) {
     const column = (index - 8) % 6;
     const row = Math.floor((index - 8) / 6);
-    positions.push(point(-15 + column * 6, row % 2 === 0 ? 2.5 : 8));
+    positions.push(point(-22.5 + column * 9, row % 2 === 0 ? 3.5 : 11));
   }
   state.stageId = "validation-redline-stress";
   state.stageName = "REDLINE STRESS";
-  state.player.position = point(-19, -8);
+  state.player.position = point(-27, -11);
   state.player.facing = point(1, 0);
   state.enemies = positions.map((position, index) => ({
     id: `stress-enemy-${String(index + 1).padStart(2, "0")}`,
@@ -545,7 +594,24 @@ export function getDashDurationMs(from: Vec2, to: Vec2): number {
   );
 }
 
-function startDash(state: GameState, target: Vec2): void {
+export function getChainDurationMs(from: Vec2, to: Vec2): number {
+  const distance = Math.sqrt(squaredDistance(from, to));
+  const duration = (distance / CHAIN_SPEED_UNITS_PER_SECOND) * 1000;
+  return Math.min(MAX_CHAIN_DURATION_MS, Math.max(MIN_CHAIN_DURATION_MS, duration));
+}
+
+/** Multikill is deliberately super-linear: 1/2/3/4/5 kills grant 14/32/54/80/100. */
+export function getFocusEnergyGain(killCount: number): number {
+  const count = Math.max(0, Math.floor(finiteOr(killCount, 0)));
+  return Math.min(FOCUS_ENERGY_MAX, count * 14 + count * (count - 1) * 2);
+}
+
+function startDash(
+  state: GameState,
+  target: Vec2,
+  kind: "normal" | "chain" = "normal",
+  segmentIndex = 0,
+): void {
   const from = copyPoint(state.player.position);
   const to = clampPointToArena(target, state.arena, state.player.radius);
   const directionX = to.x - from.x;
@@ -562,8 +628,11 @@ function startDash(state: GameState, target: Vec2): void {
   state.player.dash = {
     from,
     to,
-    durationMs: getDashDurationMs(from, to),
+    durationMs: kind === "chain" ? getChainDurationMs(from, to) : getDashDurationMs(from, to),
     elapsedMs: 0,
+    kind,
+    segmentIndex,
+    killCount: 0,
   };
   state.player.recoveryRemainingMs = 0;
   state.player.bufferedDashTarget = null;
@@ -573,7 +642,87 @@ function startDash(state: GameState, target: Vec2): void {
     from: copyPoint(from),
     to: copyPoint(to),
     durationMs: state.player.dash.durationMs,
+    kind,
+    segmentIndex,
   });
+}
+
+function startChainSegment(state: GameState): void {
+  const chain = state.player.chain;
+  if (!chain) return;
+  const target = chain.route[chain.segmentIndex];
+  if (!target) {
+    state.player.chain = null;
+    state.player.recoveryRemainingMs = CHAIN_RECOVERY_MS;
+    state.lastEvents.push({
+      type: "chain-ended",
+      atMs: state.elapsedMs,
+      position: copyPoint(state.player.position),
+    });
+    return;
+  }
+  startDash(state, target, "chain", chain.segmentIndex);
+}
+
+export function isFocusReady(state: GameState): boolean {
+  return state.player.focusEnergy >= FOCUS_ENERGY_MAX - EPSILON;
+}
+
+export function beginFocus(state: GameState): boolean {
+  if (
+    state.phase !== "playing" ||
+    state.player.hp === 0 ||
+    !isFocusReady(state) ||
+    state.player.focus !== null ||
+    state.player.chain !== null ||
+    state.player.dash !== null ||
+    state.player.recoveryRemainingMs > EPSILON
+  ) return false;
+  state.player.focus = { points: [], elapsedMs: 0 };
+  state.player.bufferedDashTarget = null;
+  state.lastEvents.push({ type: "focus-started", atMs: state.elapsedMs });
+  return true;
+}
+
+export function cancelFocus(
+  state: GameState,
+  reason: "input" | "timeout" | "death" = "input",
+): boolean {
+  if (state.player.focus === null) return false;
+  state.player.focus = null;
+  state.lastEvents.push({ type: "focus-cancelled", atMs: state.elapsedMs, reason });
+  return true;
+}
+
+export type FocusPointResult = "added" | "triggered" | "ignored";
+
+export function addFocusPoint(state: GameState, target: Vec2): FocusPointResult {
+  const focus = state.player.focus;
+  if (state.phase !== "playing" || state.player.hp === 0 || focus === null) return "ignored";
+  const pointValue = clampPointToArena(target, state.arena, state.player.radius);
+  const previous = focus.points.at(-1) ?? state.player.position;
+  if (squaredDistance(previous, pointValue) < 1) return "ignored";
+  focus.points.push(pointValue);
+  const index = focus.points.length - 1;
+  state.lastEvents.push({
+    type: "focus-point-added",
+    atMs: state.elapsedMs,
+    point: copyPoint(pointValue),
+    index,
+  });
+  if (focus.points.length < 3) return "added";
+
+  const route = focus.points.map(copyPoint);
+  state.player.focus = null;
+  state.player.focusEnergy = 0;
+  state.player.chain = { route, segmentIndex: 0 };
+  state.lastEvents.push({
+    type: "chain-started",
+    atMs: state.elapsedMs,
+    route: route.map(copyPoint),
+  });
+  startChainSegment(state);
+  return "triggered";
 }
 
 /**
@@ -581,7 +730,12 @@ function startDash(state: GameState, target: Vec2): void {
  * newest target is retained and fires as soon as the configured recovery expires.
  */
 export function queueDash(state: GameState, target: Vec2): DashRequestResult {
-  if (state.phase !== "playing" || state.player.hp === 0) {
+  if (
+    state.phase !== "playing" ||
+    state.player.hp === 0 ||
+    state.player.focus !== null ||
+    state.player.chain !== null
+  ) {
     return "ignored";
   }
 
@@ -610,8 +764,11 @@ export function getPlayerAction(state: GameState): PlayerAction {
   if (state.player.hp === 0) {
     return "dead";
   }
+  if (state.player.focus !== null) {
+    return "focusing";
+  }
   if (state.player.dash !== null) {
-    return "dashing";
+    return state.player.dash.kind === "chain" ? "chain-dashing" : "dashing";
   }
   if (state.player.recoveryRemainingMs > EPSILON) {
     return "recovering";
@@ -640,11 +797,14 @@ function killEnemiesAlongSegment(
     enemy.alive = false;
     enemy.killedAtMs = state.elapsedMs;
     state.kills += 1;
+    if (state.player.dash) state.player.dash.killCount += 1;
     state.lastEvents.push({
       type: "enemy-killed",
       atMs: state.elapsedMs,
       enemyId: enemy.id,
       position: copyPoint(enemy.position),
+      source: state.player.dash?.kind ?? "normal",
+      segmentIndex: state.player.dash?.segmentIndex ?? 0,
     });
   }
 }
@@ -656,12 +816,24 @@ function completeDash(state: GameState): void {
   }
   state.player.position = copyPoint(dash.to);
   state.player.dash = null;
-  state.player.recoveryRemainingMs = state.rules.recoveryMs;
+  const energyGain = dash.kind === "normal" ? getFocusEnergyGain(dash.killCount) : 0;
+  if (energyGain > 0) {
+    state.player.focusEnergy = Math.min(FOCUS_ENERGY_MAX, state.player.focusEnergy + energyGain);
+  }
   state.lastEvents.push({
     type: "dash-ended",
     atMs: state.elapsedMs,
     position: copyPoint(state.player.position),
+    kind: dash.kind,
+    killCount: dash.killCount,
+    energyGain,
   });
+  if (dash.kind === "chain" && state.player.chain) {
+    state.player.chain.segmentIndex += 1;
+    startChainSegment(state);
+  } else {
+    state.player.recoveryRemainingMs = state.rules.recoveryMs;
+  }
 }
 
 function advancePlayerAction(state: GameState, deltaMs: number): void {
@@ -732,7 +904,11 @@ function aliveEnemyCount(state: GameState): number {
 }
 
 function resolveStageCompletion(state: GameState): boolean {
-  if (aliveEnemyCount(state) !== 0 || state.player.dash !== null) {
+  if (
+    aliveEnemyCount(state) !== 0 ||
+    state.player.dash !== null ||
+    state.player.chain !== null
+  ) {
     return false;
   }
 
@@ -741,6 +917,7 @@ function resolveStageCompletion(state: GameState): boolean {
       ? "game-complete"
       : "stage-cleared";
   state.player.bufferedDashTarget = null;
+  state.player.focus = null;
   state.lastEvents.push({
     type: state.phase,
     atMs: state.elapsedMs,
@@ -788,6 +965,8 @@ function resolvePlayerContact(state: GameState): void {
 
     state.player.hp = 0;
     state.player.dash = null;
+    if (state.player.focus) cancelFocus(state, "death");
+    state.player.chain = null;
     state.player.recoveryRemainingMs = 0;
     state.player.bufferedDashTarget = null;
     state.phase = "dead";
@@ -808,13 +987,23 @@ function simulateFixedStep(state: GameState): void {
 
   state.tick += 1;
   state.elapsedMs += FIXED_STEP_MS;
-  advancePlayerAction(state, FIXED_STEP_MS);
+  if (state.player.focus) {
+    state.player.focus.elapsedMs += FIXED_STEP_MS;
+    if (state.player.focus.elapsedMs + EPSILON >= state.rules.focusSelectionMs) {
+      cancelFocus(state, "timeout");
+    }
+  } else {
+    advancePlayerAction(state, FIXED_STEP_MS);
+  }
 
   if (resolveStageCompletion(state)) {
     return;
   }
 
-  moveEnemies(state, FIXED_STEP_MS);
+  const worldTimeScale = state.player.focus !== null || state.player.chain !== null
+    ? state.rules.focusWorldTimeScale
+    : 1;
+  moveEnemies(state, FIXED_STEP_MS * worldTimeScale);
   resolvePlayerContact(state);
 }
 
@@ -897,7 +1086,7 @@ export function getGameSnapshot(state: GameState): GameSnapshot {
     attempt: state.attempt,
     tick: state.tick,
     timeMs: roundForSnapshot(state.elapsedMs),
-    rules: { recoveryMs: state.rules.recoveryMs },
+    rules: { ...state.rules },
     arena: copyArena(state.arena),
     player: {
       x: roundForSnapshot(state.player.position.x),
@@ -927,6 +1116,17 @@ export function getGameSnapshot(state: GameState): GameSnapshot {
             x: roundForSnapshot(state.player.bufferedDashTarget.x),
             z: roundForSnapshot(state.player.bufferedDashTarget.z),
           },
+    focus: {
+      energy: roundForSnapshot(state.player.focusEnergy),
+      ready: isFocusReady(state),
+      selecting: state.player.focus !== null,
+      points: (state.player.focus?.points ?? []).map((focusPoint) => ({
+        x: roundForSnapshot(focusPoint.x),
+        z: roundForSnapshot(focusPoint.z),
+      })),
+      elapsedMs: roundForSnapshot(state.player.focus?.elapsedMs ?? 0),
+      worldTimeScale: state.rules.focusWorldTimeScale,
+    },
     kills: state.kills,
     enemyCount: state.totalEnemies,
     aliveEnemies: state.enemies
@@ -984,7 +1184,45 @@ export function runGameplaySelfCheck(): GameplaySelfCheckResult {
       multiKill.kills === multiKill.totalEnemies,
     "one swept dash must kill every enemy on the line",
   );
+  selfCheck(multiKill.player.focusEnergy === 54, "three kills in one dash must grant 54 focus energy");
   checks.push("multi-kill swept segment");
+
+  const focusChain = createGame(0);
+  focusChain.enemies.forEach((enemy, index) => {
+    enemy.alive = index < 3;
+    enemy.killedAtMs = index < 3 ? null : 0;
+    enemy.speed = 0;
+  });
+  focusChain.kills = focusChain.totalEnemies - 3;
+  focusChain.enemies[0]!.position = point(2.5, 0);
+  focusChain.enemies[1]!.position = point(5, 2.5);
+  focusChain.enemies[2]!.position = point(0, 5);
+  focusChain.player.focusEnergy = FOCUS_ENERGY_MAX;
+  selfCheck(beginFocus(focusChain), "full focus meter must enter selection");
+  selfCheck(addFocusPoint(focusChain, point(5, 0)) === "added", "first focus point must lock");
+  selfCheck(addFocusPoint(focusChain, point(5, 5)) === "added", "second focus point must lock");
+  selfCheck(addFocusPoint(focusChain, point(-5, 5)) === "triggered", "third focus point must execute");
+  selfCheck(focusChain.player.focusEnergy === 0, "chain execution must consume the meter once");
+  tickUntil(focusChain, (state) => state.player.chain === null, 120);
+  selfCheck(
+    focusChain.enemies.slice(0, 3).every((enemy) => !enemy.alive),
+    "three chain segments must sweep every crossed target",
+  );
+  selfCheck(focusChain.player.focusEnergy === 0, "chain kills must not self-refill focus energy");
+  checks.push("focus selection and three-segment chain");
+
+  const vulnerableFocus = createGame(0);
+  vulnerableFocus.player.focusEnergy = FOCUS_ENERGY_MAX;
+  vulnerableFocus.enemies.forEach((enemy, index) => {
+    enemy.alive = index === 0;
+    enemy.speed = 0;
+  });
+  vulnerableFocus.kills = vulnerableFocus.totalEnemies - 1;
+  vulnerableFocus.enemies[0]!.position = point(PLAYER_RADIUS + ENEMY_RADIUS - 0.01, 0);
+  selfCheck(beginFocus(vulnerableFocus), "focus vulnerability setup must enter selection");
+  stepGame(vulnerableFocus);
+  selfCheck(vulnerableFocus.phase === "dead", "player must remain vulnerable during focus selection");
+  checks.push("focus selection vulnerability");
 
   const boundary = createGame(0);
   queueDash(boundary, point(1_000_000, -1_000_000));

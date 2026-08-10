@@ -52,6 +52,7 @@ const modelUrl = params.get("model");
 const requestedClip = params.get("clip");
 const selectedView = parseView(params.get("view"));
 const cleanCapture = params.get("clean") === "1";
+const yawDegrees = parseOptionalNumber(params.get("yaw"));
 if (cleanCapture) document.documentElement.classList.add("clean");
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
@@ -150,7 +151,7 @@ if (modelUrl) {
 
 function handleModelLoaded(gltf: GLTF) {
   const root = gltf.scene;
-  const normalization = normalizeModel(root, 3.3);
+  const normalization = normalizeModel(root, 3.3, yawDegrees);
   root.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return;
     object.castShadow = true;
@@ -187,9 +188,19 @@ function handleModelLoaded(gltf: GLTF) {
   document.documentElement.dataset.ready = "ready";
 }
 
-function normalizeModel(root: THREE.Object3D, targetHeight: number) {
+function normalizeModel(root: THREE.Object3D, targetHeight: number, requestedYawDegrees: number | null) {
   root.updateWorldMatrix(true, true);
-  const initialBounds = new THREE.Box3().setFromObject(root);
+  let initialBounds = new THREE.Box3().setFromObject(root);
+  const initialSize = initialBounds.getSize(new THREE.Vector3());
+  if (requestedYawDegrees !== null) {
+    root.rotateY(THREE.MathUtils.degToRad(requestedYawDegrees));
+    root.updateWorldMatrix(true, true);
+    initialBounds = new THREE.Box3().setFromObject(root);
+  } else if (initialSize.z > initialSize.x * 1.35) {
+    root.rotateY(Math.PI / 2);
+    root.updateWorldMatrix(true, true);
+    initialBounds = new THREE.Box3().setFromObject(root);
+  }
   const initialHeight = initialBounds.max.y - initialBounds.min.y;
   if (!Number.isFinite(initialHeight) || initialHeight <= 0.0001) throw new Error("Generated model has invalid bounds.");
   const scale = targetHeight / initialHeight;
@@ -293,6 +304,12 @@ function parseView(value: string | null): ModelView {
   return value === "front" || value === "side" || value === "back" || value === "three-quarter"
     ? value
     : "three-quarter";
+}
+
+function parseOptionalNumber(value: string | null) {
+  if (value === null || value.trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function setCamera(view: ModelView) {

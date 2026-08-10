@@ -85,6 +85,108 @@ body { cursor: none; }
   white-space: nowrap;
 }
 
+.focus-hud {
+  --focus-level: 0;
+  position: absolute;
+  bottom: max(58px, calc(env(safe-area-inset-bottom) + 34px));
+  left: 50%;
+  width: min(292px, 54vw);
+  translate: -50% 0;
+  color: rgba(213, 240, 244, 0.62);
+  transition: color 180ms ease, filter 180ms ease;
+}
+
+.focus-copy {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 8px;
+  letter-spacing: 0.28em;
+}
+
+.focus-copy strong {
+  color: rgba(229, 252, 255, 0.82);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+}
+
+.focus-track {
+  position: relative;
+  height: 3px;
+  overflow: visible;
+  background: rgba(169, 215, 222, 0.12);
+  box-shadow: 0 0 0 1px rgba(183, 229, 235, 0.04);
+}
+
+#focus-progress {
+  display: block;
+  width: calc(var(--focus-level) * 1%);
+  height: 100%;
+  background: linear-gradient(90deg, #617f84, #b9eff5 78%, #f0ffff);
+  box-shadow: 0 0 14px rgba(146, 237, 248, 0.32);
+  transition: width 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.focus-track i {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background: rgba(3, 9, 12, 0.84);
+}
+
+.focus-track i:nth-of-type(1) { left: 33.333%; }
+.focus-track i:nth-of-type(2) { left: 66.666%; }
+
+.focus-route {
+  display: none;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.focus-route b {
+  padding: 5px 0 4px;
+  border-top: 1px solid rgba(166, 229, 237, 0.2);
+  color: rgba(210, 244, 248, 0.28);
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+  text-align: center;
+}
+
+.focus-route b.locked {
+  border-color: rgba(220, 253, 255, 0.86);
+  color: #eaffff;
+  text-shadow: 0 0 12px rgba(127, 239, 255, 0.72);
+}
+
+.focus-hud small {
+  display: block;
+  margin-top: 7px;
+  font-size: 7px;
+  letter-spacing: 0.22em;
+  text-align: center;
+  opacity: 0.58;
+}
+
+.focus-hud.ready {
+  color: rgba(235, 254, 255, 0.94);
+  filter: drop-shadow(0 0 9px rgba(122, 231, 245, 0.3));
+  animation: focus-ready 1.8s ease-in-out infinite;
+}
+
+.focus-hud.selecting .focus-track { opacity: 0.36; }
+.focus-hud.selecting .focus-route { display: grid; }
+.focus-hud.selecting small { color: #eaffff; opacity: 0.9; }
+.focus-hud.executing { filter: drop-shadow(0 0 14px rgba(215, 253, 255, 0.85)); }
+
+@keyframes focus-ready {
+  50% { filter: drop-shadow(0 0 16px rgba(149, 242, 255, 0.52)); }
+}
+
 #phase-banner {
   --phase-accent: #dffcff;
   position: absolute;
@@ -234,9 +336,11 @@ kbd {
   .brand { left: 18px; top: 18px; }
   .status { right: 18px; top: 22px; }
   .hint { display: none; }
+  .focus-hud { bottom: max(24px, env(safe-area-inset-bottom)); width: min(280px, 70vw); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .loader-mark { animation-duration: 3s; }
   #loading-progress { transition: none; }
+  .focus-hud.ready { animation: none; }
 }

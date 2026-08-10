@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { ARENA_DEPTH, ARENA_WIDTH } from "../game/game";
 
 export interface ArenaBounds {
   readonly minX: number;
@@ -33,7 +34,7 @@ type Building = {
 };
 
 type GroundTextures = {
-  readonly albedo: THREE.DataTexture;
+  readonly albedo: THREE.Texture;
   readonly roughness: THREE.DataTexture;
 };
 
@@ -74,8 +75,6 @@ type TransitRuntime = {
   updateTraffic(timeSeconds: number): void;
 };
 
-const ARENA_WIDTH = 40;
-const ARENA_DEPTH = 25;
 const ARENA_BOUNDS: ArenaBounds = Object.freeze({
   minX: -ARENA_WIDTH / 2,
   maxX: ARENA_WIDTH / 2,
@@ -123,7 +122,7 @@ function valueNoise(x: number, y: number, seed: number): number {
 }
 
 function createGroundTextures(): GroundTextures {
-  // This map intentionally describes one 40 x 25 m deck instead of tiling a generic
+  // The roughness map describes one complete 56 x 34 m deck instead of tiling generic
   // noise field.  The high camera sees the whole arena at once, so broad drainage
   // catchments and dry service islands have to remain legible at gameplay distance.
   const size = 384;
@@ -180,16 +179,15 @@ function createGroundTextures(): GroundTextures {
     }
   }
 
-  const albedo = new THREE.DataTexture(albedoData, size, size, THREE.RGBAFormat);
-  albedo.name = "arena-wet-albedo";
-  albedo.wrapS = THREE.ClampToEdgeWrapping;
-  albedo.wrapT = THREE.ClampToEdgeWrapping;
+  const albedo = new THREE.TextureLoader().load("/textures/arena-wet-deck-albedo-v2.png");
+  albedo.name = "arena-wet-deck-albedo-v2-imagegen";
+  albedo.wrapS = THREE.RepeatWrapping;
+  albedo.wrapT = THREE.RepeatWrapping;
+  albedo.repeat.set(1.55, 1);
   albedo.colorSpace = THREE.SRGBColorSpace;
   albedo.minFilter = THREE.LinearMipmapLinearFilter;
   albedo.magFilter = THREE.LinearFilter;
-  albedo.generateMipmaps = true;
   albedo.anisotropy = 4;
-  albedo.needsUpdate = true;
 
   const roughness = new THREE.DataTexture(roughnessData, size, size, THREE.RGBAFormat);
   roughness.name = "arena-wet-roughness";
@@ -319,7 +317,7 @@ function createPlatform(
   });
 
   const understructure = new THREE.Mesh(
-    new THREE.BoxGeometry(44.5, 1.15, 29.5),
+    new THREE.BoxGeometry(ARENA_WIDTH + 4.5, 1.15, ARENA_DEPTH + 4.5),
     understructureMaterial,
   );
   understructure.name = "arena-understructure";
@@ -337,14 +335,14 @@ function createPlatform(
   root.add(floor);
 
   const edgePlacements: BoxPlacement[] = [
-    { position: [0, 0.08, -12.95], scale: [42, 0.24, 0.72] },
-    { position: [0, 0.08, 12.95], scale: [42, 0.24, 0.72] },
-    { position: [-20.45, 0.08, 0], scale: [0.72, 0.24, 25.2] },
-    { position: [20.45, 0.08, 0], scale: [0.72, 0.24, 25.2] },
-    { position: [-20.85, -0.2, -13.35], scale: [2.2, 1.5, 2.2] },
-    { position: [20.85, -0.2, -13.35], scale: [2.2, 1.5, 2.2] },
-    { position: [-20.85, -0.2, 13.35], scale: [2.2, 1.5, 2.2] },
-    { position: [20.85, -0.2, 13.35], scale: [2.2, 1.5, 2.2] },
+    { position: [0, 0.08, -17.45], scale: [58, 0.24, 0.72] },
+    { position: [0, 0.08, 17.45], scale: [58, 0.24, 0.72] },
+    { position: [-28.45, 0.08, 0], scale: [0.72, 0.24, 34.2] },
+    { position: [28.45, 0.08, 0], scale: [0.72, 0.24, 34.2] },
+    { position: [-28.85, -0.2, -17.85], scale: [2.2, 1.5, 2.2] },
+    { position: [28.85, -0.2, -17.85], scale: [2.2, 1.5, 2.2] },
+    { position: [-28.85, -0.2, 17.85], scale: [2.2, 1.5, 2.2] },
+    { position: [28.85, -0.2, 17.85], scale: [2.2, 1.5, 2.2] },
   ];
   root.add(createInstancedBoxes(edgePlacements, trimMaterial, "arena-edge-frame", true, true));
 
@@ -372,21 +370,22 @@ function createPlatform(
     { position: [11.8, 0.019, 2.1], scale: [2.7, 0.018, 1.05], rotation: [0, -0.035, 0] },
     { position: [-4.2, 0.019, 8.7], scale: [2.2, 0.018, 0.82], rotation: [0, 0.025, 0] },
   );
-  root.add(createInstancedBoxes(seamPlacements, seamMaterial, "arena-panel-seams"));
+  // Fine material structure now lives in the generated albedo. Avoid adding a
+  // second arbitrary line grid over the physically authored panel language.
 
   const railPlacements: BoxPlacement[] = [
-    { position: [0, 1.05, -13.45], scale: [39.8, 0.1, 0.1] },
-    { position: [0, 0.42, -13.45], scale: [39.8, 0.055, 0.055] },
-    { position: [-20.95, 1.05, 0], scale: [0.1, 0.1, 24.4] },
-    { position: [-20.95, 0.42, 0], scale: [0.055, 0.055, 24.4] },
-    { position: [20.95, 1.05, 0], scale: [0.1, 0.1, 24.4] },
-    { position: [20.95, 0.42, 0], scale: [0.055, 0.055, 24.4] },
+    { position: [0, 1.05, -17.95], scale: [55.8, 0.1, 0.1] },
+    { position: [0, 0.42, -17.95], scale: [55.8, 0.055, 0.055] },
+    { position: [-28.95, 1.05, 0], scale: [0.1, 0.1, 33.4] },
+    { position: [-28.95, 0.42, 0], scale: [0.055, 0.055, 33.4] },
+    { position: [28.95, 1.05, 0], scale: [0.1, 0.1, 33.4] },
+    { position: [28.95, 0.42, 0], scale: [0.055, 0.055, 33.4] },
   ];
-  for (let x = -19.75; x <= 19.75; x += 3.95) {
-    railPlacements.push({ position: [x, 0.55, -13.45], scale: [0.11, 1.15, 0.11] });
+  for (let x = -27.6; x <= 27.6; x += 4.6) {
+    railPlacements.push({ position: [x, 0.55, -17.95], scale: [0.11, 1.15, 0.11] });
   }
-  for (const x of [-20.95, 20.95]) {
-    for (let z = -11.8; z <= 11.8; z += 3.95) {
+  for (const x of [-28.95, 28.95]) {
+    for (let z = -15.8; z <= 15.8; z += 4.5) {
       railPlacements.push({ position: [x, 0.55, z], scale: [0.11, 1.15, 0.11] });
     }
   }
@@ -394,44 +393,36 @@ function createPlatform(
   root.add(createInstancedBoxes(railPlacements, trimMaterial, "arena-safety-rails", false));
 
   const beaconPlacements: BoxPlacement[] = [
-    // Maintenance lamps are grouped around access points instead of forming a dotted ruler.
-    { position: [-18.35, 0.3, -13.32], scale: [0.11, 0.23, 0.085] },
-    { position: [-18.02, 0.3, -13.32], scale: [0.08, 0.13, 0.075] },
-    { position: [-8.7, 0.3, -13.32], scale: [0.1, 0.17, 0.085] },
-    { position: [4.15, 0.3, -13.32], scale: [0.11, 0.2, 0.085] },
-    { position: [4.48, 0.3, -13.32], scale: [0.075, 0.11, 0.075] },
-    { position: [15.95, 0.3, -13.32], scale: [0.11, 0.22, 0.085] },
-    { position: [-15.7, 0.3, 13.32], scale: [0.11, 0.2, 0.085] },
-    { position: [-2.6, 0.3, 13.32], scale: [0.1, 0.16, 0.085] },
-    { position: [10.5, 0.3, 13.32], scale: [0.11, 0.22, 0.085] },
-    { position: [10.84, 0.3, 13.32], scale: [0.075, 0.12, 0.075] },
-    { position: [-20.82, 0.3, -9.6], scale: [0.085, 0.21, 0.11] },
-    { position: [-20.82, 0.3, 3.4], scale: [0.085, 0.15, 0.1] },
-    { position: [20.82, 0.3, -5.9], scale: [0.085, 0.19, 0.11] },
-    { position: [20.82, 0.3, 8.7], scale: [0.085, 0.22, 0.11] },
-    { position: [20.82, 0.3, 9.04], scale: [0.075, 0.11, 0.075] },
+    // Maintenance lamps identify four access clusters, not an ornamental grid.
+    { position: [-25.4, 0.3, -17.82], scale: [0.11, 0.23, 0.085] },
+    { position: [-25.05, 0.3, -17.82], scale: [0.08, 0.13, 0.075] },
+    { position: [9.4, 0.3, -17.82], scale: [0.11, 0.2, 0.085] },
+    { position: [9.75, 0.3, -17.82], scale: [0.075, 0.11, 0.075] },
+    { position: [-12.6, 0.3, 17.82], scale: [0.11, 0.2, 0.085] },
+    { position: [23.3, 0.3, 17.82], scale: [0.11, 0.22, 0.085] },
+    { position: [-28.82, 0.3, 7.2], scale: [0.085, 0.21, 0.11] },
+    { position: [28.82, 0.3, -8.4], scale: [0.085, 0.19, 0.11] },
   ];
   root.add(createInstancedBoxes(beaconPlacements, beaconMaterial, "arena-edge-beacons"));
 
   const drainPlacements: BoxPlacement[] = [
-    { position: [0, 0.025, -10.95], scale: [38.65, 0.028, 0.48] },
+    { position: [0, 0.025, -15.1], scale: [54.65, 0.028, 0.48] },
   ];
-  for (let x = -19; x <= 19; x += 0.52) {
-    drainPlacements.push({ position: [x, 0.042, -10.95], scale: [0.042, 0.026, 0.4] });
+  for (let x = -27; x <= 27; x += 0.58) {
+    drainPlacements.push({ position: [x, 0.042, -15.1], scale: [0.042, 0.026, 0.4] });
   }
   root.add(createInstancedBoxes(drainPlacements, seamMaterial, "arena-rear-drain"));
   root.add(createInstancedBoxes([
-    { position: [0, 0.026, -11.22], scale: [38.8, 0.03, 0.052] },
-    { position: [0, 0.026, -10.68], scale: [38.8, 0.03, 0.052] },
+    { position: [0, 0.026, -15.37], scale: [54.8, 0.03, 0.052] },
+    { position: [0, 0.026, -14.83], scale: [54.8, 0.03, 0.052] },
   ], drainFrameMaterial, "arena-rear-drain-channel-frame"));
 
   const wetTransform = new THREE.Object3D();
 
   const repairPlacements: BoxPlacement[] = [
-    { position: [-9.8, 0.028, -2.25], scale: [3.25, 0.026, 1.52], rotation: [0, 0.055, 0] },
-    { position: [5.9, 0.028, -3.15], scale: [2.2, 0.026, 1.05], rotation: [0, -0.075, 0] },
-    { position: [-2.3, 0.028, 7.75], scale: [2.7, 0.026, 1.22], rotation: [0, 0.032, 0] },
-    { position: [14.3, 0.028, 1.8], scale: [2.1, 0.026, 1.48], rotation: [0, -0.1, 0] },
+    { position: [-14.6, 0.028, -3.2], scale: [3.25, 0.026, 1.52], rotation: [0, 0.055, 0] },
+    { position: [9.8, 0.028, -4.4], scale: [2.2, 0.026, 1.05], rotation: [0, -0.075, 0] },
+    { position: [-3.2, 0.028, 10.6], scale: [2.7, 0.026, 1.22], rotation: [0, 0.032, 0] },
   ];
   root.add(createInstancedBoxes(repairPlacements, repairMaterial, "arena-irregular-maintenance-patches"));
 
@@ -479,7 +470,8 @@ function createPlatform(
   });
   coldReflections.instanceMatrix.needsUpdate = true;
   coldReflections.computeBoundingSphere();
-  root.add(coldReflections);
+  // Generated wetness and the roughness map carry reflections without colored
+  // decal strips that can be mistaken for gameplay information.
 
   const glintShape = new THREE.Shape();
   glintShape.moveTo(-0.18, -1);
@@ -519,7 +511,6 @@ function createPlatform(
   });
   puddleGlints.instanceMatrix.needsUpdate = true;
   puddleGlints.computeBoundingSphere();
-  root.add(puddleGlints);
 
   const warmReflectionMaterial = new THREE.MeshBasicMaterial({
     color: 0xb85c3d,
@@ -551,7 +542,6 @@ function createPlatform(
   });
   warmReflections.instanceMatrix.needsUpdate = true;
   warmReflections.computeBoundingSphere();
-  root.add(warmReflections);
 
   const hitMaterial = new THREE.MeshBasicMaterial({
     color: 0x000000,

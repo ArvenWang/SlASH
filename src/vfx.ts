@@ -12,6 +12,7 @@ export interface SlashVfxOptions {
   end: THREE.Vector3;
   killPositions: THREE.Vector3[];
   actor: THREE.Object3D;
+  variant?: "normal" | "chain";
 }
 
 export interface KillImpactVfxOptions {
@@ -224,7 +225,13 @@ function bakeActorSilhouette(source: THREE.Object3D) {
     const localMatrix = sourceInverse.clone().multiply(child.matrixWorld);
     const index = child.geometry.index;
     const appendVertex = (vertexIndex: number) => {
-      vertex.fromBufferAttribute(attribute, vertexIndex).applyMatrix4(localMatrix);
+      vertex.fromBufferAttribute(attribute, vertexIndex);
+      if (child instanceof THREE.SkinnedMesh) {
+        // BufferGeometry stores the bind-pose positions. Bake the currently
+        // authored Tripo pose so the dash echoes match the live silhouette.
+        child.applyBoneTransform(vertexIndex, vertex);
+      }
+      vertex.applyMatrix4(localMatrix);
       positions.push(vertex.x, vertex.y, vertex.z);
     };
     if (index) {
@@ -576,25 +583,26 @@ export function createVfxRuntime(scene: THREE.Scene): VfxRuntime {
     });
   }
 
-  function spawnSlash({ start, end, killPositions, actor }: SlashVfxOptions) {
+  function spawnSlash({ start, end, killPositions, actor, variant = "normal" }: SlashVfxOptions) {
+    const isChain = variant === "chain";
     const coreMaterial = new THREE.MeshBasicMaterial({
       color: 0xd8fbff,
       transparent: true,
-      opacity: 0.82,
+      opacity: isChain ? 1 : 0.82,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
     const fringeMaterial = new THREE.MeshBasicMaterial({
       color: 0x6feaff,
       transparent: true,
-      opacity: 0.08,
+      opacity: isChain ? 0.22 : 0.08,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
     const slash = new THREE.Group();
-    const core = orientedBeam(start, end, 0.038, coreMaterial);
+    const core = orientedBeam(start, end, isChain ? 0.085 : 0.038, coreMaterial);
     core.position.y = 0.66;
-    const fringe = orientedBeam(start, end, 0.065, fringeMaterial);
+    const fringe = orientedBeam(start, end, isChain ? 0.22 : 0.065, fringeMaterial);
     fringe.position.y = 0.64;
     core.scale.x = 0.001;
     fringe.scale.x = 0.001;
@@ -605,7 +613,7 @@ export function createVfxRuntime(scene: THREE.Scene): VfxRuntime {
     const movingHead = start.clone();
     addEffect({
       age: 0,
-      lifetime: killPositions.length >= 5 ? 0.34 : 0.3,
+      lifetime: isChain ? 0.48 : killPositions.length >= 5 ? 0.34 : 0.3,
       object: slash,
       tick: (t) => {
         const reveal = THREE.MathUtils.smoothstep(t, 0, 0.34);
@@ -617,9 +625,9 @@ export function createVfxRuntime(scene: THREE.Scene): VfxRuntime {
         fringe.position.copy(movingTail).lerp(movingHead, 0.5).setY(0.64);
         core.scale.x = segmentLength;
         fringe.scale.x = segmentLength;
-        coreMaterial.opacity = 0.82 * (1 - THREE.MathUtils.smoothstep(t, 0.38, 0.94));
-        fringeMaterial.opacity = 0.08 * (1 - THREE.MathUtils.smoothstep(t, 0.12, 0.72));
-        fringe.scale.z = 0.065 * (1 + t * 0.32);
+        coreMaterial.opacity = (isChain ? 1 : 0.82) * (1 - THREE.MathUtils.smoothstep(t, isChain ? 0.55 : 0.38, 0.94));
+        fringeMaterial.opacity = (isChain ? 0.22 : 0.08) * (1 - THREE.MathUtils.smoothstep(t, 0.12, isChain ? 0.86 : 0.72));
+        fringe.scale.z = (isChain ? 0.22 : 0.065) * (1 + t * (isChain ? 0.75 : 0.32));
       },
     });
 
@@ -629,7 +637,7 @@ export function createVfxRuntime(scene: THREE.Scene): VfxRuntime {
     const wakeMaterial = new THREE.MeshBasicMaterial({
       color: 0xe8fdff,
       transparent: true,
-      opacity: 0.82,
+      opacity: isChain ? 1 : 0.82,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
@@ -650,7 +658,7 @@ export function createVfxRuntime(scene: THREE.Scene): VfxRuntime {
         // the two, even when their transforms are correctly separated.
         heroBladeWake.position.copy(actorWorldPosition).addScaledVector(dashDirection, 0.82).setY(0.92);
         heroBladeWake.scale.x = 2.15 + Math.sin(Math.PI * Math.min(1, t * 1.7)) * 0.9;
-        wakeMaterial.opacity = 0.82 * (1 - THREE.MathUtils.smoothstep(t, 0.55, 1));
+        wakeMaterial.opacity = (isChain ? 1 : 0.82) * (1 - THREE.MathUtils.smoothstep(t, 0.55, 1));
       },
     });
 
@@ -697,17 +705,17 @@ export function createVfxRuntime(scene: THREE.Scene): VfxRuntime {
     // The dash pose is roughly three world-units long from trailing foot to
     // blade shoulder.  Keep the nearest echo farther back than that silhouette
     // length, then use near-even gaps so all three remain countable at 1080p.
-    const ghostOpacities = [0.42, 0.32, 0.24] as const;
-    const ghostScales = [0.8, 0.68, 0.56] as const;
-    const ghostSideOffsets = [2.4, 1.55, 0.75] as const;
+    const ghostOpacities = isChain ? [0.58, 0.46, 0.36, 0.27, 0.19] : [0.42, 0.32, 0.24];
+    const ghostScales = isChain ? [0.9, 0.82, 0.73, 0.64, 0.55] : [0.8, 0.68, 0.56];
+    const ghostSideOffsets = isChain ? [2.7, 2.05, 1.4, 0.8, 0.28] : [2.4, 1.55, 0.75];
     const ghostMaterials: THREE.MeshBasicMaterial[] = [];
     const ghostMeshes: THREE.Mesh[] = [];
     ghostOpacities.forEach((opacity, index) => {
       const material = new THREE.MeshBasicMaterial({
         color: new THREE.Color().setRGB(
-          0.15 - index * 0.045,
-          0.55 - index * 0.16,
-          0.62 - index * 0.17,
+          isChain ? Math.max(0.18, 0.62 - index * 0.08) : 0.15 - index * 0.045,
+          isChain ? Math.max(0.42, 0.92 - index * 0.09) : 0.55 - index * 0.16,
+          isChain ? Math.max(0.48, 1 - index * 0.08) : 0.62 - index * 0.17,
         ),
         transparent: true,
         opacity,
@@ -751,7 +759,7 @@ export function createVfxRuntime(scene: THREE.Scene): VfxRuntime {
         // Divide the actually available trail into three equal slots.  A fixed
         // long distance makes multiple echoes clamp to the arena edge during
         // the first dash frame, stacking them into one bright figure.
-        const ghostSpacing = Math.min(3.6, Math.max(0.01, (travelled - 0.45) / 3));
+          const ghostSpacing = Math.min(isChain ? 2.75 : 3.6, Math.max(0.01, (travelled - 0.45) / ghostOpacities.length));
         const chainEstablished = THREE.MathUtils.smoothstep(travelled, 2.2, 5.8);
         ghostMaterials.forEach((material, index) => {
           const trailingDistance = ghostSpacing * (index + 1);
@@ -767,6 +775,33 @@ export function createVfxRuntime(scene: THREE.Scene): VfxRuntime {
         });
       },
     });
+
+    if (isChain) {
+      const ringMaterial = new THREE.MeshBasicMaterial({
+        color: 0xdfffff,
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      });
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.35, 0.52, 32), ringMaterial);
+      ring.name = "vector-chain-arrival-shock-ring";
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.copy(end).setY(0.095);
+      ring.renderOrder = 12;
+      ring.userData.disposeGeometry = true;
+      addEffect({
+        age: 0,
+        lifetime: 0.38,
+        object: ring,
+        tick: (t) => {
+          ring.scale.setScalar(0.75 + t * 6.8);
+          ringMaterial.opacity = 0.9 * (1 - THREE.MathUtils.smoothstep(t, 0.18, 1));
+        },
+      });
+    }
 
     // Kill impacts intentionally happen later from the enemy death timeline.
     // The player must visibly pass through first, then the cut seam and blood fire.

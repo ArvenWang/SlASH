@@ -12,10 +12,20 @@ import {
 import { createCorpseRuntime, type CorpseRuntime } from "./characters/corpse";
 import { createEnemyCharacter, type EnemyCharacter } from "./characters/enemy";
 import { createHeroCharacter } from "./characters/hero";
+import {
+  createTripoEnemyVisual,
+  createTripoHeroVisual,
+  loadTripoCharacterTemplates,
+  type TripoCharacterTemplates,
+  type TripoEnemyVisual,
+} from "./characters/tripo-runtime";
 import { createDiagnostics } from "./diagnostics";
 import {
+  addFocusPoint,
   advanceGame,
   advanceStage,
+  beginFocus,
+  cancelFocus,
   createGame,
   createStressGame,
   getGameSnapshot,
@@ -23,6 +33,7 @@ import {
   restartStage,
   segmentIntersectsCircle,
   DASH_HIT_RADIUS,
+  FOCUS_ENERGY_MAX,
   type EnemyState,
   type GameEvent,
   type GameState,
@@ -51,6 +62,8 @@ declare global {
 interface EnemyVisualRuntime {
   actor: EnemyCharacter;
   animator: EnemyAnimator;
+  tripo: TripoEnemyVisual | null;
+  proceduralBodyMeshes: THREE.Mesh[];
   deathAge: number | null;
   phase: number;
   heading: number;
@@ -68,11 +81,58 @@ function requiredElement<T extends Element>(selector: string): T {
   return element;
 }
 
+function descendantsOf(root: THREE.Object3D) {
+  const descendants = new Set<THREE.Object3D>();
+  root.traverse((child) => descendants.add(child));
+  return descendants;
+}
+
+function hideProceduralBody(
+  root: THREE.Object3D,
+  preservedRoots: readonly THREE.Object3D[],
+) {
+  const preserved = new Set<THREE.Object3D>();
+  for (const preservedRoot of preservedRoots) {
+    for (const child of descendantsOf(preservedRoot)) preserved.add(child);
+  }
+  const hiddenMeshes: THREE.Mesh[] = [];
+  root.traverse((child) => {
+    if (!(child instanceof THREE.Mesh) || preserved.has(child)) return;
+    child.visible = false;
+    hiddenMeshes.push(child);
+  });
+  return hiddenMeshes;
+}
+
+function debugCharacterSnapshot(root: THREE.Object3D | null | undefined) {
+  if (!root) return null;
+  root.updateWorldMatrix(true, true);
+  const bounds = new THREE.Box3().setFromObject(root);
+  const bones: Record<string, [number, number, number]> = {};
+  root.traverse((child) => {
+    if (!(child instanceof THREE.Bone) || !/Left_Limb_[0-3]$/.test(child.name)) return;
+    const position = child.getWorldPosition(new THREE.Vector3());
+    bones[child.name] = [position.x, position.y, position.z];
+  });
+  return {
+    normalization: root.userData.normalization,
+    bounds: {
+      min: bounds.min.toArray(),
+      max: bounds.max.toArray(),
+    },
+    bones,
+  };
+}
+
 const canvas = requiredElement<HTMLCanvasElement>("#game-canvas");
 const reticle = requiredElement<HTMLDivElement>("#reticle");
 const loading = requiredElement<HTMLDivElement>("#loading");
 const stageLabel = requiredElement<HTMLSpanElement>("#stage-label");
 const enemyLabel = requiredElement<HTMLSpanElement>("#enemy-label");
+const focusHud = requiredElement<HTMLDivElement>("#focus-hud");
+const focusValue = requiredElement<HTMLElement>("#focus-value");
+const focusPrompt = requiredElement<HTMLElement>("#focus-prompt");
+const focusSlots = Array.from(document.querySelectorAll<HTMLElement>("[data-focus-slot]"));
 const phaseBanner = requiredElement<HTMLDivElement>("#phase-banner");
 const phaseEyebrow = requiredElement<HTMLSpanElement>("#phase-eyebrow");
 const phaseTitle = requiredElement<HTMLElement>("#phase-title");
@@ -109,11 +169,19 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x07111c);
 scene.fog = new THREE.FogExp2(0x0a1622, 0.0058);
 
-// Framing budget: keep the complete 40 x 25 m deck in view while giving the
-// 3.15 m combatants enough pixels to read head, chest and legs at 1080p.
+// Framing budget: the expanded 56 x 34 m deck owns more screen space while the
+// combatants read as fast moving pieces inside the full tactical field.
 const camera = new THREE.PerspectiveCamera(28.5, 1, 0.1, 260);
-const cameraBase = new THREE.Vector3(32.2, 31, 43.7);
-const cameraTarget = new THREE.Vector3(-0.5, -3, -3.5);
+const cameraBase = new THREE.Vector3(43.5, 42.3, 59);
+const cameraTarget = new THREE.Vector3(-0.3, -4.2, -4.8);
+const characterDebugView = pageParameters.get("characterDebug");
+if (characterDebugView === "hero") {
+  cameraBase.set(4.4, 3.4, -6.2);
+  cameraTarget.set(0, 1.45, 0);
+} else if (characterDebugView === "enemy") {
+  cameraBase.set(-5.2, 3.7, 2.8);
+  cameraTarget.set(-11, 1.4, 0);
+}
 camera.position.copy(cameraBase);
 camera.lookAt(cameraTarget);
 
@@ -132,10 +200,10 @@ keyLight.castShadow = true;
 // This matters in the 20-enemy stress scene because every visible combatant
 // participates in that pass.
 keyLight.shadow.mapSize.set(compatibilityMode ? 1024 : 1536, compatibilityMode ? 1024 : 1536);
-keyLight.shadow.camera.left = -26;
-keyLight.shadow.camera.right = 26;
-keyLight.shadow.camera.top = 21;
-keyLight.shadow.camera.bottom = -21;
+keyLight.shadow.camera.left = -36;
+keyLight.shadow.camera.right = 36;
+keyLight.shadow.camera.top = 29;
+keyLight.shadow.camera.bottom = -29;
 keyLight.shadow.camera.near = 3;
 keyLight.shadow.camera.far = 90;
 keyLight.shadow.bias = -0.00035;
@@ -202,7 +270,72 @@ previewLine.visible = false;
 previewLine.renderOrder = 4;
 scene.add(previewLine);
 
+const focusRouteGeometry = new THREE.BufferGeometry();
+focusRouteGeometry.setAttribute(
+  "position",
+  new THREE.Float32BufferAttribute(new Array(5 * 3).fill(0), 3),
+);
+focusRouteGeometry.setDrawRange(0, 0);
+const focusRouteLine = new THREE.Line(
+  focusRouteGeometry,
+  new THREE.LineBasicMaterial({
+    color: 0xcffcff,
+    transparent: true,
+    opacity: 0.62,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    toneMapped: false,
+  }),
+);
+focusRouteLine.name = "vector-focus-route-preview";
+focusRouteLine.visible = false;
+focusRouteLine.renderOrder = 12;
+scene.add(focusRouteLine);
+
+const focusMarkerGeometry = new THREE.RingGeometry(0.32, 0.43, 28);
+const focusMarkers = Array.from({ length: 3 }, (_, index) => {
+  const marker = new THREE.Mesh(
+    focusMarkerGeometry,
+    new THREE.MeshBasicMaterial({
+      color: index === 2 ? 0xffffff : 0xbceff5,
+      transparent: true,
+      opacity: 0.8,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+    }),
+  );
+  marker.name = `vector-focus-marker-${index + 1}`;
+  marker.rotation.x = -Math.PI / 2;
+  marker.position.y = 0.09;
+  marker.visible = false;
+  marker.renderOrder = 13;
+  scene.add(marker);
+  return marker;
+});
+
+const proceduralCharacterFallback = pageParameters.get("characters") === "procedural";
+let tripoTemplates: TripoCharacterTemplates | null = null;
+if (!proceduralCharacterFallback) {
+  setLoadingPhase(0.68, "LOADING TRIPO COMBAT RIGS");
+  try {
+    tripoTemplates = await loadTripoCharacterTemplates();
+  } catch (error) {
+    console.warn("Tripo combat rigs could not be loaded; using procedural fallback.", error);
+  }
+}
+
 const playerActor = createHeroCharacter();
+const playerTripo = tripoTemplates ? createTripoHeroVisual(tripoTemplates.hero) : null;
+if (playerTripo) {
+  hideProceduralBody(playerActor.visualRoot, [playerActor.sword]);
+  // The procedural root motion still drives the blade, but the generated body
+  // owns its complete pose. Nesting it below both systems would double every
+  // crouch and forward lean.
+  playerActor.root.add(playerTripo.root);
+  playerTripo.weaponMount.add(playerActor.rig.swordPivot);
+}
 const playerAnimator = createHeroAnimator(playerActor.rig);
 scene.add(playerActor.root);
 // Twenty articulated enemies would otherwise render every body piece again in
@@ -265,6 +398,8 @@ const frozenEnemySpeeds: number[] = [];
 let renderedStageIndex = -1;
 let renderedStageName = "";
 let renderedAliveCount = -1;
+let renderedFocusEnergy = -1;
+let renderedFocusMode = "";
 let renderedBannerVisible: boolean | null = null;
 let renderedBannerTone = "";
 let renderedBannerEyebrow = "";
@@ -316,6 +451,16 @@ function rebuildEnemyVisuals() {
   enemyVisuals.clear();
   gameState.enemies.forEach((enemy, index) => {
     const actor = createEnemyCharacter(index);
+    const tripo = tripoTemplates
+      ? createTripoEnemyVisual(tripoTemplates.enemy, index * 0.77)
+      : null;
+    const proceduralBodyMeshes = tripo
+      ? hideProceduralBody(actor.root, [actor.rig.weaponPivot, actor.cutSeam.root])
+      : [];
+    if (tripo) {
+      actor.root.add(tripo.root);
+      tripo.weaponMount.add(actor.rig.weaponPivot);
+    }
     actor.root.position.set(enemy.position.x, 0, enemy.position.z);
     const heading = (index * 2.399) % (Math.PI * 2);
     actor.root.rotation.y = heading;
@@ -325,6 +470,8 @@ function rebuildEnemyVisuals() {
     enemyVisuals.set(enemy.id, {
       actor,
       animator: createEnemyAnimator(actor.rig, index * 0.77),
+      tripo,
+      proceduralBodyMeshes,
       deathAge: null,
       phase: index * 0.77,
       heading,
@@ -342,6 +489,7 @@ function resetVisualStage() {
   vfx.clearStage();
   rebuildEnemyVisuals();
   playerAnimator.reset();
+  playerTripo?.animator.reset();
   playerActor.root.visible = true;
   playerActor.root.position.set(gameState.player.position.x, 0, gameState.player.position.z);
   playerHeading = Math.atan2(gameState.player.facing.x, gameState.player.facing.z);
@@ -362,7 +510,8 @@ function triggerDashVisual(event: Extract<GameEvent, { type: "dash-started" }>) 
   const end = new THREE.Vector3(event.to.x, 0, event.to.z);
   const direction = end.clone().sub(start).setY(0).normalize();
   const kills = enemyKillPositions(event.from, event.to);
-  environment.reactToDash(start, end, Math.min(1.6, 1 + kills.length * 0.08));
+  const chainIntensity = event.kind === "chain" ? 1.85 : 1;
+  environment.reactToDash(start, end, Math.min(2.2, chainIntensity + kills.length * 0.08));
   playerHeading = Math.atan2(direction.x, direction.z);
   playerActor.root.rotation.y = playerHeading;
   playerAnimator.update({
@@ -375,15 +524,37 @@ function triggerDashVisual(event: Extract<GameEvent, { type: "dash-started" }>) 
     recoveryProgress: null,
     deathProgress: null,
   });
+  playerTripo?.animator.update({
+    time: worldTime,
+    dt: 1 / 30,
+    turn: 0,
+    dashProgress: 0.43,
+    recoveryProgress: null,
+    deathProgress: null,
+  });
   if (pendingDashInputId !== null) {
     diagnostics.markDashLogic(pendingDashInputId);
     pendingDashInputId = null;
   }
-  vfx.spawnSlash({ start, end, killPositions: kills, actor: playerActor.root });
-  audio.playDash(kills.length);
-  postFx.impact = Math.min(0.62, 0.15 + kills.length * 0.055);
-  heroAnchorLight.intensity = Math.min(34, 18 + kills.length * 2.6);
-  cameraImpulse.add(new THREE.Vector3(direction.x * 0.16, 0.065 + kills.length * 0.009, direction.z * 0.13));
+  vfx.spawnSlash({
+    start,
+    end,
+    killPositions: kills,
+    actor: playerActor.root,
+    variant: event.kind,
+  });
+  if (event.kind === "chain") audio.playChainDash(kills.length, event.segmentIndex);
+  else audio.playDash(kills.length);
+  postFx.impact = event.kind === "chain"
+    ? Math.min(1, 0.64 + kills.length * 0.07)
+    : Math.min(0.62, 0.15 + kills.length * 0.055);
+  heroAnchorLight.intensity = Math.min(58, (event.kind === "chain" ? 38 : 18) + kills.length * 2.6);
+  const impulseScale = event.kind === "chain" ? 2.35 : 1;
+  cameraImpulse.add(new THREE.Vector3(
+    direction.x * 0.16 * impulseScale,
+    (0.065 + kills.length * 0.009) * impulseScale,
+    direction.z * 0.13 * impulseScale,
+  ));
   previewSuppressedUntil = worldTime + 0.42;
   reticle.classList.add("active");
   window.setTimeout(() => reticle.classList.remove("active"), 100);
@@ -406,6 +577,28 @@ function consumeEvents(events: readonly GameEvent[]) {
         visual.actor.cutSeam.setVisible(false);
         visual.actor.cutSeam.setHeat(0);
       }
+      continue;
+    }
+    if (event.type === "focus-started") {
+      audio.playFocusStart();
+      postFx.impact = Math.max(postFx.impact, 0.28);
+      continue;
+    }
+    if (event.type === "focus-point-added") {
+      const marker = focusMarkers[event.index];
+      if (marker) {
+        marker.scale.setScalar(1.75);
+        (marker.material as THREE.MeshBasicMaterial).opacity = 1;
+      }
+      continue;
+    }
+    if (event.type === "chain-started") {
+      postFx.impact = 0.82;
+      continue;
+    }
+    if (event.type === "chain-ended") {
+      postFx.impact = 1;
+      cameraImpulse.y += 0.5;
       continue;
     }
     if (event.type === "player-died") {
@@ -441,6 +634,35 @@ function updateHud() {
     enemyLabel.textContent = `${String(alive).padStart(2, "0")} HOSTILES`;
     renderedAliveCount = alive;
   }
+
+  const energy = Math.round(gameState.player.focusEnergy);
+  const mode = gameState.player.focus
+    ? "selecting"
+    : gameState.player.chain
+      ? "executing"
+      : energy >= FOCUS_ENERGY_MAX
+        ? "ready"
+        : "charging";
+  if (renderedFocusEnergy !== energy) {
+    focusHud.style.setProperty("--focus-level", String(energy));
+    focusValue.textContent = String(energy).padStart(3, "0");
+    renderedFocusEnergy = energy;
+  }
+  if (renderedFocusMode !== mode) {
+    focusHud.classList.toggle("ready", mode === "ready");
+    focusHud.classList.toggle("selecting", mode === "selecting");
+    focusHud.classList.toggle("executing", mode === "executing");
+    renderedFocusMode = mode;
+  }
+  const pointCount = gameState.player.focus?.points.length ?? 0;
+  focusSlots.forEach((slot, index) => slot.classList.toggle("locked", index < pointCount));
+  focusPrompt.textContent = mode === "selecting"
+    ? `MARK ${String(Math.min(3, pointCount + 1)).padStart(2, "0")} // 3.0S WINDOW`
+    : mode === "executing"
+      ? "VECTOR ROUTE EXECUTING"
+      : mode === "ready"
+        ? "SPACE // VECTOR CHAIN READY"
+        : "MULTIKILL TO ACCELERATE CHARGE";
 }
 
 function updatePhaseBanner() {
@@ -493,13 +715,60 @@ function updatePhaseBanner() {
 }
 
 function updatePreview() {
-  previewLine.visible = pointerSeen && hoverValid && tuning.dashPreview && gameState.phase === "playing" && worldTime >= previewSuppressedUntil;
+  previewLine.visible = pointerSeen && hoverValid && tuning.dashPreview && gameState.phase === "playing"
+    && gameState.player.focus === null && gameState.player.chain === null
+    && worldTime >= previewSuppressedUntil;
   if (!previewLine.visible) return;
   const positions = previewGeometry.getAttribute("position") as THREE.BufferAttribute;
   positions.setXYZ(0, gameState.player.position.x, 0.08, gameState.player.position.z);
   positions.setXYZ(1, pointerWorld.x, 0.08, pointerWorld.z);
   positions.needsUpdate = true;
   previewGeometry.computeBoundingSphere();
+}
+
+function updateFocusRoutePreview(dt: number) {
+  const focus = gameState.player.focus;
+  const chain = gameState.player.chain;
+  const route = focus?.points ?? chain?.route ?? [];
+  const visible = gameState.phase === "playing" && (focus !== null || chain !== null);
+  focusRouteLine.visible = visible;
+  if (!visible) {
+    focusRouteGeometry.setDrawRange(0, 0);
+    focusMarkers.forEach((marker) => { marker.visible = false; });
+    return;
+  }
+
+  const routePositions = focus
+    ? route
+    : route.slice(Math.max(0, chain?.segmentIndex ?? 0));
+  const points = [gameState.player.position, ...routePositions];
+  if (focus && hoverValid && route.length < 3) {
+    points.push({ x: pointerWorld.x, z: pointerWorld.z });
+  }
+  const position = focusRouteGeometry.getAttribute("position") as THREE.BufferAttribute;
+  points.slice(0, 5).forEach((pointValue, index) => {
+    position.setXYZ(index, pointValue.x, 0.11 + index * 0.006, pointValue.z);
+  });
+  position.needsUpdate = true;
+  focusRouteGeometry.setDrawRange(0, Math.min(5, points.length));
+  focusRouteGeometry.computeBoundingSphere();
+
+  route.slice(0, 3).forEach((pointValue, index) => {
+    const marker = focusMarkers[index];
+    marker.visible = true;
+    marker.position.set(pointValue.x, 0.105, pointValue.z);
+    const targetScale = chain ? 1.35 : 1;
+    marker.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 1 - Math.exp(-dt * 12));
+    (marker.material as THREE.MeshBasicMaterial).opacity = THREE.MathUtils.damp(
+      (marker.material as THREE.MeshBasicMaterial).opacity,
+      chain ? 0.94 : 0.74,
+      9,
+      dt,
+    );
+  });
+  focusMarkers.forEach((marker, index) => {
+    if (index >= route.length) marker.visible = false;
+  });
 }
 
 function updatePointer(clientX: number, clientY: number) {
@@ -512,18 +781,39 @@ function updatePointer(clientX: number, clientY: number) {
   const hit = raycaster.intersectObject(environment.arenaHitSurface, false)[0];
   hoverValid = Boolean(hit);
   reticle.classList.toggle("invalid", !hoverValid);
-  if (hit) pointerWorld.copy(hit.point);
+  if (hit) {
+    pointerWorld.copy(hit.point);
+    if (gameState.player.dash === null && gameState.player.chain === null) {
+      const facingX = pointerWorld.x - gameState.player.position.x;
+      const facingZ = pointerWorld.z - gameState.player.position.z;
+      const length = Math.hypot(facingX, facingZ);
+      if (length > 0.001) {
+        gameState.player.facing.x = facingX / length;
+        gameState.player.facing.z = facingZ / length;
+      }
+    }
+  }
   updatePreview();
+}
+
+function consumeImmediateEvents() {
+  consumeEvents(gameState.lastEvents);
+  gameState.lastEvents.length = 0;
+  updateHud();
 }
 
 function requestDashAtPointer() {
   if (!hoverValid || gameState.phase !== "playing") return;
+  if (gameState.player.focus) {
+    const result = addFocusPoint(gameState, { x: pointerWorld.x, z: pointerWorld.z });
+    if (result !== "ignored") consumeImmediateEvents();
+    return;
+  }
   const inputId = diagnostics.markInput();
   const result = queueDash(gameState, { x: pointerWorld.x, z: pointerWorld.z });
   if (result !== "ignored") pendingDashInputId = inputId;
   if (result === "started") {
-    consumeEvents(gameState.lastEvents);
-    gameState.lastEvents = [];
+    consumeImmediateEvents();
   }
 }
 
@@ -539,7 +829,7 @@ function updateEnemyVisual(enemy: EnemyState, visual: EnemyVisualRuntime, dt: nu
     visual.actor.cutSeam.setHeat(Math.max(instantHeat * 0.92, heatIn * heatOut));
 
     if (!visual.separated) {
-      visual.animator.update({
+      const deathFrame = {
         time: worldTime,
         dt,
         distanceMoved: 0,
@@ -547,7 +837,9 @@ function updateEnemyVisual(enemy: EnemyState, visual: EnemyVisualRuntime, dt: nu
         turn: 0,
         threat: 0,
         deathAge: t,
-      });
+      };
+      visual.animator.update(deathFrame);
+      visual.tripo?.animator.update(deathFrame);
     }
 
     if (!visual.contactSpawned && t >= 0.012) {
@@ -569,6 +861,8 @@ function updateEnemyVisual(enemy: EnemyState, visual: EnemyVisualRuntime, dt: nu
     }
 
     if (!visual.separated && t >= 0.12) {
+      if (visual.tripo) visual.tripo.root.visible = false;
+      for (const mesh of visual.proceduralBodyMeshes) mesh.visible = true;
       visual.corpse = createCorpseRuntime(
         scene,
         root,
@@ -602,7 +896,7 @@ function updateEnemyVisual(enemy: EnemyState, visual: EnemyVisualRuntime, dt: nu
   const distanceToPlayer = Math.hypot(toPlayerX, toPlayerZ);
   const speedNormalized = THREE.MathUtils.clamp(distanceMoved / Math.max(0.0001, enemy.speed * dt), 0, 1);
   const threat = 1 - THREE.MathUtils.smoothstep(distanceToPlayer, 1.2, 3.1);
-  visual.animator.update({
+  const animationFrame = {
     time: worldTime,
     dt,
     distanceMoved,
@@ -610,7 +904,9 @@ function updateEnemyVisual(enemy: EnemyState, visual: EnemyVisualRuntime, dt: nu
     turn: THREE.MathUtils.clamp(turnDelta / 0.72, -1, 1),
     threat,
     deathAge: null,
-  });
+  };
+  visual.animator.update(animationFrame);
+  visual.tripo?.animator.update(animationFrame);
 }
 
 function updateEnemyContactShadows() {
@@ -631,10 +927,14 @@ function updateEnemyContactShadows() {
 }
 
 function updateSimulation(dt: number) {
-  worldTime += dt;
+  const worldTimeScale = gameState.player.focus !== null || gameState.player.chain !== null
+    ? gameState.rules.focusWorldTimeScale
+    : 1;
+  const worldDt = dt * worldTimeScale;
+  worldTime += worldDt;
   stageIntroAge += dt;
-  environment.update(worldTime, dt);
-  postFx.update(worldTime, dt);
+  environment.update(worldTime, worldDt);
+  postFx.update(worldTime, worldDt);
   hostileRim.intensity = THREE.MathUtils.damp(hostileRim.intensity, 52, 5, dt);
   heroAnchorLight.intensity = THREE.MathUtils.damp(heroAnchorLight.intensity, 2.6, 11, dt);
 
@@ -688,18 +988,20 @@ function updateSimulation(dt: number) {
   const recoveryProgress = !player.dash && player.recoveryRemainingMs > 0
     ? 1 - THREE.MathUtils.clamp(player.recoveryRemainingMs / gameState.rules.recoveryMs, 0, 1)
     : null;
-  playerAnimator.update({
+  const heroAnimationFrame = {
     time: worldTime,
     dt,
     turn: THREE.MathUtils.clamp(playerTurnDelta / 0.65, -1, 1),
     dashProgress,
     recoveryProgress,
     deathProgress: gameState.phase === "dead" ? THREE.MathUtils.clamp(phaseAge / 0.78, 0, 1) : null,
-  });
+  };
+  playerAnimator.update(heroAnimationFrame);
+  playerTripo?.animator.update(heroAnimationFrame);
 
   for (const enemy of gameState.enemies) {
     const visual = enemyVisuals.get(enemy.id);
-    if (visual) updateEnemyVisual(enemy, visual, dt);
+    if (visual) updateEnemyVisual(enemy, visual, visual.deathAge === null ? worldDt : dt);
   }
   updateEnemyContactShadows();
 
@@ -730,6 +1032,7 @@ function updateSimulation(dt: number) {
   camera.position.y += Math.sin(worldTime * 0.21) * 0.07;
   camera.lookAt(cameraTarget);
   updatePreview();
+  updateFocusRoutePreview(dt);
   updateHud();
   updatePhaseBanner();
 }
@@ -788,9 +1091,14 @@ canvas.addEventListener("pointerdown", (event) => {
     pendingDashInputId = null;
     return;
   }
+  if (event.button === 2) {
+    if (cancelFocus(gameState)) consumeImmediateEvents();
+    return;
+  }
   updatePointer(event.clientX, event.clientY);
   requestDashAtPointer();
 });
+canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 canvas.addEventListener("pointerleave", () => {
   pointerSeen = false;
   previewLine.visible = false;
@@ -814,6 +1122,35 @@ canvas.addEventListener("webglcontextrestored", () => {
 });
 
 window.addEventListener("keydown", async (event) => {
+  if (validationMode && event.key.toLowerCase() === "u") {
+    gameState.player.focusEnergy = FOCUS_ENERGY_MAX;
+    gameState.rules.focusSelectionMs = 10_000;
+    updateHud();
+  }
+  if (validationMode && event.key.toLowerCase() === "i") {
+    tuning.enemyMotion = !tuning.enemyMotion;
+  }
+  if (validationMode && event.key.toLowerCase() === "o") {
+    gameState.player.focusEnergy = FOCUS_ENERGY_MAX;
+    if (beginFocus(gameState)) {
+      addFocusPoint(gameState, { x: 20, z: -10 });
+      addFocusPoint(gameState, { x: -18, z: 10 });
+      addFocusPoint(gameState, { x: 22, z: 12 });
+      consumeImmediateEvents();
+    }
+  }
+  if (event.code === "Space") {
+    event.preventDefault();
+    if (gameState.player.focus) {
+      if (cancelFocus(gameState)) consumeImmediateEvents();
+    } else if (beginFocus(gameState)) {
+      consumeImmediateEvents();
+    }
+  }
+  if (event.key === "Escape" && gameState.player.focus) {
+    event.preventDefault();
+    if (cancelFocus(gameState)) consumeImmediateEvents();
+  }
   if (event.key.toLowerCase() === "f") {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
@@ -845,6 +1182,14 @@ document.addEventListener("visibilitychange", () => {
 window.render_game_to_text = () => JSON.stringify({
   coordinateSystem: "World ground plane. Origin at arena center; +x is screen-right-ish, +z is toward the near camera edge.",
   qualityMode: compatibilityMode ? "compatibility" : "high",
+  characterSource: tripoTemplates ? "tripo-custom-rig" : "procedural-fallback",
+  characterDebug: characterDebugView
+    ? debugCharacterSnapshot(
+      characterDebugView === "hero"
+        ? playerTripo?.root
+        : enemyVisuals.values().next().value?.tripo?.root,
+    )
+    : undefined,
   graphicsContextState,
   ...getGameSnapshot(gameState),
   diagnostics: diagnostics.snapshot(),

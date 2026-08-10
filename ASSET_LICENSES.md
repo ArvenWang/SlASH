@@ -4,9 +4,12 @@
 
 ## Runtime art and audio
 
-Phase 1 当前运行版本没有导入第三方角色、场景、贴图、动画、音效或从其他商业游戏提取的内容。
+Phase 1 当前运行版本没有导入第三方角色、场景、动画、音效或从其他商业游戏提取的内容。
 
-- 主角、敌人、武器、Arena、城市、列车、雨、蒸汽、血液、切割、尸体、材质与程序化纹理由本项目代码原创生成。
+- `public/models/characters/hero-v5-rigged.glb`：依据本项目原创 Hero V5 概念图，通过 Tripo API 生成并自动绑定；模型与内嵌贴图仅用于本项目，运行时动作由本项目代码原创驱动。
+- `public/models/characters/enemy-v5-rigged.glb`：依据本项目原创 Enemy V5 概念图，通过 Tripo API 生成并自动绑定；模型与内嵌贴图仅用于本项目，运行时动作由本项目代码原创驱动。
+- `public/textures/arena-wet-deck-albedo-v2.png`：依据本项目关卡美术需求，使用 OpenAI 内置 ImageGen 生成的原创工业湿地台材质；仅作为本项目运行时平台漫反射贴图使用。
+- 武器、Arena、城市、列车、雨、蒸汽、血液、切割、尸体与其余程序化材质由本项目代码原创生成。
 - 环境声、Dash、命中与死亡声音由本项目 Web Audio 代码实时合成。
 - `art/concepts/` 与 `art/characters/concepts/` 是为本项目生成的内部概念基准，不会作为预渲染画面冒充实时游戏，也不直接打包为运行时画面资产。
 - 如果后续加入外部模型、贴图、动画、音频或字体，必须在本文件逐项记录作者、原始链接、许可证、修改方式和是否需要署名；许可证未确认前不得进入生产构建。
