@@ -71,6 +71,21 @@ import {
   PLAYER_RADIUS,
 } from "./rules/constants";
 import { moveEnemiesWithBehaviors } from "./simulation/enemy-behavior";
+import { advanceObstacles, spawnObstacle } from "./entities/obstacle-system";
+import { advanceHazards, spawnHazard } from "./entities/hazard-system";
+import {
+  advanceProjectiles,
+  resolveProjectilesAlongDashSegment,
+  spawnProjectile,
+  type ReturnedProjectileImpact,
+} from "./entities/projectile-system";
+import {
+  ARC_RAIL_HAZARD_ID,
+  ARMED_MINE_HAZARD_ID,
+  DEPLOYABLE_BARRIER_OBSTACLE_ID,
+  STANDARD_ROUND_PROJECTILE_ID,
+  STATIC_REFLECTOR_OBSTACLE_ID,
+} from "../content/entities/definitions";
 import {
   createArmorPartStates,
   hasIntactArmor,
@@ -405,6 +420,86 @@ export function createUltimateValidationGame(rules: Partial<GameRules> = {}): Ga
   return state;
 }
 
+/** Deterministic browser acceptance scenario for Projectile / Obstacle / Hazard. */
+export function createEntityValidationGame(rules: Partial<GameRules> = {}): GameState {
+  const state = createGame(0, rules);
+  const definition = enemyDefinitions.get(STRIKER_ENEMY_ID);
+  state.stage.levelId = "validation-entities";
+  state.stage.name = "ENTITY MATRIX";
+  state.stage.encounterId = "validation-entities-v1";
+  state.player.position = point(-12, -5);
+  state.player.facing = point(1, 0);
+  state.run.selectedUpgrades = [
+    "skill-refraction-v1",
+    "skill-projectile-reversal-v1",
+    "skill-projectile-return-v1",
+  ];
+  state.enemies = [
+    {
+      id: "validation-gunner",
+      definitionId: definition.id,
+      position: point(12, -5),
+      facing: point(-1, 0),
+      radius: definition.radius,
+      speed: 0,
+      alive: true,
+      state: "active" as const,
+      spawnedAtMs: 0,
+      killedAtMs: null,
+      armorParts: [],
+      staggerRemainingMs: 0,
+    },
+    {
+      id: "validation-anchor",
+      definitionId: definition.id,
+      position: point(17, 9),
+      facing: point(-1, 0),
+      radius: definition.radius,
+      speed: 0,
+      alive: true,
+      state: "active" as const,
+      spawnedAtMs: 0,
+      killedAtMs: null,
+      armorParts: [],
+      staggerRemainingMs: 0,
+    },
+  ];
+  state.projectiles = [];
+  state.obstacles = [];
+  state.hazards = [];
+  state.combat.kills = 0;
+  state.combat.totalEnemies = state.enemies.length;
+  spawnProjectile(state, {
+    id: "validation-standard-round",
+    definitionId: STANDARD_ROUND_PROJECTILE_ID,
+    position: point(-2, -5),
+    direction: point(1, 0),
+    sourceId: "validation-gunner",
+  });
+  spawnObstacle(state, {
+    id: "validation-reflector",
+    definitionId: STATIC_REFLECTOR_OBSTACLE_ID,
+    position: point(0, 4),
+  });
+  spawnObstacle(state, {
+    id: "validation-barrier",
+    definitionId: DEPLOYABLE_BARRIER_OBSTACLE_ID,
+    position: point(-12, 9),
+  });
+  spawnHazard(state, {
+    id: "validation-mine",
+    definitionId: ARMED_MINE_HAZARD_ID,
+    position: point(15, 6),
+  });
+  spawnHazard(state, {
+    id: "validation-arc-rail",
+    definitionId: ARC_RAIL_HAZARD_ID,
+    position: point(0, 10),
+  });
+  drainGameEvents(state);
+  return state;
+}
+
 /** Mutates the supplied state in place, preserving references held by a renderer. */
 export function restartStage(state: GameState): GameState {
   if (state.run.fullGame !== null) {
@@ -625,12 +720,21 @@ function killEnemy(
       }
     }
   }
+  if (rearExecution && attackId === CHARGED_DASH_ABILITY_ID) {
+    emitGameEvent(state, {
+      type: "rear-execution",
+      enemyId: enemy.id,
+      attackId,
+      position: copyPoint(enemy.position),
+    });
+  }
   if (dash?.abilityId === VECTOR_FOCUS_ABILITY_ID && attackId === VECTOR_FOCUS_ABILITY_ID) {
     if (state.player.ultimateExecution) state.player.ultimateExecution.killCount += 1;
   }
   const ultimateDerived = attackId === VECTOR_FOCUS_ABILITY_ID ||
     attackId === "skill-vector-echo-v1" ||
-    attackId === "skill-cross-cascade-v1";
+    attackId === "skill-cross-cascade-v1" ||
+    attackId === "skill-projectile-return-v1";
   if (!ultimateDerived && (
     state.run.fullGame !== null ||
     attackId === CHARGED_DASH_ABILITY_ID ||
@@ -731,12 +835,71 @@ function resolveScheduledSlashes(state: GameState): void {
   state.combat.scheduledSlashes = pending;
 }
 
+function resolveReturnedProjectileImpact(state: GameState, impact: ReturnedProjectileImpact): void {
+  const enemy = state.enemies.find((candidate) => candidate.id === impact.enemyId && candidate.alive);
+  if (!enemy) return;
+  const contact = resolveArmorContact(enemy, impact.from, impact.to, undefined, enemy.radius + impact.radius);
+  if (contact.armorPart) {
+    emitGameEvent(state, {
+      type: "armor-blocked",
+      enemyId: enemy.id,
+      armorPartId: contact.armorPart.id,
+      attackId: impact.attackId,
+      position: copyPoint(enemy.position),
+    });
+    return;
+  }
+  killEnemy(state, enemy, impact.attackId, contact.isRearContact);
+}
+
 function completeDash(state: GameState): void {
   const dash = state.player.dash;
   if (dash === null) {
     return;
   }
   state.player.position = copyPoint(dash.to);
+  const completedPathSegment = dash.pathSegments[dash.pathSegmentIndex];
+  const nextPathSegment = dash.pathSegments[dash.pathSegmentIndex + 1];
+  if (completedPathSegment?.reflectionAtEnd && nextPathSegment) {
+    dash.pathSegmentIndex += 1;
+    dash.reflectionsUsed += 1;
+    dash.from = copyPoint(nextPathSegment.from);
+    dash.to = copyPoint(nextPathSegment.to);
+    dash.durationMs = nextPathSegment.durationMs;
+    dash.elapsedMs = 0;
+    const nextDirection = {
+      x: nextPathSegment.to.x - nextPathSegment.from.x,
+      z: nextPathSegment.to.z - nextPathSegment.from.z,
+    };
+    const nextLength = Math.hypot(nextDirection.x, nextDirection.z);
+    if (nextLength > EPSILON) {
+      state.player.facing = { x: nextDirection.x / nextLength, z: nextDirection.z / nextLength };
+    }
+    emitGameEvent(state, {
+      type: "dash-reflected",
+      abilityId: dash.abilityId,
+      obstacleId: completedPathSegment.reflectionAtEnd.obstacleId,
+      position: copyPoint(completedPathSegment.reflectionAtEnd.position),
+      normal: copyPoint(completedPathSegment.reflectionAtEnd.normal),
+      from: copyPoint(nextPathSegment.from),
+      to: copyPoint(nextPathSegment.to),
+    });
+    return;
+  }
+  if (completedPathSegment?.terminalImpact) {
+    const impact = completedPathSegment.terminalImpact;
+    state.player.position = clampPointToArena({
+      x: impact.position.x - impact.incomingDirection.x * 0.85,
+      z: impact.position.z - impact.incomingDirection.z * 0.85,
+    }, state.stage.arena, state.player.radius);
+    emitGameEvent(state, {
+      type: "dash-obstacle-impact",
+      abilityId: dash.abilityId,
+      obstacleId: impact.obstacleId,
+      position: copyPoint(impact.position),
+      normal: copyPoint(impact.normal),
+    });
+  }
   state.player.dash = null;
   emitGameEvent(state, {
     type: "dash-ended",
@@ -777,6 +940,7 @@ function advancePlayerAction(state: GameState, deltaMs: number): void {
         z: dash.from.z + (dash.to.z - dash.from.z) * progress,
       };
       resolveEnemiesAlongSegment(state, segmentStart, state.player.position);
+      resolveProjectilesAlongDashSegment(state, segmentStart, state.player.position);
       remainingMs -= sliceMs;
 
       if (dash.elapsedMs + EPSILON >= dash.durationMs) {
@@ -872,22 +1036,27 @@ function resolvePlayerContact(state: GameState): void {
       continue;
     }
 
-    state.player.hp = 0;
-    state.player.dash = null;
-    state.player.charge = null;
-    state.player.ultimatePlanning = null;
-    state.player.ultimateExecution = null;
-    state.player.recoveryRemainingMs = 0;
-    state.player.bufferedAbility = null;
-    state.stage.phase = "dead";
-    markCampaignDefeat(state);
-    emitGameEvent(state, {
-      type: "player-died",
-      enemyId: enemy.id,
-      position: copyPoint(state.player.position),
-    });
+    killPlayer(state, enemy.id);
     return;
   }
+}
+
+function killPlayer(state: GameState, sourceId: string): void {
+  if (state.player.hp === 0 || isPlayerInvulnerable(state)) return;
+  state.player.hp = 0;
+  state.player.dash = null;
+  state.player.charge = null;
+  state.player.ultimatePlanning = null;
+  state.player.ultimateExecution = null;
+  state.player.recoveryRemainingMs = 0;
+  state.player.bufferedAbility = null;
+  state.stage.phase = "dead";
+  markCampaignDefeat(state);
+  emitGameEvent(state, {
+    type: "player-died",
+    enemyId: sourceId,
+    position: copyPoint(state.player.position),
+  });
 }
 
 function simulateFixedStep(state: GameState): void {
@@ -898,10 +1067,19 @@ function simulateFixedStep(state: GameState): void {
   state.tick += 1;
   state.run.tick += 1;
   state.elapsedMs += FIXED_STEP_MS;
-  const enemyTimeScale = state.player.ultimatePlanning?.worldTimeScale ?? 1;
+  const worldTimeScale = state.player.ultimatePlanning?.worldTimeScale ?? 1;
   advanceCampaignEncounterScheduler(state);
   advancePlayerAction(state, FIXED_STEP_MS);
   resolveScheduledSlashes(state);
+  const worldDeltaMs = FIXED_STEP_MS * worldTimeScale;
+  advanceObstacles(state, worldDeltaMs);
+  const projectileResult = advanceProjectiles(state, worldDeltaMs);
+  for (const impact of projectileResult.returnedImpacts) resolveReturnedProjectileImpact(state, impact);
+  if (projectileResult.playerHitBy) killPlayer(state, projectileResult.playerHitBy);
+  const lethalHazardId = advanceHazards(state, worldDeltaMs);
+  if (lethalHazardId) killPlayer(state, lethalHazardId);
+
+  if (state.stage.phase !== "playing") return;
 
   // A dash can finish a wave during this tick. Running the scheduler again
   // allows an authored zero-warning follow-up to activate deterministically.
@@ -911,7 +1089,7 @@ function simulateFixedStep(state: GameState): void {
     return;
   }
 
-  moveEnemiesWithBehaviors(state, FIXED_STEP_MS * enemyTimeScale);
+  moveEnemiesWithBehaviors(state, worldDeltaMs);
   resolvePlayerContact(state);
 }
 
@@ -1129,18 +1307,23 @@ export function getGameSnapshot(state: GameState): GameSnapshot {
       definitionId: projectile.definitionId,
       x: roundForSnapshot(projectile.position.x),
       z: roundForSnapshot(projectile.position.z),
+      faction: projectile.faction,
+      alive: projectile.alive,
     })),
     obstacles: state.obstacles.map((obstacle) => ({
       id: obstacle.id,
       definitionId: obstacle.definitionId,
       x: roundForSnapshot(obstacle.position.x),
       z: roundForSnapshot(obstacle.position.z),
+      active: obstacle.active,
     })),
     hazards: state.hazards.map((hazard) => ({
       id: hazard.id,
       definitionId: hazard.definitionId,
       x: roundForSnapshot(hazard.position.x),
       z: roundForSnapshot(hazard.position.z),
+      phase: hazard.phase,
+      active: hazard.active,
     })),
     modules: {
       activeDashAbilityId: state.player.dash?.abilityId ?? null,

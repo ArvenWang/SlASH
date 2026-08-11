@@ -1,11 +1,19 @@
 import { abilityDefinitions, type AbilitySlot } from "./content/abilities/definitions";
 import { enemyDefinitions } from "./content/enemies/definitions";
+import {
+  hazardDefinitions,
+  obstacleDefinitions,
+  projectileDefinitions,
+} from "./content/entities/definitions";
 import { LEVEL_DEFINITIONS } from "./content/levels/definitions";
 import { upgradeDefinitions } from "./content/upgrades/definitions";
 import { registerDebugTestAbility } from "./debug/content/test-ability";
 import { registerDebugTestEnemy } from "./debug/content/test-enemy";
 import { DEBUG_UPGRADES } from "./debug/content/test-upgrades";
 import { getGameSnapshot, stepGame, type GameEvent } from "./game/game";
+import { spawnHazard } from "./game/entities/hazard-system";
+import { spawnObstacle } from "./game/entities/obstacle-system";
+import { spawnProjectile } from "./game/entities/projectile-system";
 import { createGameRuntime } from "./runtime/game-runtime";
 
 declare global {
@@ -16,6 +24,9 @@ declare global {
       applyEnemy(id: string): void;
       activateAbility(id: string): string;
       applyTestUpgrades(enabled: boolean): void;
+      spawnProjectile(id: string): boolean;
+      spawnObstacle(id: string): boolean;
+      spawnHazard(id: string): boolean;
       snapshot(): unknown;
     };
   }
@@ -31,6 +42,9 @@ const levelSelect = required<HTMLSelectElement>("#level");
 const enemySelect = required<HTMLSelectElement>("#enemy");
 const abilitySelect = required<HTMLSelectElement>("#ability");
 const upgradeSelect = required<HTMLSelectElement>("#upgrade");
+const projectileSelect = required<HTMLSelectElement>("#projectile");
+const obstacleSelect = required<HTMLSelectElement>("#obstacle");
+const hazardSelect = required<HTMLSelectElement>("#hazard");
 const output = required<HTMLPreElement>("#output");
 const runtime = createGameRuntime(0);
 let eventLog: GameEvent[] = runtime.drainEvents();
@@ -38,6 +52,10 @@ let eventLog: GameEvent[] = runtime.drainEvents();
 for (const level of LEVEL_DEFINITIONS) addOption(levelSelect, String(level.index), `${level.index + 1} / ${level.name}`);
 for (const enemy of enemyDefinitions.list()) addOption(enemySelect, enemy.id, enemy.id);
 for (const ability of abilityDefinitions.list()) addOption(abilitySelect, ability.id, `${ability.slot} / ${ability.id}`);
+for (const projectile of projectileDefinitions.list()) addOption(projectileSelect, projectile.id, projectile.id);
+for (const obstacle of obstacleDefinitions.list()) addOption(obstacleSelect, obstacle.id, obstacle.id);
+for (const hazard of hazardDefinitions.list()) addOption(hazardSelect, hazard.id, hazard.id);
+let entitySequence = 0;
 
 function required<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -98,6 +116,45 @@ function activateAbility(id: string): string {
   return result;
 }
 
+function spawnLabProjectile(id: string): boolean {
+  entitySequence += 1;
+  const sourceId = runtime.state.enemies[0]?.id ?? "content-lab-source";
+  const spawned = spawnProjectile(runtime.state, {
+    id: `content-lab-projectile-${entitySequence}`,
+    definitionId: id,
+    position: { x: runtime.state.player.position.x + 6, z: runtime.state.player.position.z },
+    direction: { x: -1, z: 0 },
+    sourceId,
+  });
+  eventLog.push(...runtime.drainEvents());
+  refresh();
+  return spawned !== null;
+}
+
+function spawnLabObstacle(id: string): boolean {
+  entitySequence += 1;
+  const spawned = spawnObstacle(runtime.state, {
+    id: `content-lab-obstacle-${entitySequence}`,
+    definitionId: id,
+    position: { x: 0, z: 3 },
+  });
+  eventLog.push(...runtime.drainEvents());
+  refresh();
+  return spawned !== null;
+}
+
+function spawnLabHazard(id: string): boolean {
+  entitySequence += 1;
+  const spawned = spawnHazard(runtime.state, {
+    id: `content-lab-hazard-${entitySequence}`,
+    definitionId: id,
+    position: { x: 5, z: 4 },
+  });
+  eventLog.push(...runtime.drainEvents());
+  refresh();
+  return spawned !== null;
+}
+
 function snapshot() {
   return {
     game: getGameSnapshot(runtime.state),
@@ -112,6 +169,9 @@ function snapshot() {
       enemies: enemyDefinitions.list().map((enemy) => enemy.id),
       abilities: abilityDefinitions.list().map((ability) => ability.id),
       upgrades: upgradeDefinitions.list().map((upgrade) => upgrade.id),
+      projectiles: projectileDefinitions.list().map((projectile) => projectile.id),
+      obstacles: obstacleDefinitions.list().map((obstacle) => obstacle.id),
+      hazards: hazardDefinitions.list().map((hazard) => hazard.id),
     },
     events: eventLog,
   };
@@ -124,9 +184,21 @@ function refresh(): void {
 required<HTMLButtonElement>("#load").addEventListener("click", () => loadLevel(Number(levelSelect.value)));
 required<HTMLButtonElement>("#apply-enemy").addEventListener("click", () => applyEnemy(enemySelect.value));
 required<HTMLButtonElement>("#activate").addEventListener("click", () => activateAbility(abilitySelect.value));
+required<HTMLButtonElement>("#spawn-projectile").addEventListener("click", () => spawnLabProjectile(projectileSelect.value));
+required<HTMLButtonElement>("#spawn-obstacle").addEventListener("click", () => spawnLabObstacle(obstacleSelect.value));
+required<HTMLButtonElement>("#spawn-hazard").addEventListener("click", () => spawnLabHazard(hazardSelect.value));
 required<HTMLButtonElement>("#reset").addEventListener("click", () => loadLevel(0));
 upgradeSelect.addEventListener("change", () => applyTestUpgrades(upgradeSelect.value === "debug"));
 
 window.render_content_lab_to_text = () => JSON.stringify(snapshot());
-window.content_lab_validation = { loadLevel, applyEnemy, activateAbility, applyTestUpgrades, snapshot };
+window.content_lab_validation = {
+  loadLevel,
+  applyEnemy,
+  activateAbility,
+  applyTestUpgrades,
+  spawnProjectile: spawnLabProjectile,
+  spawnObstacle: spawnLabObstacle,
+  spawnHazard: spawnLabHazard,
+  snapshot,
+};
 refresh();

@@ -6,7 +6,7 @@ import { hasIntactArmor } from "../combat/armor";
 import type { DashState, GameCommandResult, GameState, UltimatePathSegment } from "../domain/types";
 import { emitGameEvent } from "../events/event-buffer";
 import { DASH_HIT_RADIUS } from "../rules/constants";
-import { getDashDurationMs } from "./dash-slash";
+import { buildDashPathSegments } from "./dash-motion";
 
 export const VECTOR_FOCUS_ENERGY_COST = 100;
 export const VECTOR_FOCUS_BASE_POINTS = 3;
@@ -119,20 +119,22 @@ export function advanceVectorFocusPlanning(state: GameState, deltaMs: number): v
 export function completeVectorFocusSegment(state: GameState, completedDash: DashState): void {
   const execution = state.player.ultimateExecution;
   if (!execution || completedDash.abilityId !== VECTOR_FOCUS_ABILITY_ID) return;
-  const completedSegment = { from: copyVec2(completedDash.from), to: copyVec2(completedDash.to) };
-  if (hasSkill(state, "skill-cross-cascade-v1") && !execution.crossCascadeTriggered) {
-    const intersection = firstInternalIntersection(completedSegment, execution.completedSegments);
-    if (intersection) {
-      execution.crossCascadeTriggered = true;
-      resolveUltimateCrossShock(state, intersection);
-      emitGameEvent(state, {
-        type: "ultimate-cross-triggered",
-        abilityId: VECTOR_FOCUS_ABILITY_ID,
-        position: copyVec2(intersection),
-      });
+  for (const pathSegment of completedDash.pathSegments) {
+    const completedSegment = { from: copyVec2(pathSegment.from), to: copyVec2(pathSegment.to) };
+    if (hasSkill(state, "skill-cross-cascade-v1") && !execution.crossCascadeTriggered) {
+      const intersection = firstInternalIntersection(completedSegment, execution.completedSegments);
+      if (intersection) {
+        execution.crossCascadeTriggered = true;
+        resolveUltimateCrossShock(state, intersection);
+        emitGameEvent(state, {
+          type: "ultimate-cross-triggered",
+          abilityId: VECTOR_FOCUS_ABILITY_ID,
+          position: copyVec2(intersection),
+        });
+      }
     }
+    execution.completedSegments.push(completedSegment);
   }
-  execution.completedSegments.push(completedSegment);
   if (execution.segmentIndex + 1 < execution.points.length) {
     execution.segmentIndex += 1;
     beginVectorFocusSegment(state);
@@ -183,13 +185,15 @@ function beginVectorFocusSegment(state: GameState): void {
   const from = copyVec2(state.player.position);
   const to = clampPointToArena(target, state.stage.arena, state.player.radius);
   const direction = normalizedDirection(from, to, state.player.facing);
-  const durationMs = getDashDurationMs(from, to);
+  const pathSegments = buildDashPathSegments(state, from, to);
+  const firstSegment = pathSegments[0];
+  if (!firstSegment) throw new Error("Vector Focus could not build a dash segment.");
   state.player.facing = direction;
   state.player.dash = {
     abilityId: VECTOR_FOCUS_ABILITY_ID,
-    from,
-    to,
-    durationMs,
+    from: copyVec2(firstSegment.from),
+    to: copyVec2(firstSegment.to),
+    durationMs: firstSegment.durationMs,
     elapsedMs: 0,
     hitRadius: DASH_HIT_RADIUS,
     baseHitRadius: DASH_HIT_RADIUS,
@@ -198,6 +202,10 @@ function beginVectorFocusSegment(state: GameState): void {
     armorBreakCount: 0,
     exposedKillCount: 0,
     rearExecutionCount: 0,
+    pathSegments,
+    pathSegmentIndex: 0,
+    reflectionsUsed: 0,
+    projectilesReturnedThisDash: 0,
   };
   emitGameEvent(state, {
     type: "ultimate-segment-started",
@@ -210,12 +218,12 @@ function beginVectorFocusSegment(state: GameState): void {
     type: "dash-started",
     abilityId: VECTOR_FOCUS_ABILITY_ID,
     sourceId: "player",
-    from,
-    to: copyVec2(to),
+    from: copyVec2(firstSegment.from),
+    to: copyVec2(firstSegment.to),
     direction: copyVec2(direction),
-    durationMs,
+    durationMs: firstSegment.durationMs,
     anticipatedHits: state.enemies
-      .filter((enemy) => enemy.alive && segmentIntersectsCircle(from, to, enemy.position, DASH_HIT_RADIUS + enemy.radius))
+      .filter((enemy) => enemy.alive && pathSegments.some((segment) => segmentIntersectsCircle(segment.from, segment.to, enemy.position, DASH_HIT_RADIUS + enemy.radius)))
       .map((enemy) => ({ entityId: enemy.id, position: copyVec2(enemy.position) })),
   });
 }

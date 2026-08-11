@@ -16,6 +16,9 @@ describe("presentation registry", () => {
     expect(result.checked).toContain("ability:dash-slash");
     expect(result.checked).toContain("enemy:enemy-grunt-v1");
     expect(result.checked).toContain("level:stage-03-redline");
+    expect(result.checked).toContain("projectile:projectile-standard-round-v1");
+    expect(result.checked).toContain("obstacle:obstacle-static-reflector-v1");
+    expect(result.checked).toContain("hazard:hazard-armed-mine-v1");
   });
 
   test("keeps gameplay IDs separate from swappable presentation profiles", () => {

@@ -10,6 +10,11 @@ import type {
   VfxProfileId,
 } from "../core/ids";
 import {
+  hazardDefinitions,
+  obstacleDefinitions,
+  projectileDefinitions,
+} from "../content/entities/definitions";
+import {
   CHARGED_DASH_ABILITY_ID,
   DASH_SLASH_ABILITY_ID,
   VECTOR_FOCUS_ABILITY_ID,
@@ -243,6 +248,18 @@ export const cameraProfileRegistry = new DefinitionRegistry<PresentationProfileR
   },
 ]);
 
+export const entityPresentationRegistry = new DefinitionRegistry<PresentationProfileReference>([
+  { id: "projectile-standard-round-presentation-v1", runtimeId: "projectile-round-mesh-v1", quality: { high: "full", compatibility: "full" } },
+  { id: "projectile-sniper-round-presentation-v1", runtimeId: "projectile-sniper-mesh-v1", quality: { high: "full", compatibility: "full" } },
+  { id: "projectile-boss-shard-presentation-v1", runtimeId: "projectile-shard-mesh-v1", quality: { high: "full", compatibility: "reduced" } },
+  { id: "obstacle-static-reflector-presentation-v1", runtimeId: "obstacle-solid-mesh-v1", quality: { high: "full", compatibility: "full" } },
+  { id: "obstacle-deployable-barrier-presentation-v1", runtimeId: "obstacle-solid-mesh-v1", quality: { high: "full", compatibility: "full" } },
+  { id: "obstacle-anchor-pillar-presentation-v1", runtimeId: "obstacle-solid-mesh-v1", quality: { high: "full", compatibility: "full" } },
+  { id: "obstacle-rail-gate-presentation-v1", runtimeId: "obstacle-solid-mesh-v1", quality: { high: "full", compatibility: "full" } },
+  { id: "hazard-armed-mine-presentation-v1", runtimeId: "hazard-telegraph-mesh-v1", quality: { high: "full", compatibility: "full" } },
+  { id: "hazard-arc-rail-presentation-v1", runtimeId: "hazard-telegraph-mesh-v1", quality: { high: "full", compatibility: "full" } },
+]);
+
 export const lightingRegistry = lightingProfileRegistry;
 export const postFxRegistry = postFxProfileRegistry;
 export const environmentRegistry = environmentProfileRegistry;
@@ -274,6 +291,18 @@ export function assertPresentationRegistryIntegrity(): PresentationRegistryInteg
     cameraProfileRegistry.get(presentation.cameraProfileId);
     postFxImpactProfileRegistry.get(presentation.cameraProfileId);
     checked.push(`ability:${ability.id}`);
+  }
+  for (const projectile of projectileDefinitions.list()) {
+    entityPresentationRegistry.get(projectile.presentationId);
+    checked.push(`projectile:${projectile.id}`);
+  }
+  for (const obstacle of obstacleDefinitions.list()) {
+    entityPresentationRegistry.get(obstacle.presentationId);
+    checked.push(`obstacle:${obstacle.id}`);
+  }
+  for (const hazard of hazardDefinitions.list()) {
+    entityPresentationRegistry.get(hazard.presentationId);
+    checked.push(`hazard:${hazard.id}`);
   }
   for (const level of LEVEL_DEFINITIONS) {
     const environment = environmentRegistry.get(level.environmentId);

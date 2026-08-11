@@ -167,10 +167,10 @@ P11 Visual Branch Integration Contract + Git Push
 - [x] Armor Part Definition / Runtime State / Coverage Shape。
 - [x] Charged Path 多目标排序与每敌人一次结算。
 - [x] 前 / 侧甲卸甲、无甲背部击杀、后甲优先卸甲。
-- [ ] Charged / Obstacle / Refraction 组合。
+- [x] Charged / Obstacle / Refraction 组合。
 - [x] Ultimate Energy、Planning、Slow World、3 段执行、Cancel。
-- [ ] 9 个 Charged Hook 已完成；Ultimate 已完成 5 / 6，U-05 Projectile Return 随 P4 Projectile 生命周期完成。
-- [ ] Events：charge、armor-break、energy、planning、segment、ultimate-end 已完成；显式 rear-execution 事件待补。
+- [x] 9 个 Charged Hook 与 6 个 Ultimate Hook 已完成；U-05 使用正式 Projectile 生命周期。
+- [x] Events：charge、armor-break、rear-execution、energy、planning、segment、ultimate-end。
 - [ ] Snapshot 已暴露 Charge / Energy / Armor / Ultimate / Scheduled Slash；Replay 已支持新目标命令深拷贝，完整 Campaign Schema 待升级。
 
 ### 测试
@@ -192,22 +192,22 @@ P11 Visual Branch Integration Contract + Git Push
 
 ### 主要文件
 
-- `src/game/simulation/projectile-system.ts`
-- `src/game/simulation/obstacle-system.ts`
-- `src/game/simulation/hazard-system.ts`
+- `src/game/entities/projectile-system.ts`
+- `src/game/entities/obstacle-system.ts`
+- `src/game/entities/hazard-system.ts`
 - `src/content/entities/definitions.ts`
 - `src/game/collision/`
 
 ### 任务
 
-- [ ] 3 Projectile Definition 与 Spawn / Move / Hit / Slash Cancel / Expire。
-- [ ] 4 Obstacle Definition 与 Static / Timed / Moving 生命周期。
-- [ ] Basic / Charged Sweep 对最早 Obstacle Collision 截断路径。
-- [ ] Knockback 与 Refraction 法线。
-- [ ] Mine / Arc Rail Telegraph / Active / Expire。
-- [ ] Domain Events 和 Pressure Caps。
-- [ ] Presentation Registry 和 Pool Budget。
-- [ ] Replay / Snapshot / Content Lab。
+- [x] 3 Projectile Definition 与 Spawn / Move / Hit / Slash Cancel / Return / Expire / Arena Exit。
+- [x] 4 Obstacle Definition 与 Static / Timed / Moving 生命周期。
+- [x] Basic / Charged / Ultimate Sweep 对最早 Obstacle Collision 截断路径。
+- [x] Knockback 与 Refraction 法线；每次 Dash 最多一次折射。
+- [x] Mine / Arc Rail Telegraph / Active / Expire。
+- [x] Domain Events 和 32 / 8 / 8 Pressure Caps。
+- [x] Presentation Registry、可读实体外观和 Performance Budget。
+- [x] Replay Hash / Snapshot / JSON Roundtrip / Content Lab 真实生成入口。
 
 ### 完成门
 

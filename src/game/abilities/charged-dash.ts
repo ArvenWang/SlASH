@@ -7,7 +7,7 @@ import { segmentIntersectsCircle } from "../collision/shapes";
 import type { ChargeState, GameCommandResult, GameState } from "../domain/types";
 import { emitGameEvent } from "../events/event-buffer";
 import { DASH_HIT_RADIUS, FIXED_STEP_MS } from "../rules/constants";
-import { getDashDurationMs } from "./dash-slash";
+import { buildDashPathSegments } from "./dash-motion";
 import { activateAbility } from "./ability-system";
 
 export const CHARGED_DASH_THRESHOLD_MS = 650;
@@ -158,12 +158,15 @@ function executeChargedDash(state: GameState, charge: ChargeState): void {
     ? 0
     : clamp((charge.heldMs - charge.thresholdMs) / charge.overholdLimitMs, 0, 1);
   const hitRadius = DASH_HIT_RADIUS * (1 + overholdRatio * 0.4);
+  const pathSegments = buildDashPathSegments(state, from, requestedTo);
+  const firstSegment = pathSegments[0];
+  if (!firstSegment) return;
   state.player.facing = copyVec2(charge.direction);
   state.player.dash = {
     abilityId: CHARGED_DASH_ABILITY_ID,
-    from,
-    to: requestedTo,
-    durationMs: getDashDurationMs(from, requestedTo),
+    from: copyVec2(firstSegment.from),
+    to: copyVec2(firstSegment.to),
+    durationMs: firstSegment.durationMs,
     elapsedMs: 0,
     hitRadius,
     baseHitRadius: hitRadius,
@@ -172,25 +175,29 @@ function executeChargedDash(state: GameState, charge: ChargeState): void {
     armorBreakCount: 0,
     exposedKillCount: 0,
     rearExecutionCount: 0,
+    pathSegments,
+    pathSegmentIndex: 0,
+    reflectionsUsed: 0,
+    projectilesReturnedThisDash: 0,
   };
   state.player.recoveryRemainingMs = 0;
   state.player.bufferedAbility = null;
   const anticipatedHits = state.enemies
-    .filter((enemy) => enemy.alive && segmentIntersectsCircle(
-      from,
-      requestedTo,
+    .filter((enemy) => enemy.alive && pathSegments.some((segment) => segmentIntersectsCircle(
+      segment.from,
+      segment.to,
       enemy.position,
       hitRadius + enemy.radius,
-    ))
+    )))
     .map((enemy) => ({ entityId: enemy.id, position: copyVec2(enemy.position) }));
   emitGameEvent(state, {
     type: "dash-started",
     abilityId: CHARGED_DASH_ABILITY_ID,
     sourceId: "player",
-    from,
-    to: copyVec2(requestedTo),
+    from: copyVec2(firstSegment.from),
+    to: copyVec2(firstSegment.to),
     direction: copyVec2(charge.direction),
-    durationMs: state.player.dash.durationMs,
+    durationMs: firstSegment.durationMs,
     anticipatedHits,
   });
 }

@@ -4,8 +4,19 @@ import {
   signedAngleDelta,
 } from "../characters/animation";
 import type { Vec2 } from "../core/math/vec2";
-import type { EnemyState, GameEvent, GameState } from "../game/domain/types";
+import type {
+  EnemyState,
+  GameEvent,
+  GameState,
+  HazardState,
+  ObstacleState,
+  ProjectileState,
+} from "../game/domain/types";
 import { enemyDefinitions } from "../content/enemies/definitions";
+import {
+  hazardDefinitions,
+  obstacleDefinitions,
+} from "../content/entities/definitions";
 import { armorProfileDefinitions } from "../content/enemies/armor-definitions";
 import {
   PLAYER_CHARACTER_PRESENTATION_ID,
@@ -22,6 +33,8 @@ import type {
 import type { RuntimeTuning } from "./debug-runtime";
 import type { RendererRuntime } from "./renderer-runtime";
 
+const EPSILON_PRESENTATION = 1e-6;
+
 interface EnemyVisualRuntime {
   actor: CharacterRuntime;
   deathAge: number | null;
@@ -36,6 +49,11 @@ interface EnemyVisualRuntime {
   corpse: CorpsePresentationRuntime | null;
   armorRoot: THREE.Group;
   armorMeshes: Map<string, THREE.Mesh>;
+}
+
+interface SimpleEntityVisualRuntime {
+  readonly root: THREE.Object3D;
+  readonly ownedMaterial: THREE.Material | null;
 }
 
 export interface PresentationShell {
@@ -208,7 +226,32 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     metalness: 0.86,
     roughness: 0.24,
   });
+  const projectileGeometry = new THREE.SphereGeometry(1, 10, 8);
+  const hostileProjectileMaterial = new THREE.MeshBasicMaterial({ color: 0xff4c39, toneMapped: false });
+  const returnedProjectileMaterial = new THREE.MeshBasicMaterial({ color: 0xc7ffff, toneMapped: false });
+  const obstacleBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
+  const obstacleCylinderGeometry = new THREE.CylinderGeometry(1, 1, 1.8, 20);
+  const obstacleActiveMaterial = new THREE.MeshStandardMaterial({
+    color: 0x344d52,
+    emissive: 0x376e78,
+    emissiveIntensity: 0.65,
+    metalness: 0.88,
+    roughness: 0.3,
+  });
+  const obstacleTelegraphMaterial = new THREE.MeshBasicMaterial({
+    color: 0x68a1a8,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.46,
+  });
+  const hazardRingGeometry = new THREE.RingGeometry(0.72, 1, 40);
+  hazardRingGeometry.rotateX(-Math.PI / 2);
+  const hazardPlaneGeometry = new THREE.PlaneGeometry(2, 2);
+  hazardPlaneGeometry.rotateX(-Math.PI / 2);
   const enemyVisuals = new Map<string, EnemyVisualRuntime>();
+  const projectileVisuals = new Map<string, SimpleEntityVisualRuntime>();
+  const obstacleVisuals = new Map<string, SimpleEntityVisualRuntime>();
+  const hazardVisuals = new Map<string, SimpleEntityVisualRuntime>();
   let renderedStageIndex = -1;
   let renderedStageName = "";
   let renderedAliveCount = -1;
@@ -308,6 +351,132 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     gameState.enemies.forEach((enemy, index) => {
       if (!enemyVisuals.has(enemy.id)) createEnemyVisual(enemy, index);
     });
+  }
+
+  function createProjectileVisual(projectile: ProjectileState): void {
+    const mesh = new THREE.Mesh(
+      projectileGeometry,
+      projectile.faction === "player" ? returnedProjectileMaterial : hostileProjectileMaterial,
+    );
+    mesh.name = `projectile/${projectile.id}`;
+    mesh.scale.setScalar(projectile.radius);
+    mesh.position.set(projectile.position.x, 0.72, projectile.position.z);
+    mesh.renderOrder = 6;
+    scene.add(mesh);
+    projectileVisuals.set(projectile.id, { root: mesh, ownedMaterial: null });
+  }
+
+  function createObstacleVisual(obstacle: ObstacleState): void {
+    const definition = obstacleDefinitions.get(obstacle.definitionId);
+    const shape = definition.shape;
+    const geometry = shape.kind === "circle" ? obstacleCylinderGeometry : obstacleBoxGeometry;
+    const mesh = new THREE.Mesh(
+      geometry,
+      obstacle.active ? obstacleActiveMaterial : obstacleTelegraphMaterial,
+    );
+    mesh.name = `obstacle/${obstacle.id}`;
+    if (shape.kind === "circle") {
+      mesh.scale.set(shape.radius, 1, shape.radius);
+      mesh.position.y = 0.9;
+    } else if (shape.kind === "obb") {
+      mesh.scale.set(shape.halfExtents.x * 2, 1.8, shape.halfExtents.z * 2);
+      mesh.position.y = 0.9;
+      mesh.rotation.y = -(shape.rotationRadians + obstacle.rotationRadians);
+    } else if (shape.kind === "aabb") {
+      mesh.scale.set(shape.max.x - shape.min.x, 1.8, shape.max.z - shape.min.z);
+      mesh.position.y = 0.9;
+      mesh.rotation.y = -obstacle.rotationRadians;
+    }
+    mesh.position.x = obstacle.position.x;
+    mesh.position.z = obstacle.position.z;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+    obstacleVisuals.set(obstacle.id, { root: mesh, ownedMaterial: null });
+  }
+
+  function createHazardVisual(hazard: HazardState): void {
+    const definition = hazardDefinitions.get(hazard.definitionId);
+    const shape = definition.shape;
+    const material = new THREE.MeshBasicMaterial({
+      color: hazard.phase === "active" ? 0xff382e : 0xffb34d,
+      transparent: true,
+      opacity: hazard.phase === "active" ? 0.5 : 0.22,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    });
+    const mesh = new THREE.Mesh(shape.kind === "circle" ? hazardRingGeometry : hazardPlaneGeometry, material);
+    mesh.name = `hazard/${hazard.id}`;
+    if (shape.kind === "circle") {
+      mesh.scale.setScalar(shape.radius);
+    } else if (shape.kind === "obb") {
+      mesh.scale.set(shape.halfExtents.x, shape.halfExtents.z, 1);
+      mesh.rotation.y = -(shape.rotationRadians + hazard.rotationRadians);
+    } else if (shape.kind === "aabb") {
+      mesh.scale.set((shape.max.x - shape.min.x) * 0.5, (shape.max.z - shape.min.z) * 0.5, 1);
+      mesh.rotation.y = -hazard.rotationRadians;
+    }
+    mesh.position.set(hazard.position.x, 0.055, hazard.position.z);
+    mesh.renderOrder = 3;
+    scene.add(mesh);
+    hazardVisuals.set(hazard.id, { root: mesh, ownedMaterial: material });
+  }
+
+  function removeSimpleVisual(map: Map<string, SimpleEntityVisualRuntime>, id: string): void {
+    const visual = map.get(id);
+    if (!visual) return;
+    visual.root.removeFromParent();
+    visual.ownedMaterial?.dispose();
+    map.delete(id);
+  }
+
+  function clearWorldEntityVisuals(): void {
+    for (const id of [...projectileVisuals.keys()]) removeSimpleVisual(projectileVisuals, id);
+    for (const id of [...obstacleVisuals.keys()]) removeSimpleVisual(obstacleVisuals, id);
+    for (const id of [...hazardVisuals.keys()]) removeSimpleVisual(hazardVisuals, id);
+  }
+
+  function syncWorldEntityVisuals(): void {
+    const projectileIds = new Set(gameState.projectiles.map((projectile) => projectile.id));
+    for (const id of [...projectileVisuals.keys()]) if (!projectileIds.has(id)) removeSimpleVisual(projectileVisuals, id);
+    for (const projectile of gameState.projectiles) {
+      if (!projectileVisuals.has(projectile.id)) createProjectileVisual(projectile);
+      const visual = projectileVisuals.get(projectile.id);
+      if (!visual) continue;
+      visual.root.position.set(projectile.position.x, 0.72, projectile.position.z);
+      if (visual.root instanceof THREE.Mesh) {
+        visual.root.material = projectile.faction === "player" ? returnedProjectileMaterial : hostileProjectileMaterial;
+      }
+    }
+
+    const obstacleIds = new Set(gameState.obstacles.map((obstacle) => obstacle.id));
+    for (const id of [...obstacleVisuals.keys()]) if (!obstacleIds.has(id)) removeSimpleVisual(obstacleVisuals, id);
+    for (const obstacle of gameState.obstacles) {
+      if (!obstacleVisuals.has(obstacle.id)) createObstacleVisual(obstacle);
+      const visual = obstacleVisuals.get(obstacle.id);
+      if (!visual) continue;
+      visual.root.position.x = obstacle.position.x;
+      visual.root.position.z = obstacle.position.z;
+      if (visual.root instanceof THREE.Mesh) {
+        visual.root.material = obstacle.active ? obstacleActiveMaterial : obstacleTelegraphMaterial;
+      }
+    }
+
+    const hazardIds = new Set(gameState.hazards.map((hazard) => hazard.id));
+    for (const id of [...hazardVisuals.keys()]) if (!hazardIds.has(id)) removeSimpleVisual(hazardVisuals, id);
+    for (const hazard of gameState.hazards) {
+      if (!hazardVisuals.has(hazard.id)) createHazardVisual(hazard);
+      const visual = hazardVisuals.get(hazard.id);
+      if (!visual || !(visual.ownedMaterial instanceof THREE.MeshBasicMaterial)) continue;
+      visual.root.position.x = hazard.position.x;
+      visual.root.position.z = hazard.position.z;
+      visual.ownedMaterial.color.setHex(hazard.phase === "active" ? 0xff382e : 0xffb34d);
+      visual.ownedMaterial.opacity = hazard.phase === "active" ? 0.5 : hazard.phase === "triggered" ? 0.38 : 0.22;
+      const pulse = 1 + Math.sin(worldTime * (hazard.phase === "active" ? 24 : 8)) * 0.04;
+      visual.root.scale.multiplyScalar(pulse / Math.max(EPSILON_PRESENTATION, visual.root.userData.lastPulse ?? 1));
+      visual.root.userData.lastPulse = pulse;
+    }
   }
 
   function updateHud(): void {
@@ -467,7 +636,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     ultimatePlanGeometry.computeBoundingSphere();
   }
 
-  function triggerDashVisual(event: Extract<GameEvent, { type: "dash-started" }>): void {
+  function triggerDashVisual(event: Extract<GameEvent, { type: "dash-started" | "dash-reflected" }>): void {
     const presentation = abilityPresentationRegistry.get(event.abilityId);
     const cameraProfile = cameraProfileRegistry.get(presentation.cameraProfileId);
     if (cameraProfile.runtimeId !== "gameplay-camera-impulse-v1") {
@@ -476,7 +645,8 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     const start = new THREE.Vector3(event.from.x, 0, event.from.z);
     const end = new THREE.Vector3(event.to.x, 0, event.to.z);
     const direction = end.clone().sub(start).setY(0).normalize();
-    const kills = event.anticipatedHits.map(({ position }) => (
+    const anticipatedHits = "anticipatedHits" in event ? event.anticipatedHits : [];
+    const kills = anticipatedHits.map(({ position }) => (
       new THREE.Vector3(position.x, 0, position.z)
     ));
     environment.reactToDash(start, end, Math.min(1.6, 1 + kills.length * 0.08));
@@ -627,6 +797,8 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   function resetStage(): void {
     vfx.clearStage();
     rebuildEnemyVisuals();
+    clearWorldEntityVisuals();
+    syncWorldEntityVisuals();
     playerActor.animation.reset();
     playerActor.setVisible(true);
     playerActor.setPosition(gameState.player.position);
@@ -641,7 +813,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
 
   function consumeEvents(events: readonly GameEvent[]): void {
     for (const event of events) {
-      if (event.type === "dash-started") {
+      if (event.type === "dash-started" || event.type === "dash-reflected") {
         triggerDashVisual(event);
       } else if (event.type === "enemy-killed") {
         const visual = enemyVisuals.get(event.enemyId);
@@ -669,6 +841,13 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
           direction: new THREE.Vector3(gameState.player.facing.x, 0, gameState.player.facing.z),
           intensity: 1.2,
         });
+      } else if (event.type === "dash-obstacle-impact") {
+        vfx.spawnCutContact("enemy-cut-contact-v1", {
+          position: new THREE.Vector3(event.position.x, 0.72, event.position.z),
+          direction: new THREE.Vector3(event.normal.x, 0, event.normal.z),
+          intensity: 0.95,
+        });
+        postFx.triggerImpact(abilityPresentationRegistry.get(event.abilityId).cameraProfileId);
       } else if (event.type === "stage-cleared" || event.type === "game-complete") {
         phaseAge = 0;
       } else if (event.type === "encounter-wave-warning") {
@@ -686,6 +865,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     stageIntroAge += dt;
     waveWarningRemaining = Math.max(0, waveWarningRemaining - dt);
     syncEnemyVisuals();
+    syncWorldEntityVisuals();
     environment.update(worldTime, dt);
     postFx.update(worldTime, dt);
     hostileRim.intensity = THREE.MathUtils.damp(hostileRim.intensity, 52, 5, dt);
@@ -826,6 +1006,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
         visual.actor.dispose();
       }
       enemyVisuals.clear();
+      clearWorldEntityVisuals();
       playerActor.dispose();
       scene.remove(previewLine, ultimatePlanLine, enemyContactShadows);
       previewGeometry.dispose();
@@ -837,6 +1018,15 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       enemyContactShadowTexture.dispose();
       armorPlateGeometry.dispose();
       armorPlateMaterial.dispose();
+      projectileGeometry.dispose();
+      hostileProjectileMaterial.dispose();
+      returnedProjectileMaterial.dispose();
+      obstacleBoxGeometry.dispose();
+      obstacleCylinderGeometry.dispose();
+      obstacleActiveMaterial.dispose();
+      obstacleTelegraphMaterial.dispose();
+      hazardRingGeometry.dispose();
+      hazardPlaneGeometry.dispose();
     },
   };
 }

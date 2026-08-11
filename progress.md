@@ -130,3 +130,14 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 自动化全量通过：18 files / 80 tests；TypeScript、Production Build、设计清单、whitespace 全通过。构建仍只有既有 Three.js 604.35kB chunk 提示。
 - 真实浏览器通过：Space 启动、Canvas 选两点、Escape 取消并保留 100 Energy；再次 Space + 三次 Canvas 点击提交，三段执行后到达最终坐标、击杀 3 人、Energy 0、Console 0。
 - 下一步：P4 Projectile / Obstacle / Hazard，并由这些真实实体完成 U-05 Projectile Return、B-11 Projectile Reversal、Refraction 和 Charged / Obstacle 组合。
+
+## 2026-08-12 — Projectile / Obstacle / Hazard
+
+- 把 Phase 2A 的空 Registry 落成 3 Projectile、4 Obstacle、2 Hazard 正式内容；Gameplay State、Snapshot、Replay Hash、JSON Roundtrip 与 Content Lab 使用同一份 Definition。
+- Projectile 支持 Spawn、120Hz 固定步移动、Swept Player Hit、Arena Exit、Lifetime、Dash Slash Cancel 和事件事实；B-11 最多回返 8 发标准弹，U-05 在每个 Ultimate 段独立计数，二者都返回真实来源。
+- Obstacle 支持 Static Reflector、900ms 后启用且持续 7s 的 Deployable Barrier、Circle Anchor 和 Moving Rail Gate；Dash 在最早碰撞点终止并后坐，Refraction 按真实法线反射一次并保留剩余路径。
+- Mine 为 1s 武装、进入触发圈后 550ms 爆炸；Arc Rail 为 1.4s Telegraph、0.6s Active。两者仅在非 Dash 状态致命，到期后从 State 与 Presentation 释放。
+- Presentation 增加独立 Registry 完整性检查、32 / 8 / 8 Budget 和简单可辨识外观；Content Lab 可真实生成任一 Projectile / Obstacle / Hazard，不再只列 ID。
+- 自动化全量：19 files / 100 tests；TypeScript 与 Production Build 通过。Entity 测试覆盖三类弹体寿命、压力上限、60/144Hz Hash、切弹回返、Ultimate Return、障碍碰撞、折射、移动门、Mine / Rail 和 0.12 世界速率。
+- 真实浏览器：初始 1 Projectile / 2 Obstacle / 2 Hazard 可见；第一次真实 Canvas 点击完成切弹与回返击杀，第二次真实点击触发法线折射并继续移动；Console 0。Presentation Labs 五项通过。
+- 下一步：补齐剩余 Basic / Shared Hook，再让完整 Enemy Roster 通过 Attack Strategy 生产这些实体。

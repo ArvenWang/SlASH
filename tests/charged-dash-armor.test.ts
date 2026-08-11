@@ -225,6 +225,7 @@ describe("Charged passive branches", () => {
     expect(state.player.dash?.recoveryMs).toBe(state.rules.recoveryMs);
     expect(state.player.predatorDriveExpiresAtMs).not.toBeNull();
     expect(state.player.ultimateEnergy).toBe(23);
+    expect(drainGameEvents(state).some((event) => event.type === "rear-execution")).toBe(true);
     advanceUntilDashEnds(state);
 
     state.stage.phase = "playing";

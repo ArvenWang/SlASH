@@ -12,7 +12,9 @@ export const performanceBudgetRegistry = new DefinitionRegistry<PerformanceBudge
   { id: "characters", maximumActive: 21 },
   { id: "vfx", maximumActive: 96 },
   { id: "environment", maximumActive: 1 },
-  { id: "projectiles", maximumActive: 128 },
+  { id: "projectiles", maximumActive: 32 },
+  { id: "obstacles", maximumActive: 8 },
+  { id: "hazards", maximumActive: 8 },
   { id: "corpses", maximumActive: 20 },
   { id: "decals", maximumActive: 28 },
 ]);
@@ -40,6 +42,8 @@ export function createPerformanceBudgetSnapshot(input: {
     vfx: input.vfx.base.activeEffects,
     environment: 1,
     projectiles: input.gameState.projectiles.filter((projectile) => projectile.alive).length,
+    obstacles: input.gameState.obstacles.filter((obstacle) => obstacle.active).length,
+    hazards: input.gameState.hazards.filter((hazard) => hazard.active).length,
     corpses: input.gameState.enemies.filter((enemy) => !enemy.alive).length,
     decals: input.vfx.base.persistentDecals,
   };

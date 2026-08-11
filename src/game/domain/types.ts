@@ -59,6 +59,25 @@ export interface DashState {
   armorBreakCount: number;
   exposedKillCount: number;
   rearExecutionCount: number;
+  pathSegments: DashPathSegmentState[];
+  pathSegmentIndex: number;
+  reflectionsUsed: number;
+  projectilesReturnedThisDash: number;
+}
+
+export interface DashObstacleContactState {
+  readonly obstacleId: EntityId;
+  readonly position: Vec2;
+  readonly normal: Vec2;
+  readonly incomingDirection: Vec2;
+}
+
+export interface DashPathSegmentState {
+  readonly from: Vec2;
+  readonly to: Vec2;
+  readonly durationMs: number;
+  readonly reflectionAtEnd: DashObstacleContactState | null;
+  readonly terminalImpact: DashObstacleContactState | null;
 }
 
 export interface ChargeState {
@@ -150,6 +169,12 @@ export interface ProjectileState {
   radius: number;
   alive: boolean;
   spawnedAtMs: number;
+  sourceId: EntityId;
+  faction: "enemy" | "player";
+  reflectedAtMs: number | null;
+  ageMs: number;
+  returnTargetId: EntityId | null;
+  reflectedByAbilityId: AbilityId | null;
 }
 
 export interface ObstacleState {
@@ -158,7 +183,15 @@ export interface ObstacleState {
   position: Vec2;
   rotationRadians: number;
   active: boolean;
+  spawnedAtMs: number;
+  activatesAtMs: number;
+  expiresAtMs: number | null;
+  velocity: Vec2;
+  sourceId: EntityId;
+  ageMs: number;
 }
+
+export type HazardRuntimePhase = "telegraph" | "armed" | "triggered" | "active" | "expired";
 
 export interface HazardState {
   id: EntityId;
@@ -166,6 +199,13 @@ export interface HazardState {
   position: Vec2;
   active: boolean;
   spawnedAtMs: number;
+  rotationRadians: number;
+  phase: HazardRuntimePhase;
+  phaseStartedAtMs: number;
+  triggeredAtMs: number | null;
+  sourceId: EntityId;
+  ageMs: number;
+  phaseElapsedMs: number;
 }
 
 export interface RunState {
@@ -229,6 +269,7 @@ export type GameEventPayload =
   | { type: "charge-cancelled"; abilityId: AbilityId; sourceId: EntityId; heldMs: number; reason: string }
   | { type: "armor-broken"; enemyId: EntityId; armorPartId: string; attackId: AbilityId; position: Vec2; contactRegion: string }
   | { type: "armor-blocked"; enemyId: EntityId; armorPartId: string; attackId: AbilityId; position: Vec2 }
+  | { type: "rear-execution"; enemyId: EntityId; attackId: AbilityId; position: Vec2 }
   | { type: "ultimate-energy-changed"; before: number; after: number; source: string }
   | { type: "ultimate-planning-started"; abilityId: AbilityId; requiredPointCount: number; durationMs: number; worldTimeScale: number }
   | { type: "ultimate-point-added"; abilityId: AbilityId; pointIndex: number; point: Vec2 }
@@ -237,6 +278,18 @@ export type GameEventPayload =
   | { type: "ultimate-cross-triggered"; abilityId: AbilityId; position: Vec2 }
   | { type: "ultimate-ended"; abilityId: AbilityId; segmentCount: number; killCount: number; energyRemaining: number }
   | { type: "scheduled-slash-triggered"; attackId: AbilityId; from: Vec2; to: Vec2 }
+  | { type: "projectile-spawned"; projectileId: EntityId; definitionId: ProjectileDefinitionId; sourceId: EntityId; position: Vec2 }
+  | { type: "projectile-destroyed"; projectileId: EntityId; attackId: AbilityId; sourceId: EntityId; position: Vec2; direction: Vec2 }
+  | { type: "projectile-reflected"; projectileId: EntityId; attackId: AbilityId; sourceId: EntityId; position: Vec2; velocity: Vec2 }
+  | { type: "projectile-hit"; projectileId: EntityId; targetId: EntityId; faction: "enemy" | "player"; position: Vec2 }
+  | { type: "obstacle-spawned"; obstacleId: EntityId; definitionId: ObstacleDefinitionId; position: Vec2; activatesAtMs: number }
+  | { type: "obstacle-activated"; obstacleId: EntityId; position: Vec2 }
+  | { type: "obstacle-expired"; obstacleId: EntityId; position: Vec2 }
+  | { type: "dash-obstacle-impact"; abilityId: AbilityId; obstacleId: EntityId; position: Vec2; normal: Vec2 }
+  | { type: "dash-reflected"; abilityId: AbilityId; obstacleId: EntityId; position: Vec2; normal: Vec2; from: Vec2; to: Vec2 }
+  | { type: "hazard-spawned"; hazardId: EntityId; definitionId: HazardDefinitionId; position: Vec2 }
+  | { type: "hazard-phase-changed"; hazardId: EntityId; phase: HazardRuntimePhase; position: Vec2 }
+  | { type: "hazard-triggered"; hazardId: EntityId; position: Vec2; activatesAtMs: number }
   | { type: "player-died"; enemyId: EntityId; position: Vec2 }
   | { type: "campaign-started"; seed: number }
   | { type: "route-node-started"; nodeId: string; encounterId: EncounterId }
@@ -361,9 +414,9 @@ export interface GameSnapshot {
   kills: number;
   enemyCount: number;
   aliveEnemies: Array<{ id: string; x: number; z: number }>;
-  projectiles: Array<{ id: EntityId; definitionId: ProjectileDefinitionId; x: number; z: number }>;
-  obstacles: Array<{ id: EntityId; definitionId: ObstacleDefinitionId; x: number; z: number }>;
-  hazards: Array<{ id: EntityId; definitionId: HazardDefinitionId; x: number; z: number }>;
+  projectiles: Array<{ id: EntityId; definitionId: ProjectileDefinitionId; x: number; z: number; faction: "enemy" | "player"; alive: boolean }>;
+  obstacles: Array<{ id: EntityId; definitionId: ObstacleDefinitionId; x: number; z: number; active: boolean }>;
+  hazards: Array<{ id: EntityId; definitionId: HazardDefinitionId; x: number; z: number; phase: HazardRuntimePhase; active: boolean }>;
   modules: {
     activeDashAbilityId: AbilityId | null;
     charge: null | {

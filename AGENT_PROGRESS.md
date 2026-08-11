@@ -49,12 +49,18 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - [x] Vector Focus 根能力：Energy 100 时 Space 进入 3 秒规划，世界速率 0.12；依次选择 3 点后才扣能量并执行 3 段真实 Dash；Escape / 右键取消不扣能量，大招击杀不自充能。
 - [x] Ultimate 被动已接入 5 / 6：Additional Slash、Tactical Window、Vector Echo、Cross Cascade、Residual Charge；Projectile Return 随 P4 Projectile 生命周期完成。
 - [x] Vector Focus 自动化：8 项覆盖 Energy、取消、超时、0.12 世界速率、3 / 4 点、顺序无敌执行、自充能限制、Cross、Echo 与 Residual；真实 Space / Canvas / Escape 浏览器流程通过，Console 0。
+- [x] P4 Entity Domain：3 Projectile、4 Obstacle、2 Hazard 全部进入正式 Registry 与生命周期；同屏上限固定为 32 / 8 / 8，越界生成明确拒绝。
+- [x] Projectile：固定步移动、Swept Player Hit、Dash 切弹、Arena / Lifetime 销毁、B-11 最多 8 发 1.25× 回返、U-05 每段回返且不自充能。
+- [x] Obstacle：Static / 900ms Deploy + 7s / Moving Gate；Basic、Charged、Ultimate 都按最早碰撞截断并击退，B-04 依据碰撞法线保留剩余距离折射一次。
+- [x] Hazard：Mine 1s 武装 + 550ms 爆炸，Arc Rail 1.4s Telegraph + 0.6s Active；Dash Transit 安全，非 Dash 接触致命，到期从 State / Snapshot / Presentation 移除。
+- [x] Entity Presentation / Lab：正式 Presentation Registry、Projectile/Obstacle/Hazard Budget、简单可读的实体外观，以及 Content Lab 的真实 Spawn 控件均已接入。
+- [x] P4 自动化：全量 19 文件 / 100 项通过；60/144Hz Entity Hash、JSON Roundtrip、Content Lab、真实两次 Canvas 点击切弹回返与折射、Console 0。
 
 ## Full Game 下一步计划
 
-1. 进入 P4：实现 Projectile / Obstacle / Hazard 的生产生命周期，并完成 Projectile Reversal、Projectile Return、Refraction 与 Charged 障碍碰撞。
+1. 完成剩余 Basic / Shared Skill Hook：Wide、Gravity、Curve、Cross、Cross Purge、Echo、Double Echo、Impact Burst、Rapid Dash、Kill Momentum。
 2. 完成 P1/P2 剩余的 Event / Forge 生命周期、Campaign Save / Replay，让 24 节点 Run 不在非战斗节点断路。
-3. 继续逐项接入 Basic 与 Shared Skill Hook，再进入完整敌人、Encounter 与 Boss 生产。
+3. 进入 P5 Enemy Roster / Attack Strategy，让 Gunner、Constructor、Mine Layer、Sniper 等真实生成 P4 实体。
 4. 每个有意义变更继续执行自动化、截图、`render_game_to_text` 和 Console 检查，再依 P4–P11 推进。
 
 ## Full Game 当前问题与边界

@@ -69,12 +69,21 @@ try {
       window.content_lab_validation.applyEnemy("debug-stationary-target");
       window.content_lab_validation.applyTestUpgrades(true);
       window.content_lab_validation.activateAbility("debug-target-blink");
+      window.content_lab_validation.spawnProjectile("projectile-standard-round-v1");
+      window.content_lab_validation.spawnObstacle("obstacle-static-reflector-v1");
+      window.content_lab_validation.spawnHazard("hazard-armed-mine-v1");
     });
     const snapshot = JSON.parse(await opened.page.evaluate(() => window.render_content_lab_to_text()));
     if (
       snapshot.selected.levelId !== "stage-02-compression"
       || snapshot.selected.enemyDefinitionId !== "debug-stationary-target"
       || snapshot.selected.upgrades.length !== 2
+      || snapshot.game.projectiles.length !== 1
+      || snapshot.game.obstacles.length !== 1
+      || snapshot.game.hazards.length !== 1
+      || snapshot.definitions.projectiles.length !== 3
+      || snapshot.definitions.obstacles.length !== 4
+      || snapshot.definitions.hazards.length !== 2
     ) {
       throw new Error("Content Lab did not apply real Level, Enemy and Upgrade content.");
     }
