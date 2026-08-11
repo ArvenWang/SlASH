@@ -15,7 +15,7 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 已增加 `FULL_GAME_CONTENT_MANIFEST.json`、统一术语表和 `npm run verify:full-game-design`；机器门已确认 4 Act、28 Skill、10+4 Enemy、4 Boss、3/4/2 Entity、53 个 Encounter 目标和 12/28 点数上限一致。
 - 技能经济已改为完整 Run：开局 2 点、每 Act 保证 2 点、Elite 最多补 2 点；保证 10、上限 12，只能购买 28 节点中的 42.86%。
 - Charged Dash 正式规则锁定为：整条路线贯穿敌群；命中真实 Armor Coverage 就卸对应甲；命中裸露区就击杀；无甲背部可直接处决，后背有甲则先卸后甲。
-- 当前已完成根战斗、28 个被动 Hook、Projectile / Obstacle / Hazard、Event / Forge、Safe Save / Continue、Replay v2 与 10+4 Enemy 单体生命周期；默认产品入口可在战斗和非战斗节点间持续推进。53 个 Encounter、4 Boss、Profile / Practice / Difficulty 与后续系统仍按计划推进，不把机制闭环冒充内容齐全。
+- 当前已完成根战斗、28 个被动 Hook、Projectile / Obstacle / Hazard、Event / Forge、Safe Save / Continue、Replay v2、10+4 Enemy 与 49 个非 Boss Encounter；默认产品入口可在战斗、挑战和非战斗节点间持续推进。4 Boss、Profile / Practice / Difficulty 与后续系统仍按计划推进，不把 49 / 53 冒充完整内容齐全。
 
 ## Full Game 已完成内容
 
@@ -80,18 +80,23 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - [x] 敌人公平门：Lancer / Blink 同时 Telegraph / Active 上限 3；Projectile / Obstacle / Hazard 继续受 32 / 8 / 8 全局上限；所有受 Conductor 影响后的 Telegraph 仍不低于硬下限。
 - [x] 基础可读表现：Telegraph 同时使用地面环与锁定线，Active 改变轮廓强度；角色朝向现与 Gameplay Facing 一致，Armor 可视方向不再与碰撞方向漂移。
 - [x] Enemy 自动化：14 类逐项验证 Telegraph / Active / Recovery 与真实产物；双段、扇射、移动双墙、四甲、并发压力、移动确定性均有专项测试。全量现为 24 文件 / 147 项。
+- [x] P6 Encounter Content：Act I 6/2/2、Act II 7/3/2、Act III 7/3/2、Act IV 8/4/3，共 28 Standard / 12 Elite / 9 Challenge；每个模板具备独立标题、说明、波次、敌人组合和环境机制。
+- [x] Pressure / Spawn Safety：49 / 49 模板在各 Act 预算内；432 个 Authoring Spawn 和 10,000 个动态玩家位置样本违规 0，Wave 激活时会按真实玩家、Obstacle、Hazard 与敌人位置确定性重定位。
+- [x] 精确 Threat Preview：敌人数、Wave、Armor、Projectile、Obstacle、Hazard 与 Pressure 全部从实际 Definition 计算；100 Seed 覆盖 49 / 49，任一选择层重复 Encounter 卡为 0。
+- [x] Challenge 生命周期：Clean Line、Projectile Cuts、Charged Multi-Break、No Ultimate 四类规则进入运行状态、HUD、Reward 与确定资源；失败不挡正常过关，成功发放 Reroute / 25 Energy / Intel。
+- [x] P6 真实浏览器：Challenge Planning / HUD / Reward / 390×844 全通过；4 Act × 3 条不同路线均由真实 Canvas 点击 / 长按完成，装甲路线确实先蓄力卸甲再处决，Console 0。
 
 ## Full Game 下一步计划
 
-1. 进入 P6 Encounter Content：完成 28 Standard / 12 Elite / 9 Challenge 模板、Pressure / Spawn Safety Validator 与精确 Threat Preview。
-2. 之后按 P7–P8 完成 4 Boss、Profile / Practice / Difficulty 与全 Run 内容，不把机制齐全误报成内容齐全。
+1. 进入 P7：完成 Rail Hound、Siege Choir、Mirror Regent、Last Conductor 四个机制型 Boss 与 Practice Direct Entry。
+2. 之后按 P8 完成 Profile / Practice / Difficulty 与全 Run 内容，不把非 Boss 内容齐全误报成完整游戏齐全。
 3. 内容完成后执行 100 Seed × 4 Build Replay Matrix、完整 Run、性能与真人体验门。
-4. 每个有意义变更继续执行自动化、截图、`render_game_to_text` 和 Console 检查，再依 P4–P11 推进。
+4. 每个有意义变更继续执行自动化、截图、`render_game_to_text` 和 Console 检查，再依 P7–P11 推进。
 
 ## Full Game 当前问题与边界
 
 - 视觉 Agent 的大量角色 / 动画 / Asset 修改尚未提交，本分支不会从其脏工作树复制文件；最终只合并稳定 Commit。
-- 10+4 Enemy 单体生命周期已完成，但 Campaign 路线仍把所有敌对节点映射到首个两波 Striker Encounter；只有 P6 将 Roster 编入 53 个正式模板后，才能计为实际 Run 内容完成。
+- 49 个非 Boss Encounter 已完成；Boss 节点当前明确锁定，不用普通敌人模板冒充。P7 完成前仍无法从产品入口打通完整 4 Act Run。
 - Run Save 已覆盖当前正式 Campaign 字段，但 Threat Protocol、Assist、Boss 边界与 Profile 尚未实现；这些字段加入时必须同步升级 Save Schema 测试，当前不能宣称 FG-SV01–SV03 全部门完成。
 - Replay v2 已通过代表性 Campaign 路径 Hash Match，但 FG-R01 要求的 100 Seed × 4 Build 完整回放必须等完整 Enemy / Boss / Encounter 内容接入后执行。
 - 现有 `game.ts` 仍承担较多编排；新增系统必须进入独立模块，不能继续形成 God Object。

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { eventForRouteNode } from "../src/content/events/definitions";
+import { encounterForRouteNode } from "../src/content/encounters/definitions";
 import {
   createFullGameGame,
   dispatchGameCommand,
@@ -20,9 +21,8 @@ import type { RouteNodeState } from "../src/game/run/types";
 
 describe("full-game replay v2", () => {
   test("replays route, allocation, Charged, Ultimate, and Event commands to the same hash", () => {
-    const state = createFullGameGame(3108);
+    const { state, target } = stateWithReplayFriendlyEvent();
     const recorder = createReplayRecorder(state);
-    const target = safeNode(state, "event");
 
     beginRunWithBuild(state, recorder);
     enterNextNodeToward(state, recorder, target.id);
@@ -107,10 +107,16 @@ function enterNextNodeToward(state: GameState, recorder: ReplayRecorder, targetI
   if (!campaign || campaign.phase !== "planning") throw new Error("Expected Planning before route selection.");
   const node = campaign.routeProgress.availableNodeIds
     .map((id) => routeNode(state, id))
-    .find((candidate) => reachesNode(state, candidate, targetId));
+    .filter((candidate) => reachesNode(state, candidate, targetId))
+    .sort((first, second) => encounterGeometryScore(state, first) - encounterGeometryScore(state, second))[0];
   if (!node) throw new Error(`No available route reaches ${targetId}.`);
   expect(recorder.dispatch({ type: "preview-route-node", nodeId: node.id }).result).toBe("route-previewed");
   expect(recorder.dispatch({ type: "confirm-planning" }).result).toBe("planning-confirmed");
+}
+
+function encounterGeometryScore(state: GameState, node: RouteNodeState): number {
+  const definition = encounterForRouteNode(node, state.run.seed);
+  return definition ? definition.initialObstacles.length * 10 + definition.initialHazards.length : 0;
 }
 
 function enterFirstAvailableNode(state: GameState, recorder: ReplayRecorder): void {
@@ -127,7 +133,20 @@ function playCurrentEncounter(
 ): void {
   let chargedUsed = false;
   let ultimateUsed = false;
-  for (let guard = 0; guard < 12_000 && state.run.fullGame?.phase === "combat"; guard += 1) {
+  let retries = 0;
+  for (
+    let guard = 0;
+    guard < 12_000 && (state.run.fullGame?.phase === "combat" || state.run.fullGame?.phase === "defeat");
+    guard += 1
+  ) {
+    if (state.stage.phase === "dead") {
+      if (retries >= 4) {
+        throw new Error(`Replay test autoplayer exceeded four deterministic retries in ${state.run.fullGame?.activeEncounterTemplateId}.`);
+      }
+      expect(recorder.dispatch({ type: "restart-stage" }).result).toBe("restarted");
+      retries += 1;
+      continue;
+    }
     if (state.stage.phase !== "playing") throw new Error(`Encounter left Playing in ${state.stage.phase}.`);
     if (getPlayerAction(state) === "ready" && state.enemies.some((enemy) => enemy.alive)) {
       if (options.useCharged && !chargedUsed) {
@@ -183,6 +202,28 @@ function stateWithReachableForge(): { state: GameState; target: RouteNodeState }
     if (target) return { state, target };
   }
   throw new Error("No Forge seed found.");
+}
+
+function stateWithReplayFriendlyEvent(): { state: GameState; target: RouteNodeState } {
+  for (let seed = 0; seed < 2_000; seed += 1) {
+    const state = createFullGameGame(seed);
+    const target = state.run.fullGame?.routeProgress.route.acts[0]?.layers[2]
+      ?.find((node) => node.kind === "event");
+    if (!target) continue;
+    const event = eventForRouteNode(target, seed);
+    if (!event.choices.some((choice) => choice.effects.some((effect) => effect.resourceId === "next-combat-energy"))) {
+      continue;
+    }
+    const entries = state.run.fullGame?.routeProgress.route.acts[0]?.layers[0] ?? [];
+    const hasClearPath = entries.some((entry) => {
+      if (!reachesNode(state, entry, target.id) || encounterGeometryScore(state, entry) !== 0) return false;
+      return entry.nextNodeIds
+        .map((id) => routeNode(state, id))
+        .some((next) => reachesNode(state, next, target.id) && encounterGeometryScore(state, next) === 0);
+    });
+    if (hasClearPath) return { state, target };
+  }
+  throw new Error("No replay-friendly deterministic Event path found.");
 }
 
 function routeNode(state: GameState, id: string): RouteNodeState {

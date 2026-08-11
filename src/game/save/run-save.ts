@@ -247,6 +247,9 @@ function validateCampaignSafePhase(state: GameState): void {
   if (campaign.skills.forgeMoveLimit !== FORGE_MOVE_LIMIT + campaign.forgeTokensSpentThisVisit) {
     throw invalidState("Forge Move Limit 与已消费 Token 不一致");
   }
+  if (!("activeChallenge" in campaign) || campaign.activeChallenge !== null) {
+    throw invalidState("安全存档包含进行中的 Challenge");
+  }
   if (campaign.phase === "planning" || campaign.phase === "title") {
     if (campaign.routeProgress.phase !== "route-map" || campaign.routeProgress.currentNodeId !== null) {
       throw invalidState("Planning / Title 路线进度不是 Route Map");
@@ -265,6 +268,20 @@ function validateCampaignSafePhase(state: GameState): void {
   }
   if (campaign.phase === "reward" && campaign.pendingReward === null) {
     throw invalidState("Reward 阶段缺少结算数据");
+  }
+  if (campaign.pendingReward !== null) {
+    const challenge = campaign.pendingReward.challenge;
+    if (challenge !== null && (
+      !isRecord(challenge) ||
+      typeof challenge.definitionId !== "string" ||
+      (challenge.status !== "succeeded" && challenge.status !== "failed") ||
+      typeof challenge.rewardResourceId !== "string" ||
+      !Number.isFinite(challenge.rewardAmount) ||
+      !Number.isFinite(challenge.resourceBefore) ||
+      !Number.isFinite(challenge.resourceAfter)
+    )) {
+      throw invalidState("Challenge Reward 结构无效");
+    }
   }
   if (campaign.phase === "victory" && campaign.routeProgress.phase !== "victory") {
     throw invalidState("Victory 阶段路线尚未完成");

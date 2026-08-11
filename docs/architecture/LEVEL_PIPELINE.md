@@ -45,13 +45,15 @@ LevelDefinition
 - `after-previous-killed`；
 - `triggered`。
 
-当前生产内容只实现并使用 Immediate Spawn。其余值是稳定数据协议，不代表 Scheduler 已完成。第一次使用非 Immediate Wave 时，应新增独立 Encounter Runtime State 和 Scheduler，明确：
+完整 Campaign 已使用独立 Encounter Runtime State 和 Scheduler；49 个非 Boss 模板以 `immediate` + `after-previous-killed` 为主，Scheduler 同时正式支持 `timed` 与稳定 Trigger ID 的 `triggered`。运行时明确记录：
 
 - Activation Tick 与 Delay；
 - Trigger ID/条件；
 - 已激活与已完成 Wave；
 - Spawn 顺序与稳定 Entity ID；
 - 中途死亡、重开、过关和 Replay 行为。
+
+每个 Wave 激活前会把 Authoring Spawn 与玩家实时位置、Active Obstacle / Hazard 和现存敌人一起检查；不安全位置会选择离原设计点最近的确定性候选位置。若全场无合法位置则明确拒绝而非贴脸生成。定义层另以 10,000 个动态样本验证 ≥5m 距离和 3m × 3m 安全落点。
 
 关卡机关、门、列车、区域触发等行为应通过有类型的 Level/Encounter System 和 Event 接入，不应写成 Scene Mesh 的点击回调。视觉列车移动不等于 Gameplay Obstacle，只有进入 Obstacle Definition 和 Simulation 后才会影响碰撞。
 

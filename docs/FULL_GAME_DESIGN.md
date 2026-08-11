@@ -353,6 +353,8 @@ Elite 额外奖励：最多 +2 点 / Run
 - Act III Standard：14–17；Elite：18–20。
 - Act IV Standard：17–20；Elite：21–24。
 
+这里的模板预算指一个 Encounter Definition 中全部必需 Wave 与初始主动场景机制的总 Authoring Pressure；它用于控制整场内容量。任意时刻的同屏上限、致命 Active 数量与生成排队仍由 8.2 的运行时硬限制独立约束，不能用“分波”规避同屏安全门。
+
 ### 8.2 组合限制
 
 - 同一 Wave 最多 2 名 Sniper。

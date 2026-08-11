@@ -22,6 +22,9 @@ Content Definition 描述“这是什么”，Gameplay State 描述“这一局�
 | Projectile | `src/content/entities/definitions.ts` | `projectileDefinitions` |
 | Obstacle | 同上 | `obstacleDefinitions` |
 | Hazard | 同上 | `hazardDefinitions` |
+| Full-game Encounter | `src/content/encounters/full-game-library.ts` | `fullGameEncounterDefinitions` |
+| Event | `src/content/events/definitions.ts` | `eventDefinitions` |
+| Run / Act | `src/content/runs/definitions.ts` | `runDefinitions` |
 
 ## ID 规则
 
@@ -71,3 +74,5 @@ Projectile、Obstacle、Hazard Definition 已包含碰撞、速度/寿命或 Tic
 ## 完整性门
 
 `assertPresentationRegistryIntegrity()` 会遍历当前 Enemy、Ability、Level 和 Environment，确认每个跨层 ID 都能解析。新增 Definition 后如果忘记 Presentation Registration，启动和测试会直接失败，而不是在游戏中静默缺模型或缺特效。
+
+Full-game Encounter 另有三层门：`validateEncounterPressure()` 检查 Act / Category 预算，`validateEncounterSpawnSafety()` 检查预警、数量、碰撞和安全落点，Route Preview 则从最终 Definition 自动计算敌人、Armor、Projectile、Obstacle、Hazard 与 Pressure 数字。预览文案不保存第二份手工数量，避免策划数据与实际生成漂移。

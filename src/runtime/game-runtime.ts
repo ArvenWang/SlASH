@@ -8,6 +8,8 @@ import {
   createBasicPassiveValidationGame,
   createCampaignEventValidationGame,
   createCampaignForgeValidationGame,
+  createCampaignChallengeValidationGame,
+  createCampaignEncounterValidationGame,
   createEnemyAttackValidationGame,
   createUltimateValidationGame,
   createStressGame,
@@ -38,6 +40,8 @@ export interface GameRuntime {
   loadBasicPassiveScenario(): void;
   loadCampaignEventScenario(): void;
   loadCampaignForgeScenario(): void;
+  loadCampaignChallengeScenario(encounterId?: string): void;
+  loadCampaignEncounterScenario(encounterId: string): void;
   loadEnemyAttackScenario(definitionId: string): void;
   loadState(state: GameState): void;
   resetRun(): void;
@@ -106,6 +110,12 @@ export function createGameRuntime(initialStageIndex = 0): GameRuntime {
     },
     loadCampaignForgeScenario() {
       replaceState(createCampaignForgeValidationGame(state.rules));
+    },
+    loadCampaignChallengeScenario(encounterId) {
+      replaceState(createCampaignChallengeValidationGame(encounterId, state.rules));
+    },
+    loadCampaignEncounterScenario(encounterId) {
+      replaceState(createCampaignEncounterValidationGame(encounterId, state.rules));
     },
     loadEnemyAttackScenario(definitionId) {
       replaceState(createEnemyAttackValidationGame(definitionId, state.rules));
@@ -180,6 +190,12 @@ export function createFullGameRuntime(seed?: number): GameRuntime {
     },
     loadCampaignForgeScenario() {
       replaceState(createCampaignForgeValidationGame(state.rules));
+    },
+    loadCampaignChallengeScenario(encounterId) {
+      replaceState(createCampaignChallengeValidationGame(encounterId, state.rules));
+    },
+    loadCampaignEncounterScenario(encounterId) {
+      replaceState(createCampaignEncounterValidationGame(encounterId, state.rules));
     },
     loadEnemyAttackScenario(definitionId) {
       replaceState(createEnemyAttackValidationGame(definitionId, state.rules));

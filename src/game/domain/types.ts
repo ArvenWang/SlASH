@@ -359,6 +359,7 @@ export type GameEventPayload =
   | { type: "encounter-wave-warning"; encounterId: EncounterId; waveId: string; activationAtMs: number }
   | { type: "encounter-wave-started"; encounterId: EncounterId; waveId: string; enemyIds: EntityId[] }
   | { type: "encounter-wave-completed"; encounterId: EncounterId; waveId: string }
+  | { type: "challenge-resolved"; challengeDefinitionId: string; status: "succeeded" | "failed"; rewardResourceId: string; rewardAmount: number }
   | { type: "skill-points-granted"; amount: number; total: number; source: string }
   | { type: "event-choice-resolved"; nodeId: string; eventDefinitionId: string; choiceId: string; resourceChanges: Array<{ resourceId: string; before: number; after: number }> }
   | { type: "forge-token-used"; nodeId: string; remainingTokens: number; moveLimit: number }
@@ -553,6 +554,16 @@ export interface GameSnapshot {
       movesUsed: number;
       moveLimit: number;
       tokensSpentThisVisit: number;
+    };
+    challenge: null | {
+      definitionId: string;
+      status: string;
+      elapsedMs: number;
+      projectileCuts: number;
+      obstacleImpacts: number;
+      maximumChargedArmorBreaks: number;
+      ultimateExecuted: boolean;
+      failureReason: string | null;
     };
     encounter: null | {
       id: EncounterId;

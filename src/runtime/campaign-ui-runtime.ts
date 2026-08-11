@@ -254,7 +254,10 @@ function renderRouteCard(
       <strong>${escapeHtml(preview.title)}</strong>
       <p>${escapeHtml(preview.summary)}</p>
       <div class="tag-row">${preview.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>
-      <small>${preview.hostileCount} HOSTILES · ${preview.waveCount} WAVES · REWARD ${escapeHtml(node.reward.toUpperCase())}</small>
+      ${preview.challengeCondition ? `<p class="challenge-contract"><b>CONDITION</b> ${escapeHtml(preview.challengeCondition)}<br><b>REWARD</b> ${escapeHtml(preview.challengeReward ?? "无额外奖励")}</p>` : ""}
+      <small>${preview.hostileCount} HOSTILES · ${preview.waveCount} WAVES · PRESSURE ${preview.pressure.toFixed(1)}</small>
+      <small>ARMOR ${preview.armoredHostileCount} · PROJECTILE ${preview.projectileSourceCount} · OBSTACLE ${preview.obstacleSourceCount} · HAZARD ${preview.hazardSourceCount}</small>
+      <small>NODE REWARD ${escapeHtml(node.reward.toUpperCase())}</small>
     </button>`;
 }
 
@@ -439,12 +442,14 @@ function resourceName(resourceId: string): string {
 
 function renderReward(state: GameState): string {
   const reward = state.run.fullGame?.pendingReward;
+  const challenge = reward?.challenge;
   return `
     <section class="campaign-panel reward-panel" aria-labelledby="reward-title">
       <p class="panel-kicker">NODE COMPLETE</p>
       <h1 id="reward-title">节点结算</h1>
       <div class="reward-value"><strong>+${reward?.skillPointsGranted ?? 0}</strong><span>SKILL POINT</span></div>
       <p>${reward?.skillPointsGranted ? "新点数会在下一张 Planning Board 中进入 Draft，可花费也可保留。" : "本节点没有技能点奖励；现有未消费点仍会保留。"}</p>
+      ${challenge ? `<div class="challenge-result ${challenge.status}"><strong>CHALLENGE ${escapeHtml(challenge.status.toUpperCase())}</strong><p>${challenge.status === "succeeded" ? `额外资源：${escapeHtml(resourceName(challenge.rewardResourceId))} +${challenge.rewardAmount}` : `未获得额外资源：${escapeHtml(challenge.failureReason ?? "条件未满足")}`}</p></div>` : ""}
       <button class="primary-action" type="button" data-action="acknowledge-reward">CONTINUE TO PLANNING / 继续规划</button>
     </section>`;
 }

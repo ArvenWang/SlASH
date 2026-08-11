@@ -37,6 +37,8 @@ import {
   curveDashPathPoints,
 } from "../game/abilities/dash-slash";
 import { STORED_PATH_DURATION_MS } from "../game/abilities/path-passives";
+import { fullGameEncounterDefinitions } from "../content/encounters/definitions";
+import { challengeProgressLabel } from "../game/campaign/challenge-system";
 
 const EPSILON_PRESENTATION = 1e-6;
 
@@ -286,7 +288,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   const hazardVisuals = new Map<string, SimpleEntityVisualRuntime>();
   let renderedStageIndex = -1;
   let renderedStageName = "";
-  let renderedAliveCount = -1;
+  let renderedEnemyStatus = "";
   let renderedChargeProgress = -1;
   let renderedChargeLabel = "";
   let renderedEnergy = -1;
@@ -565,9 +567,17 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       renderedStageIndex = gameState.stage.index;
       renderedStageName = gameState.stage.name;
     }
-    if (renderedAliveCount !== alive) {
-      shell.enemyLabel.textContent = `${String(alive).padStart(2, "0")} HOSTILES`;
-      renderedAliveCount = alive;
+    const campaign = gameState.run.fullGame;
+    const activeDefinition = campaign?.activeEncounterTemplateId
+      ? fullGameEncounterDefinitions.get(campaign.activeEncounterTemplateId)
+      : null;
+    const challengeStatus = campaign?.activeChallenge && activeDefinition?.challenge
+      ? ` · ${activeDefinition.challenge.title} ${challengeProgressLabel(campaign.activeChallenge, activeDefinition.challenge)}`
+      : "";
+    const enemyStatus = `${String(alive).padStart(2, "0")} HOSTILES${challengeStatus}`;
+    if (renderedEnemyStatus !== enemyStatus) {
+      shell.enemyLabel.textContent = enemyStatus;
+      renderedEnemyStatus = enemyStatus;
     }
     const charge = gameState.player.charge;
     const chargeProgress = charge === null ? 0 : Math.min(1, charge.heldMs / charge.thresholdMs);

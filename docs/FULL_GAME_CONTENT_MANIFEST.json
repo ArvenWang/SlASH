@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "contentVersion": "full-game-v1",
-  "implementationStatus": "planned",
+  "implementationStatus": "in-production",
   "run": {
     "actCount": 4,
     "targetVisitedNodes": 24,
@@ -101,6 +101,15 @@
     "elite": 12,
     "challenge": 9,
     "boss": 4
+  },
+  "implementedCounts": {
+    "skills": 28,
+    "standardEnemies": 10,
+    "eliteEnemies": 4,
+    "standardEncounters": 28,
+    "eliteEncounters": 12,
+    "challengeEncounters": 9,
+    "bossEncounters": 0
   },
   "requiredDocuments": [
     "docs/FULL_GAME_DESIGN.md",

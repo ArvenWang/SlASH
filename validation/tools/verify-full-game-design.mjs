@@ -28,7 +28,7 @@ const allIds = [
 
 assert(manifest.schemaVersion === 1, "schemaVersion must be 1");
 assert(manifest.contentVersion === "full-game-v1", "contentVersion must be full-game-v1");
-assert(manifest.implementationStatus === "planned", "P0 manifest must report planned, not implemented");
+assert(manifest.implementationStatus === "in-production", "manifest must report the current in-production state");
 
 assertCount(manifest.acts, 4, "acts");
 assertCount(manifest.skills.basic, 12, "Basic skills");
@@ -57,6 +57,13 @@ assert(manifest.encounterTargets.standard === 28, "standard encounter target mus
 assert(manifest.encounterTargets.elite === 12, "elite encounter target must be 12");
 assert(manifest.encounterTargets.challenge === 9, "challenge target must be 9");
 assert(manifest.encounterTargets.boss === 4, "boss encounter target must be 4");
+assert(manifest.implementedCounts.skills === 28, "all 28 skill hooks must be implemented");
+assert(manifest.implementedCounts.standardEnemies === 10, "all 10 standard enemies must be implemented");
+assert(manifest.implementedCounts.eliteEnemies === 4, "all 4 elite enemies must be implemented");
+assert(manifest.implementedCounts.standardEncounters === 28, "all 28 standard encounters must be implemented");
+assert(manifest.implementedCounts.eliteEncounters === 12, "all 12 elite encounters must be implemented");
+assert(manifest.implementedCounts.challengeEncounters === 9, "all 9 challenge encounters must be implemented");
+assert(manifest.implementedCounts.bossEncounters === 0, "P6 must not claim the P7 boss encounters");
 
 const uniqueIds = new Set(allIds);
 assert(uniqueIds.size === allIds.length, `duplicate stable IDs detected (${allIds.length - uniqueIds.size})`);

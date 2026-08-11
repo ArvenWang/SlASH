@@ -432,6 +432,13 @@ kbd {
 .route-card strong { font-size: 15px; }
 .route-card p { margin-bottom: 0; color: #aab6b8; font-size: 12px; line-height: 1.55; }
 .route-card small { color: #8e9c9e; font-size: 9px; letter-spacing: 0.07em; }
+.route-card .challenge-contract {
+  padding: 8px 10px;
+  border-left: 2px solid #d7b46a;
+  background: rgba(215, 180, 106, 0.08);
+  color: #d9d2bf;
+}
+.route-card .challenge-contract b { color: #f0c979; font-size: 9px; letter-spacing: 0.08em; }
 
 .tag-row { display: flex; flex-wrap: wrap; gap: 5px; }
 .tag-row span { padding: 4px 6px; border: 1px solid rgba(213, 232, 234, 0.16); color: #c3ced0; font-size: 9px; }
@@ -559,6 +566,10 @@ kbd {
 }
 .reward-value strong { font-size: 54px; }
 .reward-value span { font-size: 12px; letter-spacing: 0.12em; }
+.challenge-result { width: min(420px, 100%); padding: 12px 14px; border: 1px solid #526167; }
+.challenge-result.succeeded { border-color: #6f9f80; }
+.challenge-result.failed { border-color: #9f625c; }
+.challenge-result p { margin: 6px 0 0; }
 
 #loading p {
   margin: 0;

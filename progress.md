@@ -194,3 +194,16 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 真实浏览器逐类验证 14 / 14 可见 Telegraph 和实际动作产物，Gunner Projectile、Constructor Barrier、Fortress Armor 均有截图，Console 0。首次脚本因 50ms 小步导致数千次软件渲染而主动中止，改成不跨越最短前摇的 200ms 批次后保持同一判定门。
 - 当前边界：Campaign 仍只复用首个 Striker Encounter；P6 必须把 Roster 编入 28 Standard / 12 Elite / 9 Challenge 模板并完成 Spawn Safety / Pressure Validator，不能把单体生命周期误报为完整内容。
 - 下一步：P6 Encounter Content 与精确 Route Threat Preview。
+
+## 2026-08-12 — Four-Act Encounter Content / Challenges
+
+- 已将 Campaign 从单一 Striker 模板替换为 49 个正式非 Boss Encounter：28 Standard、12 Elite、9 Challenge；Act 分布严格为 6/2/2、7/3/2、7/3/2、8/4/3。
+- 每个模板都有稳定 ID、独立中英标题、完整说明、两波敌人配方、Formation、Environment / Lighting / Presentation 合同，以及按需配置的 Anchor、Reflector、Barrier、Moving Gate、Mine 或 Arc Rail。
+- Route Mapping 由 Seed + Act + Category + Route Slot 确定；100 Seed 已覆盖 49 / 49 模板，单个选择层不会出现两个相同 Encounter 选项。Threat Preview 的 Hostile / Wave / Armor / Projectile / Obstacle / Hazard / Pressure 全部从最终 Definition 自动计算。
+- Pressure Validator 使用 GDD 的敌人和场景 Cost，模板总压力全部落在各 Act Standard / Elite 范围；同屏实体上限继续由 Runtime 硬门独立执行。
+- Spawn Safety Validator 检查 750ms Warning、玩家出生距离、Arena、同波碰撞、Active Geometry、Sniper / Constructor 上限和 3m × 3m 安全落点；432 个 Authoring Spawn 与 10,000 个动态玩家位置样本违规 0。实际激活时若玩家靠近设计点，会选取最近的确定性安全候选点。
+- 9 个 Challenge 不是标题变体：Clean Line、Projectile Cuts、Charged Multi-Break、No Ultimate 均记录真实事件与指标，状态显示在战斗 HUD；成功后确定发放 Reroute Token、25 Next Combat Energy 或 Intel，失败仍正常过关但无额外奖励。
+- 自动化全量当前为 26 files / 160 tests；新增 Encounter / Challenge 专项 14 项。TypeScript、Build、设计清单、100 Seed 内容报告和 whitespace 均通过。
+- 浏览器 Challenge 闭环通过：Planning 显示条件/奖励/精确威胁，战斗 HUD 实时显示条件，真实无 Ultimate 清场后 Reward 发放 Intel +1；390×844 无横向溢出，Console 0。
+- 浏览器 Route Matrix 使用真实 Canvas pointer click / hold / release 完成 4 Act × 3 条不同路线；Act III / IV 装甲路线真实执行 Charged 卸甲。Conductor Debut 在朴素自动玩家下发生 2 次死亡重试后完成，作为后续 P10 难度调优观察项保留，不隐去失败。
+- 当前边界：4 Boss 尚未实现，Boss 路线明确不可选，不以普通 Encounter 占位。下一步进入 P7 机制型 Boss。

@@ -4,7 +4,7 @@
 
 Phase 2A 是扩展基础与视觉生产管线改造，不是一次视觉签核。当前画面、角色造型、动作质感和整体氛围仍需继续设计迭代；本阶段的交付是让这些迭代通过可替换的 Profile、Provider 和独立 Lab 完成，而不再改动 Gameplay 规则。
 
-架构同时为后续敌人、攻击、技能、升级、Projectile、Obstacle、Hazard、Encounter 和关卡行为提供稳定入口。Projectile / Obstacle / Hazard、四种 Wave Activation、Campaign、Event、Forge、Safe Save 与 Replay v2 已有真实生命周期；完整 Enemy / Encounter / Boss 内容仍按生产计划推进，不用 Definition 数量冒充可玩内容数量。
+架构同时为敌人、攻击、技能、升级、Projectile、Obstacle、Hazard、Encounter 和关卡行为提供稳定入口。Projectile / Obstacle / Hazard、四种 Wave Activation、Campaign、Event、Forge、Safe Save、Replay v2、10+4 Enemy 与 49 个非 Boss Encounter 已有真实生命周期；4 Boss 仍按 P7 推进，不用 Definition 数量冒充可玩内容数量。
 
 ## 运行数据流
 
@@ -53,7 +53,7 @@ flowchart LR
 
 ## 当前明确保留的限制
 
-- 53 个 Encounter、10+4 Enemy 与 4 Boss 仍未全部接入；当前运行时主要复用首个两波模板，不能把机制架构视为内容完成。
+- 28 Standard / 12 Elite / 9 Challenge 已接入；53 个总目标中尚缺 P7 的 4 个机制型 Boss，因此完整 Run 仍不能宣称完成。
 - Safe Save 尚未包含未实现的 Threat Protocol、Assist、Boss Boundary 与 Profile 字段；Replay 的完整 100 Seed × 4 Build 门也必须等待完整内容。
 - 两份生产 GLB 有骨骼但没有 AnimationClip；Controller 已支持 Clip，当前 GLB 走自制骨骼 Additive Driver。
 - 程序化环境和 VFX Runtime 仍较大；Profile 已先隔离配置。后续在加入第一个新环境模块或新特效家族时，按实际需求拆 Runtime，避免提前制造空框架。

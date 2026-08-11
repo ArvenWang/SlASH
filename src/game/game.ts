@@ -115,6 +115,7 @@ import {
   resolveCampaignEventChoice,
   restartCampaignEncounter,
   startFullGameRun,
+  synchronizeCampaignChallenge,
   useCampaignForgeToken,
 } from "./campaign/campaign-system";
 import { skillAllocationSnapshot } from "./upgrades/skill-system";
@@ -125,6 +126,7 @@ import {
   isEnemyContactLethal,
 } from "./enemies/enemy-attack-system";
 import { enemyAttackProfiles } from "../content/enemies/attack-definitions";
+import { encounterForRouteNode } from "../content/encounters/definitions";
 
 export type {
   ArenaBounds,
@@ -644,6 +646,36 @@ export function createCampaignForgeValidationGame(rules: Partial<GameRules> = {}
   dispatchGameCommand(state, { type: "confirm-planning" });
   drainGameEvents(state);
   return state;
+}
+
+/** Validation-only Planning state with one exact production Challenge already
+ * selected. The browser must still confirm the route and complete real combat. */
+export function createCampaignEncounterValidationGame(
+  encounterId: string,
+  rules: Partial<GameRules> = {},
+): GameState {
+  for (let seed = 0; seed < 2_000; seed += 1) {
+    const state = createFullGameGame(seed, rules);
+    const node = state.run.fullGame?.routeProgress.route.acts
+      .flatMap((act) => act.layers.flatMap((layer) => layer))
+      .find((candidate) => (
+        encounterForRouteNode(candidate, seed)?.id === encounterId
+      ));
+    if (!node) continue;
+    dispatchGameCommand(state, { type: "start-full-game-run" });
+    positionCampaignValidationAtNode(state, node);
+    dispatchGameCommand(state, { type: "preview-route-node", nodeId: node.id });
+    drainGameEvents(state);
+    return state;
+  }
+  throw new Error(`Campaign Encounter validation fixture cannot route to ${encounterId}.`);
+}
+
+export function createCampaignChallengeValidationGame(
+  encounterId = "encounter-act3-silent-mirror-v1",
+  rules: Partial<GameRules> = {},
+): GameState {
+  return createCampaignEncounterValidationGame(encounterId, rules);
 }
 
 /** Validation-only single-archetype combat using the production movement,
@@ -1482,6 +1514,7 @@ export function dispatchGameCommand(
   } else if (command.type === "cancel-ultimate") {
     result = cancelVectorFocus(state);
   }
+  synchronizeCampaignChallenge(state);
   return { sequence: state.commandSequence, result };
 }
 
@@ -1773,6 +1806,19 @@ export function getGameSnapshot(state: GameState): GameSnapshot {
         movesUsed: allocation.forgeMovesUsed,
         moveLimit: allocation.forgeMoveLimit,
         tokensSpentThisVisit: campaign.forgeTokensSpentThisVisit,
+      },
+      challenge: campaign.activeChallenge === null ? null : {
+        definitionId: campaign.activeChallenge.definitionId,
+        status: campaign.activeChallenge.status,
+        elapsedMs: roundForSnapshot(campaign.activeChallenge.elapsedMs),
+        projectileCuts: campaign.activeChallenge.projectileCuts,
+        obstacleImpacts: campaign.activeChallenge.obstacleImpacts,
+        maximumChargedArmorBreaks: Math.max(
+          campaign.activeChallenge.maximumChargedArmorBreaks,
+          campaign.activeChallenge.currentChargedArmorBreaks,
+        ),
+        ultimateExecuted: campaign.activeChallenge.ultimateExecuted,
+        failureReason: campaign.activeChallenge.failureReason,
       },
       encounter: campaign.encounterRuntime === null ? null : {
         id: campaign.encounterRuntime.encounterId,

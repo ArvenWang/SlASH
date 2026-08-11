@@ -35,4 +35,4 @@ Telegraph 开始时锁定目标和方向；后续玩家换位不会让普通攻�
 - Presentation 使用地面环和锁定线两种形状提示，不只依赖颜色。
 - Snapshot 暴露 Attack Profile、Phase、Remaining、Sequence、Target、Combo 与 Buff 倍率。
 
-Encounter 层的 Spawn Safety、Sniper / Constructor 数量与 Pressure Budget 由 P6 Validator 负责；单体系统不伪造关卡编排结论。
+Encounter 层的 Spawn Safety、Sniper / Constructor 数量与 Pressure Budget 已由 P6 Validator 接管；单体系统与 49 个正式非 Boss 模板现在分别有独立证据。

@@ -243,7 +243,7 @@ P11 Visual Branch Integration Contract + Git Push
 
 每类敌人同一工作包必须包含 Definition、Movement、Attack、Events、Presentation Hook、Tests、Content Sandbox 和真实 Combat 截图。
 
-实现状态：14 类均已完成上述单体生命周期；FG-E03 的 Encounter Spawn Safety 与 Sniper / Constructor 组合上限仍在 P6 内容编排中完成，不能仅凭单体通过宣称 Enemy / Encounter 全部门结束。
+实现状态：14 类单体生命周期与 P6 Encounter 编排均已完成；Spawn Safety、Sniper / Constructor 数量、Pressure Budget 和动态重定位由正式 Validator 约束。
 
 ### 完成门
 
@@ -257,21 +257,23 @@ P11 Visual Branch Integration Contract + Git Push
 
 ### 任务
 
-- [ ] Act I：6 Standard、2 Elite、2 Challenge。
-- [ ] Act II：7 Standard、3 Elite、2 Challenge。
-- [ ] Act III：7 Standard、3 Elite、2 Challenge。
-- [ ] Act IV：8 Standard、4 Elite、3 Challenge。
-- [ ] Pressure Cost Validator。
-- [ ] Spawn Safety Validator。
-- [ ] Route Threat Tags 自动从内容计算，禁止手写漂移。
-- [ ] Event / Forge 正式选择与精确结果。
-- [ ] 每 Act Environment / Lighting / Presentation ID 合同。
-- [ ] 100 Seed 内容分布和重复率报告。
+- [x] Act I：6 Standard、2 Elite、2 Challenge。
+- [x] Act II：7 Standard、3 Elite、2 Challenge。
+- [x] Act III：7 Standard、3 Elite、2 Challenge。
+- [x] Act IV：8 Standard、4 Elite、3 Challenge。
+- [x] Pressure Cost Validator。
+- [x] Spawn Safety Validator。
+- [x] Route Threat Tags 自动从内容计算，禁止手写漂移。
+- [x] Event / Forge 正式选择与精确结果。
+- [x] 每 Act Environment / Lighting / Presentation ID 合同。
+- [x] 100 Seed 内容分布和重复率报告。
 
 ### 完成门
 
 - FG-C01–C03、FG-W03 自动范围通过。
 - 每 Act 真实输入至少完成 3 条不同路线。
+
+完成证据：49 / 49 非 Boss 模板在 100 Seed 中全部被路线映射覆盖，选择层重复卡为 0；432 个静态 Spawn 与 10,000 个动态玩家位置样本违规为 0。真实浏览器使用 Canvas 点击 / 长按完成 4 Act × 3 条不同路线；装甲路线实际执行 Charged 卸甲，Challenge 成败和确定资源进入 Reward。P7 的 4 Boss 不计入本阶段完成数。
 
 ## 9. P7 — 四 Boss
 

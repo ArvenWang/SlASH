@@ -7,6 +7,7 @@ import {
 } from "../src/game/game";
 import { markCampaignDefeat } from "../src/game/campaign/campaign-system";
 import type { GameState } from "../src/game/domain/types";
+import { fullGameEncounterDefinitions } from "../src/content/encounters/definitions";
 
 function advanceTicks(state: GameState, ticks: number): void {
   for (let tick = 0; tick < ticks; tick += 1) stepGame(state);
@@ -41,17 +42,22 @@ describe("full-game campaign state", () => {
     expect(state.stage.phase).toBe("playing");
     expect(state.run.selectedUpgrades).toEqual(["skill-wide-slash-v1"]);
     expect(getGameSnapshot(state).campaign?.encounter?.waves.map((wave) => wave.status)).toEqual(["warning", "pending"]);
+    const encounterId = state.run.fullGame?.activeEncounterTemplateId;
+    if (!encounterId) throw new Error("Missing active encounter template.");
+    const definition = fullGameEncounterDefinitions.get(encounterId);
 
     advanceTicks(state, 90);
-    expect(state.enemies).toHaveLength(3);
-    expect(state.enemies.every((enemy) => enemy.id.includes(":striker-"))).toBe(true);
+    expect(state.enemies).toHaveLength(definition.waves[0]?.spawns.length ?? 0);
+    expect(state.enemies.map((enemy) => enemy.definitionId)).toEqual(
+      definition.waves[0]?.spawns.map((spawn) => spawn.enemyDefinitionId),
+    );
     expect(getGameSnapshot(state).campaign?.encounter?.waves[0]?.status).toBe("active");
 
     killAliveEnemies(state);
     stepGame(state);
     expect(getGameSnapshot(state).campaign?.encounter?.waves.map((wave) => wave.status)).toEqual(["completed", "warning"]);
     advanceTicks(state, 90);
-    expect(state.enemies.filter((enemy) => enemy.alive)).toHaveLength(4);
+    expect(state.enemies.filter((enemy) => enemy.alive)).toHaveLength(definition.waves[1]?.spawns.length ?? 0);
 
     killAliveEnemies(state);
     stepGame(state);

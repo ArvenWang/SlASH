@@ -303,6 +303,16 @@ export async function bootstrapSlashApplication(): Promise<void> {
         tuning.enemyMotion = false;
         resetPresentationStage();
       },
+      setCampaignChallengeScenario(encounterId) {
+        gameRuntime.loadCampaignChallengeScenario(encounterId);
+        tuning.enemyMotion = false;
+        resetPresentationStage();
+      },
+      setCampaignEncounterScenario(encounterId) {
+        gameRuntime.loadCampaignEncounterScenario(encounterId);
+        tuning.enemyMotion = false;
+        resetPresentationStage();
+      },
       setEnemyAttackScenario(definitionId) {
         gameRuntime.loadEnemyAttackScenario(definitionId);
         tuning.enemyMotion = false;

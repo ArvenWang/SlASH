@@ -5,9 +5,11 @@ import {
   encounterForRouteNode,
   fullGameEncounterDefinitions,
 } from "../../content/encounters/definitions";
+import type { FullGameEncounterDefinition } from "../../content/encounters/types";
 import { enemyDefinitions } from "../../content/enemies/definitions";
 import { FULL_GAME_ACT_DEFINITIONS } from "../../content/runs/definitions";
 import { eventDefinitions, eventForRouteNode } from "../../content/events/definitions";
+import type { SpawnDefinition } from "../../content/levels/definitions";
 import type { GameState } from "../domain/types";
 import {
   createEncounterRuntime,
@@ -15,6 +17,9 @@ import {
   updateEncounterScheduler,
 } from "../encounters/encounter-system";
 import { emitGameEvent } from "../events/event-buffer";
+import { spawnHazard } from "../entities/hazard-system";
+import { spawnObstacle } from "../entities/obstacle-system";
+import { resolveSafeEncounterSpawns } from "../encounters/spawn-safety";
 import {
   availableRouteNodes,
   completeCurrentRouteNode,
@@ -32,7 +37,11 @@ import {
   previewSkillPurchase,
   previewSkillRefund,
 } from "../upgrades/skill-system";
-import type { FullGameCampaignState } from "./types";
+import type { CampaignChallengeRewardState, FullGameCampaignState } from "./types";
+import {
+  advanceCampaignChallengeRuntime,
+  createCampaignChallengeRuntime,
+} from "./challenge-system";
 import { createArmorPartStates } from "../combat/armor";
 import { createEnemyTacticalState } from "../enemies/enemy-attack-system";
 
@@ -59,6 +68,7 @@ export function createFullGameCampaignState(seed: number): FullGameCampaignState
     provisionalRouteNodeId: null,
     activeEncounterTemplateId: null,
     encounterRuntime: null,
+    activeChallenge: null,
     activeTriggerIds: [],
     pendingReward: null,
     eliteSkillPointRewardsGranted: 0,
@@ -151,7 +161,8 @@ export function confirmCampaignPlanning(state: GameState): CampaignCommandResult
   const provisionalId = campaign?.provisionalRouteNodeId;
   if (!campaign || campaign.phase !== "planning" || !provisionalId) return "ignored";
   const node = routeNodeById(campaign.routeProgress.route, provisionalId);
-  const encounter = encounterForRouteNode(node);
+  const encounter = encounterForRouteNode(node, state.run.seed);
+  if (!encounter && node.kind !== "event" && node.kind !== "forge") return "ignored";
 
   // Build and route are committed as one transaction. Any failed validation
   // leaves the live campaign untouched.
@@ -165,6 +176,7 @@ export function confirmCampaignPlanning(state: GameState): CampaignCommandResult
   campaign.provisionalRouteNodeId = null;
   campaign.activeEncounterTemplateId = null;
   campaign.encounterRuntime = null;
+  campaign.activeChallenge = null;
   campaign.activeTriggerIds = [];
   campaign.pendingReward = null;
   state.run.selectedUpgrades = [...campaign.skills.committedSkillIds];
@@ -191,7 +203,9 @@ export function confirmCampaignPlanning(state: GameState): CampaignCommandResult
   campaign.phase = "combat";
   campaign.activeEncounterTemplateId = encounter.id;
   campaign.encounterRuntime = createEncounterRuntime(encounter, state.tick, state.elapsedMs);
+  campaign.activeChallenge = createCampaignChallengeRuntime(encounter, state);
   prepareEncounterState(state, node.id, encounter.id, node.actIndex, node.kind.toUpperCase(), false);
+  spawnEncounterEnvironment(state, node.id, encounter);
   emitGameEvent(state, { type: "route-node-started", nodeId: node.id, encounterId: encounter.id });
   // Immediate waves begin their warning at the exact planning-confirm tick,
   // rather than one simulation tick later.
@@ -239,6 +253,24 @@ export function advanceCampaignEncounterScheduler(state: GameState): void {
       waveId,
     });
   }
+  advanceCampaignChallengeRuntime(state, definition);
+}
+
+/** Command handlers may emit gameplay events that Presentation drains before
+ * the next fixed tick (notably Ultimate confirmation). Synchronize Challenge
+ * metrics at the command boundary so those events cannot be lost. */
+export function synchronizeCampaignChallenge(state: GameState): void {
+  const campaign = state.run.fullGame;
+  if (
+    !campaign ||
+    campaign.phase !== "combat" ||
+    campaign.activeEncounterTemplateId === null ||
+    campaign.activeChallenge === null
+  ) return;
+  advanceCampaignChallengeRuntime(
+    state,
+    fullGameEncounterDefinitions.get(campaign.activeEncounterTemplateId),
+  );
 }
 
 export function campaignEncounterCanComplete(state: GameState): boolean {
@@ -261,6 +293,10 @@ function completeCampaignNode(state: GameState, nodeId: RouteNodeId): boolean {
   if (!campaign) return false;
   const node = currentRouteNode(campaign.routeProgress);
   if (!node || node.id !== nodeId) return false;
+  const completedEncounter = campaign.activeEncounterTemplateId
+    ? fullGameEncounterDefinitions.get(campaign.activeEncounterTemplateId)
+    : null;
+  const challengeReward = completedEncounter ? resolveChallengeReward(state, completedEncounter) : null;
   let skillPointsGranted = 0;
   let eliteRewardConverted = false;
   if (node.reward === "skill-point") {
@@ -279,9 +315,11 @@ function completeCampaignNode(state: GameState, nodeId: RouteNodeId): boolean {
     routeReward: node.reward,
     skillPointsGranted,
     eliteRewardConverted,
+    challenge: challengeReward,
   };
   campaign.encounterRuntime = null;
   campaign.activeEncounterTemplateId = null;
+  campaign.activeChallenge = null;
   campaign.activeEventDefinitionId = null;
   campaign.activeTriggerIds = [];
   state.player.bufferedAbility = null;
@@ -401,14 +439,16 @@ export function restartCampaignEncounter(state: GameState): CampaignCommandResul
   const campaign = state.run.fullGame;
   const node = campaign ? currentRouteNode(campaign.routeProgress) : null;
   if (!campaign || !node || (campaign.phase !== "defeat" && state.stage.phase !== "dead")) return "ignored";
-  const encounter = encounterForRouteNode(node);
+  const encounter = encounterForRouteNode(node, state.run.seed);
   if (!encounter) return "ignored";
   const nextAttempt = state.stage.attempt + 1;
   campaign.phase = "combat";
   campaign.activeEncounterTemplateId = encounter.id;
   campaign.encounterRuntime = createEncounterRuntime(encounter, state.tick, state.elapsedMs);
+  campaign.activeChallenge = createCampaignChallengeRuntime(encounter, state);
   campaign.activeTriggerIds = [];
   prepareEncounterState(state, node.id, encounter.id, node.actIndex, node.kind.toUpperCase(), true);
+  spawnEncounterEnvironment(state, node.id, encounter);
   state.stage.attempt = nextAttempt;
   advanceCampaignEncounterScheduler(state);
   return "restarted";
@@ -508,25 +548,20 @@ function prepareNonCombatState(
 
 function spawnEncounterWave(
   state: GameState,
-  spawns: readonly {
-    readonly id: string;
-    readonly enemyDefinitionId: string;
-    readonly position: { readonly x: number; readonly z: number };
-    readonly facing?: { readonly x: number; readonly z: number };
-  }[],
+  spawns: readonly SpawnDefinition[],
   authoredMoveSpeed: number,
 ): EntityId[] {
   const node = state.run.fullGame ? currentRouteNode(state.run.fullGame.routeProgress) : null;
   if (!node) throw new Error("Cannot spawn a campaign wave without a current route node.");
   const ids: EntityId[] = [];
-  for (const spawn of spawns) {
+  for (const { spawn, position } of resolveSafeEncounterSpawns(state, spawns)) {
     const definition = enemyDefinitions.get(spawn.enemyDefinitionId);
     const id = `${node.id}:${spawn.id}`;
     if (state.enemies.some((enemy) => enemy.id === id)) throw new Error(`Duplicate campaign enemy id ${id}.`);
     state.enemies.push({
       id,
       definitionId: definition.id,
-      position: copyVec2(spawn.position),
+      position: copyVec2(position),
       facing: copyVec2(spawn.facing ?? vec2(0, -1)),
       radius: definition.radius,
       speed: definition.baseMoveSpeed * Math.max(0.5, authoredMoveSpeed / 2.75),
@@ -542,4 +577,66 @@ function spawnEncounterWave(
   }
   state.combat.totalEnemies += ids.length;
   return ids;
+}
+
+function spawnEncounterEnvironment(
+  state: GameState,
+  nodeId: RouteNodeId,
+  definition: FullGameEncounterDefinition,
+): void {
+  for (const obstacle of definition.initialObstacles) {
+    const spawned = spawnObstacle(state, {
+      id: `${nodeId}:${obstacle.id}`,
+      definitionId: obstacle.definitionId,
+      position: obstacle.position,
+      rotationRadians: obstacle.rotationRadians,
+      velocity: obstacle.velocity,
+      sourceId: definition.id,
+    });
+    if (!spawned) throw new Error(`Encounter ${definition.id} could not spawn obstacle ${obstacle.id}.`);
+  }
+  for (const hazard of definition.initialHazards) {
+    const spawned = spawnHazard(state, {
+      id: `${nodeId}:${hazard.id}`,
+      definitionId: hazard.definitionId,
+      position: hazard.position,
+      rotationRadians: hazard.rotationRadians,
+      sourceId: definition.id,
+    });
+    if (!spawned) throw new Error(`Encounter ${definition.id} could not spawn hazard ${hazard.id}.`);
+  }
+}
+
+function resolveChallengeReward(
+  state: GameState,
+  definition: FullGameEncounterDefinition,
+): CampaignChallengeRewardState | null {
+  const rule = definition.challenge;
+  const runtime = state.run.fullGame?.activeChallenge;
+  if (!rule || !runtime) return null;
+  if (runtime.definitionId !== rule.id || runtime.status === "active") {
+    throw new Error(`Challenge ${rule.id} reached reward resolution before a terminal result.`);
+  }
+  const before = Math.max(0, state.run.acquiredResources[rule.reward.resourceId] ?? 0);
+  const after = runtime.status === "succeeded"
+    ? Math.min(rule.reward.maximum, before + rule.reward.amount)
+    : before;
+  state.run.acquiredResources[rule.reward.resourceId] = after;
+  const result = {
+    definitionId: rule.id,
+    status: runtime.status,
+    failureReason: runtime.failureReason,
+    rewardResourceId: rule.reward.resourceId,
+    rewardAmount: after - before,
+    resourceBefore: before,
+    resourceAfter: after,
+  } as const;
+  emitGameEvent(state, {
+    type: "challenge-resolved",
+    challengeDefinitionId: rule.id,
+    status: runtime.status,
+    rewardResourceId: rule.reward.resourceId,
+    rewardAmount: after - before,
+  });
+  return result;
 }
