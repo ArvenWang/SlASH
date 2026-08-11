@@ -12,6 +12,7 @@ import type {
 import type { Vec2 } from "../../core/math/vec2";
 import type { SeededRandomState } from "../../core/random/seeded-random";
 import type { AbilitySlot } from "../../content/abilities/definitions";
+import type { FullGameRunProgressState } from "../run/types";
 
 export type { Vec2 } from "../../core/math/vec2";
 
@@ -108,6 +109,7 @@ export interface RunState {
   random: SeededRandomState;
   selectedUpgrades: UpgradeId[];
   acquiredResources: Record<string, number>;
+  fullGame: FullGameRunProgressState | null;
 }
 
 export interface StageRuntimeState {

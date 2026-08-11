@@ -15,7 +15,7 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 已增加 `FULL_GAME_CONTENT_MANIFEST.json`、统一术语表和 `npm run verify:full-game-design`；机器门已确认 4 Act、28 Skill、10+4 Enemy、4 Boss、3/4/2 Entity、53 个 Encounter 目标和 12/28 点数上限一致。
 - 技能经济已改为完整 Run：开局 2 点、每 Act 保证 2 点、Elite 最多补 2 点；保证 10、上限 12，只能购买 28 节点中的 42.86%。
 - Charged Dash 正式规则锁定为：整条路线贯穿敌群；命中真实 Armor Coverage 就卸对应甲；命中裸露区就击杀；无甲背部可直接处决，后背有甲则先卸后甲。
-- 当前处于 P0 收口 / P1 Run Foundation 开始前；尚未把文档内容冒充已实现功能。
+- 当前处于 P1 Run Foundation：4 Act Seeded Route Graph、Route Progress State 与 Encounter Scheduler 已实现并通过单元测试；下一步是接入实际浏览器流程，尚未把独立模块冒充可玩完成。
 
 ## Full Game 已完成内容
 
@@ -29,19 +29,24 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - [x] 基线 `npm run check`：通过。
 - [x] 基线 `npm run build`：通过；仅保留既有 Three.js 604.35kB Chunk 警告。
 - [x] `npm run verify:full-game-design`：通过，最大技能完成比例 0.428571。
+- [x] 4 Act / 6 Layer Seeded Route Graph：100 个 Seed 均无断路；每局 52 个候选节点、实际访问 24 个节点。
+- [x] Route Progress State：选路、逐层推进、跨 Act、最终 Victory、JSON Roundtrip 均通过。
+- [x] Encounter Scheduler：Immediate / Timed / After Previous Killed / Triggered、预警、激活、清场与实体归属均通过。
+- [x] P1 定向验证：3 个测试文件 / 11 项通过；TypeScript 检查通过。
 
 ## Full Game 下一步计划
 
-1. 完成 P0 机器可读 Content Manifest、术语词典和 Architecture Index。
-2. 开始 P1：RunDefinition、4 Act Route Graph、Game Phase、Encounter Scheduler 与 Replay Command。
-3. 每个有意义变更按 `develop-web-game` 循环执行自动化、截图、`render_game_to_text` 和 Console 检查。
-4. 依 P2–P11 继续到技能、三主动模组、实体、敌人、关卡、Boss、Save、UI、平衡、全量验收和远端推送。
+1. 将 Route Graph 和 Encounter Scheduler 接入正式 GameState、稳定 Spawn ID、Snapshot 与 Replay。
+2. 做出 Title → Route Map → 选择节点 → 两波战斗 → Reward 的首个真实浏览器闭环。
+3. 进入 P2，按用户新反馈重做技能点分配流程与 Charged Dash 分支，不保留旧版含糊或互相重复的技能提案。
+4. 每个有意义变更按 `develop-web-game` 循环执行自动化、截图、`render_game_to_text` 和 Console 检查，再依 P3–P11 推进。
 
 ## Full Game 当前问题与边界
 
 - 视觉 Agent 的大量角色 / 动画 / Asset 修改尚未提交，本分支不会从其脏工作树复制文件；最终只合并稳定 Commit。
 - 架构中 Projectile / Obstacle / Hazard、非 Immediate Wave 和远程 Attack Strategy 目前只有接口，没有生产生命周期，必须逐项真实实现。
 - 现有 `game.ts` 仍承担较多编排；新增系统必须进入独立模块，不能继续形成 God Object。
+- Route Graph 第一版曾因错误旋转目标映射造成部分 Seed 节点不可达；已改成旋转源投影，并用 100 Seed 回归锁住该问题。
 - 人工体验门最终需要真实测试者；自动化不能代替，但在到达该阶段前仍可继续完成所有代码和自动门。
 
 ## Full Game 暂勿并行修改

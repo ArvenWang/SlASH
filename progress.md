@@ -88,3 +88,11 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 下一步：P0 机器可读 Manifest / Glossary，然后 P1 Run Graph 与 Encounter Scheduler。
 - Gotcha：当前新架构只有 Immediate Wave 和 Direct Chase Enemy 真实运行；Projectile / Obstacle / Hazard / 非 Immediate Wave 只是 Domain 入口，不能计为完成内容。
 - P0 补充完成：`FULL_GAME_CONTENT_MANIFEST.json`、`FULL_GAME_GLOSSARY.md`、Architecture Index、`verify:full-game-design`。验证结果为 4 Acts / 28 Skills / 10+4 Enemies / 4 Bosses / 3 Projectiles / 4 Obstacles / 2 Hazards / 53 Encounter Targets，12/28 最大完成比例 0.428571。
+
+## 2026-08-12 — Full Game Production P1 Foundation
+
+- 已实现 4 Act、每 Act 6 Layer 的确定性路线生成与 Run Progress State；100 个 Seed 均通过连通性、奖励和 Boss 可达验证。
+- 第一版路线连线曾因旋转目标索引造成部分节点无入边；已改为旋转源投影，并加入回归测试。
+- 已实现 Encounter Scheduler 的 Immediate / Timed / After Previous Killed / Triggered、Spawn Warning、实体归属、完成判定与 JSON-safe State。
+- 定向验证：`tests/run-graph.test.ts`、`tests/run-system.test.ts`、`tests/encounter-scheduler.test.ts` 共 11 项通过；`npm run check` 通过。
+- 当前边界：Route 与 Scheduler 仍需接入正式 GameState、Replay、浏览器 Route Map 和两波真实 Combat，不能计为 P1 完成。

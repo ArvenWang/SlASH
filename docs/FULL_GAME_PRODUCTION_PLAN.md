@@ -84,12 +84,12 @@ P11 Visual Branch Integration Contract + Git Push
 
 ### 任务
 
-- [ ] 新增 `RunDefinition / ActDefinition / RouteNodeDefinition / RouteGraphState`。
-- [ ] 新增 4 Act 稳定 ID 与 6 Layer 拓扑约束。
-- [ ] Seeded Route Generator，100 Seed 无断路。
+- [x] 新增 `RunDefinition / ActDefinition / RouteNodeDefinition / RouteGraphState`。
+- [x] 新增 4 Act 稳定 ID 与 6 Layer 拓扑约束。
+- [x] Seeded Route Generator，100 Seed 无断路。
 - [ ] Game Phase 扩展：title / map / allocation / playing / reward / boss / victory / defeat。
-- [ ] Encounter Runtime State：Current Wave、Pending、Activated、Completed、Triggers。
-- [ ] 实现 Immediate / Timed / After Previous Killed / Triggered。
+- [x] Encounter Runtime State：Current Wave、Pending、Activated、Completed、Triggers。
+- [x] 实现 Immediate / Timed / After Previous Killed / Triggered。
 - [ ] 生成稳定 Spawn / Entity ID，支持 Restart / Replay。
 - [ ] Stage Completion 改为 Required Wave + Hostile + Boss Objective。
 - [ ] Snapshot 暴露 Act、Layer、Node、Route Choice、Wave。

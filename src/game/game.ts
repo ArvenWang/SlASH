@@ -185,6 +185,7 @@ export function createGame(stageIndex = 0, rules: Partial<GameRules> = {}): Game
       random: createSeededRandom(DEFAULT_RUN_SEED).snapshot(),
       selectedUpgrades: [],
       acquiredResources: {},
+      fullGame: null,
     },
     stage: {
       index: stageIndex,
@@ -287,6 +288,7 @@ export function restartStage(state: GameState): GameState {
     random: { ...state.run.random },
     selectedUpgrades: [...state.run.selectedUpgrades],
     acquiredResources: { ...state.run.acquiredResources },
+    fullGame: state.run.fullGame === null ? null : structuredClone(state.run.fullGame),
   };
   replacement.eventSequence = state.eventSequence;
   replacement.commandSequence = state.commandSequence;
@@ -321,6 +323,7 @@ export function advanceStage(state: GameState): GameState {
     random: { ...state.run.random },
     selectedUpgrades: [...state.run.selectedUpgrades],
     acquiredResources: { ...state.run.acquiredResources },
+    fullGame: state.run.fullGame === null ? null : structuredClone(state.run.fullGame),
   };
   replacement.eventSequence = state.eventSequence;
   replacement.commandSequence = state.commandSequence;

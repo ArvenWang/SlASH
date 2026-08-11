@@ -18,6 +18,11 @@ export type LightingProfileId = string;
 export type PostFxProfileId = string;
 export type DeathProfileId = string;
 export type CameraProfileId = string;
+export type RunDefinitionId = string;
+export type ActDefinitionId = string;
+export type RouteNodeId = string;
+export type EncounterTemplateId = string;
+export type BossDefinitionId = string;
 
 export function createEnemyEntityId(levelIndex: number, ordinal: number): EntityId {
   return `s${levelIndex + 1}-enemy-${String(ordinal).padStart(2, "0")}`;

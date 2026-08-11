@@ -19,6 +19,9 @@ export interface SpawnDefinition {
 export interface EncounterWave {
   readonly id: string;
   readonly activation: WaveActivation;
+  readonly activationDelayMs?: number;
+  readonly triggerId?: string;
+  readonly warningDurationMs?: number;
   readonly spawns: readonly SpawnDefinition[];
 }
 
