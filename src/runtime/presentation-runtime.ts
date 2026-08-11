@@ -46,6 +46,7 @@ export interface PresentationShell {
   readonly chargeLabel: HTMLSpanElement;
   readonly chargeFill: HTMLElement;
   readonly energyLabel: HTMLSpanElement;
+  readonly vectorLabel: HTMLSpanElement;
   readonly phaseBanner: HTMLDivElement;
   readonly phaseEyebrow: HTMLSpanElement;
   readonly phaseTitle: HTMLElement;
@@ -124,6 +125,23 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   previewLine.renderOrder = 4;
   scene.add(previewLine);
 
+  const ultimatePlanGeometry = new THREE.BufferGeometry();
+  ultimatePlanGeometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(new Float32Array(6 * 3), 3),
+  );
+  ultimatePlanGeometry.setDrawRange(0, 0);
+  const ultimatePlanMaterial = new THREE.LineBasicMaterial({
+    color: 0xe6ffff,
+    transparent: true,
+    opacity: 0.82,
+    depthWrite: false,
+  });
+  const ultimatePlanLine = new THREE.Line(ultimatePlanGeometry, ultimatePlanMaterial);
+  ultimatePlanLine.visible = false;
+  ultimatePlanLine.renderOrder = 5;
+  scene.add(ultimatePlanLine);
+
   const playerActor = playerProvider.create({ role: "hero" });
   scene.add(playerActor.root);
   vfx.setDensity(tuning.vfxDensity);
@@ -197,6 +215,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   let renderedChargeProgress = -1;
   let renderedChargeLabel = "";
   let renderedEnergy = -1;
+  let renderedVectorLabel = "";
   let renderedBannerVisible: boolean | null = null;
   let renderedBannerTone = "";
   let renderedBannerEyebrow = "";
@@ -331,6 +350,17 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       shell.energyLabel.textContent = `ENERGY ${String(energy).padStart(3, "0")} / 100`;
       renderedEnergy = energy;
     }
+    const planning = gameState.player.ultimatePlanning;
+    const execution = gameState.player.ultimateExecution;
+    const vectorLabel = planning
+      ? `VECTOR PLAN ${planning.points.length} / ${planning.requiredPointCount} · ${Math.max(0, (planning.durationMs - planning.elapsedMs) / 1000).toFixed(1)}s`
+      : execution
+        ? `VECTOR EXECUTE ${execution.segmentIndex + 1} / ${execution.points.length}`
+        : energy >= 100 ? "SPACE / VECTOR READY" : "SPACE / VECTOR LOCKED";
+    if (renderedVectorLabel !== vectorLabel) {
+      shell.vectorLabel.textContent = vectorLabel;
+      renderedVectorLabel = vectorLabel;
+    }
   }
 
   function updatePhaseBanner(): void {
@@ -395,6 +425,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       && hoverValid
       && tuning.dashPreview
       && gameState.stage.phase === "playing"
+      && gameState.player.ultimatePlanning === null
       && worldTime >= previewSuppressedUntil;
     if (!previewLine.visible) return;
     const positions = previewGeometry.getAttribute("position") as THREE.BufferAttribute;
@@ -416,6 +447,24 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     }
     positions.needsUpdate = true;
     previewGeometry.computeBoundingSphere();
+  }
+
+  function updateUltimatePlan(): void {
+    const planning = gameState.player.ultimatePlanning;
+    ultimatePlanLine.visible = planning !== null;
+    if (!planning) {
+      ultimatePlanGeometry.setDrawRange(0, 0);
+      return;
+    }
+    const points = [gameState.player.position, ...planning.points];
+    if (pointerSeen && hoverValid && points.length < 6) {
+      points.push({ x: pointerWorld.x, z: pointerWorld.z });
+    }
+    const positions = ultimatePlanGeometry.getAttribute("position") as THREE.BufferAttribute;
+    points.slice(0, 6).forEach((point, index) => positions.setXYZ(index, point.x, 0.1, point.z));
+    positions.needsUpdate = true;
+    ultimatePlanGeometry.setDrawRange(0, Math.min(6, points.length));
+    ultimatePlanGeometry.computeBoundingSphere();
   }
 
   function triggerDashVisual(event: Extract<GameEvent, { type: "dash-started" }>): void {
@@ -674,11 +723,16 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     const chargeProgress = player.charge
       ? THREE.MathUtils.clamp(player.charge.heldMs / player.charge.thresholdMs, 0, 1)
       : null;
+    const ultimatePlanningProgress = player.ultimatePlanning
+      ? THREE.MathUtils.clamp(player.ultimatePlanning.elapsedMs / player.ultimatePlanning.durationMs, 0, 1)
+      : null;
     const recoveryProgress = !player.dash && player.recoveryRemainingMs > 0
       ? 1 - THREE.MathUtils.clamp(player.recoveryRemainingMs / gameState.rules.recoveryMs, 0, 1)
       : null;
     const playerAnimationState = gameState.stage.phase === "dead"
       ? "death"
+      : ultimatePlanningProgress !== null
+        ? "anticipation"
       : chargeProgress !== null
         ? "anticipation"
       : dashProgress !== null && dashProgress < 0.18
@@ -697,7 +751,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       turn: THREE.MathUtils.clamp(playerTurnDelta / 0.65, -1, 1),
       sourceProgress: gameState.stage.phase === "dead"
         ? THREE.MathUtils.clamp(phaseAge / 0.78, 0, 1)
-        : chargeProgress ?? dashProgress ?? recoveryProgress,
+        : ultimatePlanningProgress ?? chargeProgress ?? dashProgress ?? recoveryProgress,
     });
     for (const enemy of gameState.enemies) {
       const visual = enemyVisuals.get(enemy.id);
@@ -719,6 +773,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     camera.position.y += Math.sin(worldTime * 0.21) * 0.07;
     camera.lookAt(cameraTarget);
     updatePreview();
+    updateUltimatePlan();
     updateHud();
     updatePhaseBanner();
     return lifecycleAction;
@@ -772,9 +827,11 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       }
       enemyVisuals.clear();
       playerActor.dispose();
-      scene.remove(previewLine, enemyContactShadows);
+      scene.remove(previewLine, ultimatePlanLine, enemyContactShadows);
       previewGeometry.dispose();
       previewMaterial.dispose();
+      ultimatePlanGeometry.dispose();
+      ultimatePlanMaterial.dispose();
       enemyContactShadowGeometry.dispose();
       enemyContactShadowMaterial.dispose();
       enemyContactShadowTexture.dispose();

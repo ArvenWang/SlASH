@@ -76,6 +76,30 @@ export interface ChargeState {
   readyEventEmitted: boolean;
 }
 
+export interface UltimatePlanningState {
+  abilityId: AbilityId;
+  startedAtTick: number;
+  elapsedMs: number;
+  durationMs: number;
+  requiredPointCount: number;
+  worldTimeScale: number;
+  points: Vec2[];
+}
+
+export interface UltimatePathSegment {
+  readonly from: Vec2;
+  readonly to: Vec2;
+}
+
+export interface UltimateExecutionState {
+  abilityId: AbilityId;
+  points: Vec2[];
+  segmentIndex: number;
+  killCount: number;
+  completedSegments: UltimatePathSegment[];
+  crossCascadeTriggered: boolean;
+}
+
 export interface BufferedAbilityCommand {
   slot: AbilitySlot;
   target: Vec2;
@@ -93,6 +117,8 @@ export interface PlayerState {
   abilities: Record<AbilitySlot, AbilityRuntimeState | null>;
   ultimateEnergy: number;
   predatorDriveExpiresAtMs: number | null;
+  ultimatePlanning: UltimatePlanningState | null;
+  ultimateExecution: UltimateExecutionState | null;
 }
 
 export interface ArmorPartState {
@@ -164,6 +190,16 @@ export interface StageRuntimeState {
 export interface CombatRuntimeState {
   kills: number;
   totalEnemies: number;
+  scheduledSlashes: ScheduledSlashState[];
+}
+
+export interface ScheduledSlashState {
+  readonly id: string;
+  readonly executeAtMs: number;
+  readonly from: Vec2;
+  readonly to: Vec2;
+  readonly hitRadius: number;
+  readonly attackId: AbilityId;
 }
 
 export interface BaseGameEvent {
@@ -194,6 +230,13 @@ export type GameEventPayload =
   | { type: "armor-broken"; enemyId: EntityId; armorPartId: string; attackId: AbilityId; position: Vec2; contactRegion: string }
   | { type: "armor-blocked"; enemyId: EntityId; armorPartId: string; attackId: AbilityId; position: Vec2 }
   | { type: "ultimate-energy-changed"; before: number; after: number; source: string }
+  | { type: "ultimate-planning-started"; abilityId: AbilityId; requiredPointCount: number; durationMs: number; worldTimeScale: number }
+  | { type: "ultimate-point-added"; abilityId: AbilityId; pointIndex: number; point: Vec2 }
+  | { type: "ultimate-planning-cancelled"; abilityId: AbilityId; reason: string }
+  | { type: "ultimate-segment-started"; abilityId: AbilityId; segmentIndex: number; from: Vec2; to: Vec2 }
+  | { type: "ultimate-cross-triggered"; abilityId: AbilityId; position: Vec2 }
+  | { type: "ultimate-ended"; abilityId: AbilityId; segmentCount: number; killCount: number; energyRemaining: number }
+  | { type: "scheduled-slash-triggered"; attackId: AbilityId; from: Vec2; to: Vec2 }
   | { type: "player-died"; enemyId: EntityId; position: Vec2 }
   | { type: "campaign-started"; seed: number }
   | { type: "route-node-started"; nodeId: string; encounterId: EncounterId }
@@ -251,7 +294,10 @@ export type GameCommand =
   | { type: "begin-charge"; target: Vec2 }
   | { type: "update-charge-target"; target: Vec2 }
   | { type: "release-charge"; target: Vec2 }
-  | { type: "cancel-charge" };
+  | { type: "cancel-charge" }
+  | { type: "start-ultimate" }
+  | { type: "add-ultimate-point"; target: Vec2 }
+  | { type: "cancel-ultimate" };
 
 export type GameCommandResult =
   | DashRequestResult
@@ -268,6 +314,10 @@ export type GameCommandResult =
   | "charge-updated"
   | "charge-cancelled"
   | "charged-released"
+  | "ultimate-planning-started"
+  | "ultimate-point-added"
+  | "ultimate-executing"
+  | "ultimate-cancelled"
   | "ignored";
 
 export interface GameCommandDispatchResult {
@@ -276,7 +326,7 @@ export interface GameCommandDispatchResult {
 }
 
 export type DashRequestResult = "started" | "buffered" | "ignored";
-export type PlayerAction = "ready" | "charging" | "dashing" | "recovering" | "dead";
+export type PlayerAction = "ready" | "planning" | "charging" | "dashing" | "recovering" | "dead";
 
 export interface GameSnapshot {
   stage: { index: number; number: number; count: number; id: string; name: string };
@@ -331,6 +381,16 @@ export interface GameSnapshot {
       armorParts: Array<{ id: string; intact: boolean }>;
       staggerMs: number;
     }>;
+    ultimate: null | {
+      phase: "planning" | "executing";
+      elapsedMs: number;
+      durationMs: number;
+      requiredPointCount: number;
+      points: Vec2[];
+      segmentIndex: number;
+      killCount: number;
+    };
+    scheduledSlashes: Array<{ id: string; executeAtMs: number; attackId: AbilityId }>;
   };
   campaign: null | {
     phase: string;

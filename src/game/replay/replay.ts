@@ -38,8 +38,16 @@ export interface ReplayRecorder {
 }
 
 function cloneCommand(command: GameCommand): GameCommand {
-  if (command.type !== "activate-ability") return { ...command };
-  return { ...command, target: { x: command.target.x, z: command.target.z } };
+  switch (command.type) {
+    case "activate-ability":
+    case "begin-charge":
+    case "update-charge-target":
+    case "release-charge":
+    case "add-ultimate-point":
+      return { ...command, target: { x: command.target.x, z: command.target.z } };
+    default:
+      return { ...command };
+  }
 }
 
 function stableStringify(value: unknown): string {

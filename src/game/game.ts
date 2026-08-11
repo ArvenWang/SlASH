@@ -13,7 +13,11 @@ import {
   DASH_SLASH_ABILITY_ID,
   VECTOR_FOCUS_ABILITY_ID,
 } from "../content/abilities/definitions";
-import { VANGUARD_ENEMY_ID, enemyDefinitions } from "../content/enemies/definitions";
+import {
+  STRIKER_ENEMY_ID,
+  VANGUARD_ENEMY_ID,
+  enemyDefinitions,
+} from "../content/enemies/definitions";
 import {
   LEVEL_DEFINITIONS,
   levelByIndex,
@@ -27,6 +31,13 @@ import {
   releaseChargedDash,
   updateChargedDashTarget,
 } from "./abilities/charged-dash";
+import {
+  addVectorFocusPoint,
+  advanceVectorFocusPlanning,
+  cancelVectorFocus,
+  completeVectorFocusSegment,
+  startVectorFocus,
+} from "./abilities/vector-focus";
 import { segmentIntersectsCircle } from "./collision/shapes";
 import { clampPointToArena } from "./collision/arena";
 import type {
@@ -250,6 +261,8 @@ export function createGame(stageIndex = 0, rules: Partial<GameRules> = {}): Game
       },
       ultimateEnergy: 0,
       predatorDriveExpiresAtMs: null,
+      ultimatePlanning: null,
+      ultimateExecution: null,
     },
     enemies: spawns.map((spawn, index) => {
       const definition = enemyDefinitions.get(spawn.enemyDefinitionId);
@@ -274,6 +287,7 @@ export function createGame(stageIndex = 0, rules: Partial<GameRules> = {}): Game
     combat: {
       kills: 0,
       totalEnemies: spawns.length,
+      scheduledSlashes: [],
     },
     eventSequence: 0,
     commandSequence: 0,
@@ -326,6 +340,7 @@ export function createStressGame(enemyCount = 20, rules: Partial<GameRules> = {}
   }));
   state.combat.totalEnemies = safeCount;
   state.combat.kills = 0;
+  state.combat.scheduledSlashes = [];
   return state;
 }
 
@@ -354,6 +369,38 @@ export function createArmorValidationGame(rules: Partial<GameRules> = {}): GameS
   }];
   state.combat.kills = 0;
   state.combat.totalEnemies = 1;
+  state.combat.scheduledSlashes = [];
+  drainGameEvents(state);
+  return state;
+}
+
+/** Deterministic browser acceptance scenario for Vector Focus planning. */
+export function createUltimateValidationGame(rules: Partial<GameRules> = {}): GameState {
+  const state = createGame(0, rules);
+  const definition = enemyDefinitions.get(STRIKER_ENEMY_ID);
+  state.stage.levelId = "validation-vector-focus";
+  state.stage.name = "VECTOR FOCUS";
+  state.stage.encounterId = "validation-vector-focus-v1";
+  state.player.position = point(0, 0);
+  state.player.facing = point(1, 0);
+  state.player.ultimateEnergy = 100;
+  state.enemies = [2, 4, 6].map((x, index) => ({
+    id: `validation-vector-target-${index + 1}`,
+    definitionId: definition.id,
+    position: point(x, 0),
+    facing: point(-1, 0),
+    radius: definition.radius,
+    speed: 0,
+    alive: true,
+    state: "active" as const,
+    spawnedAtMs: 0,
+    killedAtMs: null,
+    armorParts: [],
+    staggerRemainingMs: 0,
+  }));
+  state.combat.kills = 0;
+  state.combat.totalEnemies = state.enemies.length;
+  state.combat.scheduledSlashes = [];
   drainGameEvents(state);
   return state;
 }
@@ -443,6 +490,9 @@ export function getPlayerAction(state: GameState): PlayerAction {
   }
   if (state.player.dash !== null) {
     return "dashing";
+  }
+  if (state.player.ultimatePlanning !== null) {
+    return "planning";
   }
   if (state.player.charge !== null) {
     return "charging";
@@ -575,7 +625,17 @@ function killEnemy(
       }
     }
   }
-  if (state.run.fullGame !== null || attackId === CHARGED_DASH_ABILITY_ID || attackId === "skill-armor-shrapnel-v1") {
+  if (dash?.abilityId === VECTOR_FOCUS_ABILITY_ID && attackId === VECTOR_FOCUS_ABILITY_ID) {
+    if (state.player.ultimateExecution) state.player.ultimateExecution.killCount += 1;
+  }
+  const ultimateDerived = attackId === VECTOR_FOCUS_ABILITY_ID ||
+    attackId === "skill-vector-echo-v1" ||
+    attackId === "skill-cross-cascade-v1";
+  if (!ultimateDerived && (
+    state.run.fullGame !== null ||
+    attackId === CHARGED_DASH_ABILITY_ID ||
+    attackId === "skill-armor-shrapnel-v1"
+  )) {
     changeUltimateEnergy(state, enemyDefinitions.get(enemy.definitionId).energyReward, `enemy-kill:${enemy.id}`);
   }
   emitGameEvent(state, {
@@ -627,6 +687,50 @@ function segmentProjection(
   return ((pointValue.x - start.x) * segmentX + (pointValue.z - start.z) * segmentZ) / segmentLengthSquared;
 }
 
+function resolveScheduledSlashes(state: GameState): void {
+  if (state.combat.scheduledSlashes.length === 0) return;
+  const pending = [];
+  for (const slash of state.combat.scheduledSlashes) {
+    if (slash.executeAtMs > state.elapsedMs + EPSILON) {
+      pending.push(slash);
+      continue;
+    }
+    for (const enemy of state.enemies) {
+      if (!enemy.alive || !segmentIntersectsCircle(
+        slash.from,
+        slash.to,
+        enemy.position,
+        slash.hitRadius + enemy.radius,
+      )) continue;
+      const contact = resolveArmorContact(
+        enemy,
+        slash.from,
+        slash.to,
+        undefined,
+        enemy.radius + slash.hitRadius,
+      );
+      if (contact.armorPart) {
+        emitGameEvent(state, {
+          type: "armor-blocked",
+          enemyId: enemy.id,
+          armorPartId: contact.armorPart.id,
+          attackId: slash.attackId,
+          position: copyPoint(enemy.position),
+        });
+      } else {
+        killEnemy(state, enemy, slash.attackId, contact.isRearContact);
+      }
+    }
+    emitGameEvent(state, {
+      type: "scheduled-slash-triggered",
+      attackId: slash.attackId,
+      from: copyPoint(slash.from),
+      to: copyPoint(slash.to),
+    });
+  }
+  state.combat.scheduledSlashes = pending;
+}
+
 function completeDash(state: GameState): void {
   const dash = state.player.dash;
   if (dash === null) {
@@ -634,16 +738,25 @@ function completeDash(state: GameState): void {
   }
   state.player.position = copyPoint(dash.to);
   state.player.dash = null;
-  state.player.recoveryRemainingMs = dash.recoveryMs;
   emitGameEvent(state, {
     type: "dash-ended",
     abilityId: dash.abilityId,
     sourceId: "player",
     position: copyPoint(state.player.position),
   });
+  if (dash.abilityId === VECTOR_FOCUS_ABILITY_ID) {
+    state.player.recoveryRemainingMs = 0;
+    completeVectorFocusSegment(state, dash);
+    return;
+  }
+  state.player.recoveryRemainingMs = dash.recoveryMs;
 }
 
 function advancePlayerAction(state: GameState, deltaMs: number): void {
+  if (state.player.ultimatePlanning !== null) {
+    advanceVectorFocusPlanning(state, deltaMs);
+    return;
+  }
   if (state.player.charge !== null) {
     advanceChargedDashHold(state, deltaMs);
     return;
@@ -715,7 +828,13 @@ function aliveEnemyCount(state: GameState): number {
 }
 
 function resolveStageCompletion(state: GameState): boolean {
-  if (aliveEnemyCount(state) !== 0 || state.player.dash !== null || state.player.charge !== null) {
+  if (
+    aliveEnemyCount(state) !== 0 ||
+    state.player.dash !== null ||
+    state.player.charge !== null ||
+    state.player.ultimatePlanning !== null ||
+    state.player.ultimateExecution !== null
+  ) {
     return false;
   }
 
@@ -756,6 +875,8 @@ function resolvePlayerContact(state: GameState): void {
     state.player.hp = 0;
     state.player.dash = null;
     state.player.charge = null;
+    state.player.ultimatePlanning = null;
+    state.player.ultimateExecution = null;
     state.player.recoveryRemainingMs = 0;
     state.player.bufferedAbility = null;
     state.stage.phase = "dead";
@@ -777,8 +898,10 @@ function simulateFixedStep(state: GameState): void {
   state.tick += 1;
   state.run.tick += 1;
   state.elapsedMs += FIXED_STEP_MS;
+  const enemyTimeScale = state.player.ultimatePlanning?.worldTimeScale ?? 1;
   advanceCampaignEncounterScheduler(state);
   advancePlayerAction(state, FIXED_STEP_MS);
+  resolveScheduledSlashes(state);
 
   // A dash can finish a wave during this tick. Running the scheduler again
   // allows an authored zero-warning follow-up to activate deterministically.
@@ -788,7 +911,7 @@ function simulateFixedStep(state: GameState): void {
     return;
   }
 
-  moveEnemiesWithBehaviors(state, FIXED_STEP_MS);
+  moveEnemiesWithBehaviors(state, FIXED_STEP_MS * enemyTimeScale);
   resolvePlayerContact(state);
 }
 
@@ -829,6 +952,12 @@ export function dispatchGameCommand(
     result = releaseChargedDash(state, command.target);
   } else if (command.type === "cancel-charge") {
     result = cancelChargedDash(state);
+  } else if (command.type === "start-ultimate") {
+    result = startVectorFocus(state);
+  } else if (command.type === "add-ultimate-point") {
+    result = addVectorFocusPoint(state, command.target);
+  } else if (command.type === "cancel-ultimate") {
+    result = cancelVectorFocus(state);
   }
   return { sequence: state.commandSequence, result };
 }
@@ -1039,6 +1168,28 @@ export function getGameSnapshot(state: GameState): GameSnapshot {
           armorParts: enemy.armorParts.map((part) => ({ id: part.id, intact: part.intact })),
           staggerMs: roundForSnapshot(enemy.staggerRemainingMs),
         })),
+      ultimate: state.player.ultimatePlanning !== null ? {
+        phase: "planning",
+        elapsedMs: roundForSnapshot(state.player.ultimatePlanning.elapsedMs),
+        durationMs: roundForSnapshot(state.player.ultimatePlanning.durationMs),
+        requiredPointCount: state.player.ultimatePlanning.requiredPointCount,
+        points: state.player.ultimatePlanning.points.map(copyPoint),
+        segmentIndex: 0,
+        killCount: 0,
+      } : state.player.ultimateExecution !== null ? {
+        phase: "executing",
+        elapsedMs: 0,
+        durationMs: 0,
+        requiredPointCount: state.player.ultimateExecution.points.length,
+        points: state.player.ultimateExecution.points.map(copyPoint),
+        segmentIndex: state.player.ultimateExecution.segmentIndex,
+        killCount: state.player.ultimateExecution.killCount,
+      } : null,
+      scheduledSlashes: state.combat.scheduledSlashes.map((slash) => ({
+        id: slash.id,
+        executeAtMs: roundForSnapshot(slash.executeAtMs),
+        attackId: slash.attackId,
+      })),
     },
     campaign: campaign === null || allocation === null ? null : {
       phase: campaign.phase,
@@ -1217,6 +1368,7 @@ function configureLineKillScenario(enemyCount: number): GameState {
   }));
   state.combat.kills = 0;
   state.combat.totalEnemies = enemyCount;
+  state.combat.scheduledSlashes = [];
   drainGameEvents(state);
   return state;
 }

@@ -4,6 +4,7 @@ import {
   createGame,
   createFullGameGame,
   createArmorValidationGame,
+  createUltimateValidationGame,
   createStressGame,
   dispatchGameCommand,
   drainGameEvents,
@@ -27,6 +28,7 @@ export interface GameRuntime {
   loadStage(stageIndex: number, rules?: Partial<GameRules>): void;
   loadStressScenario(enemyCount?: number): void;
   loadArmorScenario(): void;
+  loadUltimateScenario(): void;
   resetRun(): void;
 }
 
@@ -78,6 +80,9 @@ export function createGameRuntime(initialStageIndex = 0): GameRuntime {
     },
     loadArmorScenario() {
       replaceState(createArmorValidationGame(state.rules));
+    },
+    loadUltimateScenario() {
+      replaceState(createUltimateValidationGame(state.rules));
     },
     resetRun() {
       replaceState(createGame(0));
@@ -131,6 +136,9 @@ export function createFullGameRuntime(seed?: number): GameRuntime {
     },
     loadArmorScenario() {
       replaceState(createArmorValidationGame(state.rules));
+    },
+    loadUltimateScenario() {
+      replaceState(createUltimateValidationGame(state.rules));
     },
     resetRun() {
       replaceState(createFullGameGame(state.run.seed, state.rules));

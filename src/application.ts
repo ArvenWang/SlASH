@@ -30,6 +30,7 @@ export async function bootstrapSlashApplication(): Promise<void> {
     chargeLabel: requiredElement<HTMLSpanElement>("#charge-label"),
     chargeFill: requiredElement<HTMLElement>("#charge-fill"),
     energyLabel: requiredElement<HTMLSpanElement>("#energy-label"),
+    vectorLabel: requiredElement<HTMLSpanElement>("#vector-label"),
     phaseBanner: requiredElement<HTMLDivElement>("#phase-banner"),
     phaseEyebrow: requiredElement<HTMLSpanElement>("#phase-eyebrow"),
     phaseTitle: requiredElement<HTMLElement>("#phase-title"),
@@ -111,6 +112,8 @@ export async function bootstrapSlashApplication(): Promise<void> {
   let audioEnabled = true;
   let chargedPointerActive = false;
   let chargedPointerInputId: number | null = null;
+  let ultimatePointPointerActive = false;
+  let ultimatePointInputId: number | null = null;
 
   function dispatchPrimaryAbility(target: { x: number; z: number }): string {
     if (gameState.stage.phase !== "playing") return "ignored";
@@ -251,6 +254,11 @@ export async function bootstrapSlashApplication(): Promise<void> {
         tuning.enemyMotion = false;
         resetPresentationStage();
       },
+      setUltimateScenario() {
+        gameRuntime.loadUltimateScenario();
+        tuning.enemyMotion = false;
+        resetPresentationStage();
+      },
       dashTo: (x, z) => dispatchPrimaryAbility({ x, z }),
       beginChargeTo(x, z) {
         return gameRuntime.dispatch({ type: "begin-charge", target: { x, z } }).result;
@@ -262,6 +270,17 @@ export async function bootstrapSlashApplication(): Promise<void> {
         const result = gameRuntime.dispatch({ type: "release-charge", target: { x, z } }).result;
         presentationRuntime.consumeEvents(gameRuntime.drainEvents());
         return result;
+      },
+      startUltimate() {
+        return gameRuntime.dispatch({ type: "start-ultimate" }).result;
+      },
+      addUltimatePoint(x, z) {
+        const result = gameRuntime.dispatch({ type: "add-ultimate-point", target: { x, z } }).result;
+        presentationRuntime.consumeEvents(gameRuntime.drainEvents());
+        return result;
+      },
+      cancelUltimate() {
+        return gameRuntime.dispatch({ type: "cancel-ultimate" }).result;
       },
       setEnemyMotion(enabled) {
         tuning.enemyMotion = Boolean(enabled);
@@ -303,6 +322,11 @@ export async function bootstrapSlashApplication(): Promise<void> {
       const target = presentationRuntime.getPrimaryTarget();
       if (!target) return;
       const inputId = rendererRuntime.diagnostics.markInput();
+      if (gameState.player.ultimatePlanning !== null) {
+        ultimatePointPointerActive = true;
+        ultimatePointInputId = inputId;
+        return;
+      }
       const { result } = gameRuntime.dispatch({ type: "begin-charge", target });
       chargedPointerActive = result === "charge-started";
       chargedPointerInputId = chargedPointerActive ? inputId : null;
@@ -315,6 +339,16 @@ export async function bootstrapSlashApplication(): Promise<void> {
         if (chargedPointerActive) gameRuntime.dispatch({ type: "cancel-charge" });
         chargedPointerActive = false;
         chargedPointerInputId = null;
+        return;
+      }
+      if (ultimatePointPointerActive && gameState.player.ultimatePlanning !== null) {
+        const { result } = gameRuntime.dispatch({ type: "add-ultimate-point", target });
+        if (result === "ultimate-executing" && ultimatePointInputId !== null) {
+          presentationRuntime.markPendingAbilityInput(ultimatePointInputId);
+        }
+        presentationRuntime.consumeEvents(gameRuntime.drainEvents());
+        ultimatePointPointerActive = false;
+        ultimatePointInputId = null;
         return;
       }
       if (!chargedPointerActive) {
@@ -337,6 +371,23 @@ export async function bootstrapSlashApplication(): Promise<void> {
       }
       chargedPointerActive = false;
       chargedPointerInputId = null;
+      ultimatePointPointerActive = false;
+      ultimatePointInputId = null;
+      const ultimateResult = gameRuntime.dispatch({ type: "cancel-ultimate" }).result;
+      if (ultimateResult !== "ignored") presentationRuntime.consumeEvents(gameRuntime.drainEvents());
+    },
+    onSecondaryPointer: () => {
+      gameRuntime.dispatch({ type: "cancel-charge" });
+      gameRuntime.dispatch({ type: "cancel-ultimate" });
+      presentationRuntime.consumeEvents(gameRuntime.drainEvents());
+      chargedPointerActive = false;
+      chargedPointerInputId = null;
+      ultimatePointPointerActive = false;
+      ultimatePointInputId = null;
+    },
+    onUltimate: () => {
+      const { result } = gameRuntime.dispatch({ type: "start-ultimate" });
+      if (result !== "ignored") presentationRuntime.consumeEvents(gameRuntime.drainEvents());
     },
     onPointerLeave: presentationRuntime.clearPointer,
     onRestart: () => {

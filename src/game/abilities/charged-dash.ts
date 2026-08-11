@@ -26,6 +26,8 @@ export function beginChargedDash(state: GameState, target: Vec2): GameCommandRes
     state.player.hp === 0 ||
     state.player.dash !== null ||
     state.player.charge !== null ||
+    state.player.ultimatePlanning !== null ||
+    state.player.ultimateExecution !== null ||
     state.player.recoveryRemainingMs > EPSILON ||
     state.player.abilities.secondary?.abilityId !== CHARGED_DASH_ABILITY_ID
   ) {

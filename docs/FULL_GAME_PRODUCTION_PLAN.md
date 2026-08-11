@@ -162,16 +162,16 @@ P11 Visual Branch Integration Contract + Git Push
 
 ### 任务
 
-- [ ] Ability Activation 扩展：begin-hold / update-target / release / cancel 已完成；multi-point-plan 待 Vector Focus。
+- [x] Ability Activation 扩展：begin-hold / update-target / release / cancel / multi-point-plan。
 - [x] Charging Runtime State 与 650ms Fixed Tick Threshold。
 - [x] Armor Part Definition / Runtime State / Coverage Shape。
 - [x] Charged Path 多目标排序与每敌人一次结算。
 - [x] 前 / 侧甲卸甲、无甲背部击杀、后甲优先卸甲。
 - [ ] Charged / Obstacle / Refraction 组合。
-- [ ] Ultimate Energy、Planning、Slow World、3 段执行、Cancel。
-- [ ] 9 Charged Skill Hook 已完成并测试；6 Ultimate Hook 待 Vector Focus。
-- [ ] Events：charge、armor-break、energy 已完成；rear-execution、planning、segment、ultimate-end 待补。
-- [ ] Snapshot 已暴露 Charge / Energy / Armor；Replay 待升级。
+- [x] Ultimate Energy、Planning、Slow World、3 段执行、Cancel。
+- [ ] 9 个 Charged Hook 已完成；Ultimate 已完成 5 / 6，U-05 Projectile Return 随 P4 Projectile 生命周期完成。
+- [ ] Events：charge、armor-break、energy、planning、segment、ultimate-end 已完成；显式 rear-execution 事件待补。
+- [ ] Snapshot 已暴露 Charge / Energy / Armor / Ultimate / Scheduled Slash；Replay 已支持新目标命令深拷贝，完整 Campaign Schema 待升级。
 
 ### 测试
 

@@ -40,7 +40,7 @@ export function activateAbility(
   if (!runtime || runtime.cooldownRemainingMs > EPSILON) return "ignored";
   const definition = abilityDefinitions.get(runtime.abilityId);
   if (definition.slot !== slot || definition.activation !== "target-point") return "ignored";
-  if (state.player.charge !== null) return "ignored";
+  if (state.player.charge !== null || state.player.ultimatePlanning !== null || state.player.ultimateExecution !== null) return "ignored";
 
   const clampedTarget = clampTarget(state, target);
   if (state.player.dash === null && state.player.recoveryRemainingMs <= EPSILON) {

@@ -107,6 +107,19 @@ describe("seed and replay", () => {
     expect(replay.state.stage.phase).toBe("stage-cleared");
     expect(replay.state.combat.kills).toBe(8);
   });
+
+  test("snapshots every target-bearing command instead of retaining mutable input", () => {
+    const state = createGame(0);
+    const recorder = createReplayRecorder(state);
+    const target = { x: 6, z: -2 };
+    recorder.dispatch({ type: "begin-charge", target });
+    target.x = 99;
+    target.z = 99;
+    const command = recorder.finish().entries[0]?.command;
+    expect(command?.type).toBe("begin-charge");
+    if (!command || command.type !== "begin-charge") throw new Error("Expected begin-charge replay entry.");
+    expect(command.target).toEqual({ x: 6, z: -2 });
+  });
 });
 
 function chooseDashTarget(state: GameState): Vec2 {

@@ -15,7 +15,7 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 已增加 `FULL_GAME_CONTENT_MANIFEST.json`、统一术语表和 `npm run verify:full-game-design`；机器门已确认 4 Act、28 Skill、10+4 Enemy、4 Boss、3/4/2 Entity、53 个 Encounter 目标和 12/28 点数上限一致。
 - 技能经济已改为完整 Run：开局 2 点、每 Act 保证 2 点、Elite 最多补 2 点；保证 10、上限 12，只能购买 28 节点中的 42.86%。
 - Charged Dash 正式规则锁定为：整条路线贯穿敌群；命中真实 Armor Coverage 就卸对应甲；命中裸露区就击杀；无甲背部可直接处决，后背有甲则先卸后甲。
-- 当前已进入 P1/P2 可玩集成：默认产品入口具备 Title → Planning Board → 路线与技能原子确认 → 两波 Combat → Reward → 下一次 Planning；其余 53 Encounter、Forge/Event、完整 Skill Hook、Replay 与后续系统仍按计划推进，不把首个闭环冒充完整游戏。
+- 当前已进入 P1–P3 可玩集成：默认产品入口具备 Title → Planning Board → 路线与技能原子确认 → 两波 Combat → Reward → 下一次 Planning；Charged Dash 与 Vector Focus 的根能力已真实可玩。其余 Encounter、Forge/Event、Projectile/Obstacle/Hazard、Boss、完整 Replay 与后续系统仍按计划推进，不把首个闭环冒充完整游戏。
 
 ## Full Game 已完成内容
 
@@ -38,7 +38,7 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - [x] 新 Planning Board：路线威胁与完整树同屏；Draft / Committed 分离；确认时原子锁定路线和 Build；每张卡直接显示效果、触发、限制、前置。
 - [x] Skill Economy 规则引擎：2 点开局、12 点封顶、存点、普通访问历史点锁定、Forge 2 点级联重接、10,000 次随机分配不超买 / 不破坏前置。
 - [x] 首个正式两波 Encounter 与 Striker 已接入真实浏览器；稳定 Spawn ID 可在死亡重试后复现。
-- [x] 当前全量验证：16 个测试文件 / 57 项通过；TypeScript、Production Build、设计清单和 whitespace 通过。
+- [x] 当前全量验证：18 个测试文件 / 80 项通过；TypeScript、Production Build、设计清单和 whitespace 通过。
 - [x] 浏览器 Planning 验收：28 / 28 完整文案、4 个 Module、2 个真实路线选项、2 点 Draft、进入 Combat 后 3 个第一波敌人、Console 0；390×844 无横向溢出，最小点击目标 44px。
 - [x] Charged Hold / Release 已真实实现：0–180ms Tap 为 Basic；明确长按但未蓄满只取消；650ms 满蓄后松开执行 Breach Drive；Charging 原地、无无敌、可被击杀。
 - [x] Armor Coverage 已真实实现：基于首次接触点计算前 / 侧 / 后角度；任意角度撞到现存甲片只卸该甲并贯穿，命中裸露区击杀；同一敌人每次 Charged 只结算一次。
@@ -46,12 +46,15 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - [x] Vanguard 前甲、Armor Runtime、Stagger / 轻推、能量和独立甲片 Presentation Hook 已接入；敌人转向改为有上限，背袭不会被瞬时 180° 转身无效化。
 - [x] Charged / Armor 自动化：13 项覆盖 Tap、Undercharge、蓄力受伤、前 / 侧 / 后 / 后甲、多敌人、后续 Basic、9 个 Charged 被动正负条件。
 - [x] Charged / Armor 真实浏览器：真实鼠标长按进入 650ms 满蓄，正面只卸甲且玩家穿过目标、敌人存活、Energy +4；随后真实快速点击穿过暴露区击杀；Console 0。
+- [x] Vector Focus 根能力：Energy 100 时 Space 进入 3 秒规划，世界速率 0.12；依次选择 3 点后才扣能量并执行 3 段真实 Dash；Escape / 右键取消不扣能量，大招击杀不自充能。
+- [x] Ultimate 被动已接入 5 / 6：Additional Slash、Tactical Window、Vector Echo、Cross Cascade、Residual Charge；Projectile Return 随 P4 Projectile 生命周期完成。
+- [x] Vector Focus 自动化：8 项覆盖 Energy、取消、超时、0.12 世界速率、3 / 4 点、顺序无敌执行、自充能限制、Cross、Echo 与 Residual；真实 Space / Canvas / Escape 浏览器流程通过，Console 0。
 
 ## Full Game 下一步计划
 
-1. 完成 P1 Replay Route / Wave Command 与非战斗节点生命周期，不让 24 节点 Run 在 Event / Forge 处断路。
-2. 完成 P2 Forge Campaign UI 与 Save / Replay 记录，并逐项接入 28 个 Gameplay Hook。
-3. 继续 P3：Charged / Armor 已完成第一轮生产实现；下一项是 Vector Focus 的 3 点 Planning、0.12 世界时间、顺序执行、取消与 6 个 Ultimate Hook。
+1. 进入 P4：实现 Projectile / Obstacle / Hazard 的生产生命周期，并完成 Projectile Reversal、Projectile Return、Refraction 与 Charged 障碍碰撞。
+2. 完成 P1/P2 剩余的 Event / Forge 生命周期、Campaign Save / Replay，让 24 节点 Run 不在非战斗节点断路。
+3. 继续逐项接入 Basic 与 Shared Skill Hook，再进入完整敌人、Encounter 与 Boss 生产。
 4. 每个有意义变更继续执行自动化、截图、`render_game_to_text` 和 Console 检查，再依 P4–P11 推进。
 
 ## Full Game 当前问题与边界

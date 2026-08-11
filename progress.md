@@ -119,3 +119,14 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 真实浏览器报告：`validation/charged-armor/browser-final/report.json` 机制通过；最终甲片视觉证据在 `validation/charged-armor/browser-armor-visual/`，Console 0。
 - Web Game Client 快速点击冒烟通过：状态为 `dash-slash`、`dashing`、`invulnerable=true`，无错误文件。
 - 下一步：Vector Focus、Obstacle / Refraction 组合、Replay Schema；当前不宣称 P3 完成。
+
+## 2026-08-12 — Vector Focus
+
+- 实现 Energy 100 才可启动的 Vector Focus：Space 进入 3 秒多点规划，敌人模拟速率降到 0.12，玩家不获得规划期无敌。
+- 只有第 3 个合法路径点确认后才消耗 100 Energy；Escape / 右键 / 超时取消均保留能量。执行阶段复用真实 Dash 碰撞与无敌规则，按顺序完成三段移动。
+- 接入 5 个当前可独立验证的 Ultimate Hook：Additional Slash、Tactical Window、Vector Echo、Cross Cascade、Residual Charge；Projectile Return 明确留到 P4 Projectile 生命周期，不用伪造目标。
+- Ultimate 直接或派生击杀不会为自身充能；Residual Charge 只在至少击杀 3 人后保留 20 Energy。
+- Replay 命令快照已覆盖 Charged 与 Ultimate 的所有带坐标命令，避免可变输入对象污染日志；完整 Campaign Replay Schema 仍待 P1/P2 收口。
+- 自动化全量通过：18 files / 80 tests；TypeScript、Production Build、设计清单、whitespace 全通过。构建仍只有既有 Three.js 604.35kB chunk 提示。
+- 真实浏览器通过：Space 启动、Canvas 选两点、Escape 取消并保留 100 Energy；再次 Space + 三次 Canvas 点击提交，三段执行后到达最终坐标、击杀 3 人、Energy 0、Console 0。
+- 下一步：P4 Projectile / Obstacle / Hazard，并由这些真实实体完成 U-05 Projectile Return、B-11 Projectile Reversal、Refraction 和 Charged / Obstacle 组合。
