@@ -119,6 +119,12 @@ import {
 } from "./campaign/campaign-system";
 import { skillAllocationSnapshot } from "./upgrades/skill-system";
 import type { RouteNodeState } from "./run/types";
+import {
+  advanceEnemyAttacks,
+  createEnemyTacticalState,
+  isEnemyContactLethal,
+} from "./enemies/enemy-attack-system";
+import { enemyAttackProfiles } from "../content/enemies/attack-definitions";
 
 export type {
   ArenaBounds,
@@ -636,6 +642,77 @@ export function createCampaignForgeValidationGame(rules: Partial<GameRules> = {}
   state.run.acquiredResources["reroute-token"] = 1;
   dispatchGameCommand(state, { type: "preview-route-node", nodeId: forgeNode.id });
   dispatchGameCommand(state, { type: "confirm-planning" });
+  drainGameEvents(state);
+  return state;
+}
+
+/** Validation-only single-archetype combat using the production movement,
+ * attack profile, entity systems, armor, events, and presentation mapping. */
+export function createEnemyAttackValidationGame(
+  definitionId: string,
+  rules: Partial<GameRules> = {},
+): GameState {
+  const state = createGame(0, rules);
+  const definition = enemyDefinitions.get(definitionId);
+  if (!definition.tags.includes("standard") && !definition.tags.includes("elite")) {
+    throw new Error(`Enemy attack validation requires a formal roster enemy: ${definitionId}`);
+  }
+  const profile = enemyAttackProfiles.get(definition.attackProfile);
+  const preferredRange = profile.action === "melee-lunge"
+    ? 3.5
+    : profile.action === "blink-lunge"
+      ? 9
+      : profile.action === "projectile-volley"
+        ? 10
+        : 8;
+  const range = Math.max(profile.minimumRange + 0.5, Math.min(profile.maximumRange - 0.5, preferredRange));
+  state.stage.levelId = `validation-enemy-${definition.archetype}`;
+  state.stage.name = `ENEMY / ${definition.archetype.toUpperCase()}`;
+  state.stage.encounterId = `validation-enemy-${definition.archetype}-v1`;
+  state.player.position = point(0, 0);
+  state.player.facing = point(1, 0);
+  state.enemies = [{
+    id: "validation-enemy-subject",
+    definitionId: definition.id,
+    position: point(range, 0),
+    facing: point(-1, 0),
+    radius: definition.radius,
+    speed: definition.baseMoveSpeed,
+    alive: true,
+    state: "active",
+    spawnedAtMs: 0,
+    killedAtMs: null,
+    armorParts: createArmorPartStates(definition.armorProfileId),
+    staggerRemainingMs: 0,
+    tactical: createEnemyTacticalState("validation-enemy-subject", definition.attackProfile),
+  }];
+  if (profile.action === "support-pulse") {
+    const allyDefinition = enemyDefinitions.get(STRIKER_ENEMY_ID);
+    state.enemies.push({
+      id: "validation-support-target",
+      definitionId: allyDefinition.id,
+      position: point(range - 2, 1),
+      facing: point(-1, 0),
+      radius: allyDefinition.radius,
+      speed: 0,
+      alive: true,
+      state: "active",
+      spawnedAtMs: 0,
+      killedAtMs: null,
+      armorParts: [],
+      staggerRemainingMs: 0,
+      tactical: createEnemyTacticalState("validation-support-target", allyDefinition.attackProfile),
+    });
+    if (state.enemies[1]?.tactical) state.enemies[1].tactical.phaseDurationMs = 10_000;
+  }
+  state.projectiles = [];
+  state.obstacles = [];
+  state.hazards = [];
+  state.combat.kills = 0;
+  state.combat.totalEnemies = state.enemies.length;
+  state.combat.scheduledSlashes = [];
+  state.combat.storedPath = null;
+  state.combat.gravityPulls = [];
   drainGameEvents(state);
   return state;
 }
@@ -1285,7 +1362,7 @@ function resolvePlayerContact(state: GameState): void {
   }
 
   for (const enemy of state.enemies) {
-    if (!enemy.alive) {
+    if (!enemy.alive || !isEnemyContactLethal(enemy)) {
       continue;
     }
     const contactRadius = state.player.radius + enemy.radius;
@@ -1350,6 +1427,7 @@ function simulateFixedStep(state: GameState): void {
     return;
   }
 
+  advanceEnemyAttacks(state, worldDeltaMs);
   moveEnemiesWithBehaviors(state, worldDeltaMs);
   resolvePlayerContact(state);
 }
@@ -1651,6 +1729,18 @@ export function getGameSnapshot(state: GameState): GameSnapshot {
         enemyId: pull.enemyId,
         remainingMs: roundForSnapshot(Math.max(0, pull.durationMs - pull.elapsedMs)),
       })),
+      enemyTactics: state.enemies
+        .filter((enemy) => enemy.alive && enemy.tactical !== undefined)
+        .map((enemy) => ({
+          enemyId: enemy.id,
+          attackProfileId: enemy.tactical!.attackProfileId,
+          phase: enemy.tactical!.attackPhase,
+          remainingMs: roundForSnapshot(Math.max(0, enemy.tactical!.phaseDurationMs - enemy.tactical!.phaseElapsedMs)),
+          sequence: enemy.tactical!.attackSequence,
+          target: enemy.tactical!.lockedTarget ? copyPoint(enemy.tactical!.lockedTarget) : null,
+          comboStep: enemy.tactical!.comboStep,
+          nextTelegraphMultiplier: roundForSnapshot(enemy.tactical!.nextTelegraphMultiplier),
+        })),
     },
     campaign: campaign === null || allocation === null ? null : {
       phase: campaign.phase,

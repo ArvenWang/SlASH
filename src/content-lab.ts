@@ -11,6 +11,8 @@ import { registerDebugTestAbility } from "./debug/content/test-ability";
 import { registerDebugTestEnemy } from "./debug/content/test-enemy";
 import { DEBUG_UPGRADES } from "./debug/content/test-upgrades";
 import { getGameSnapshot, stepGame, type GameEvent } from "./game/game";
+import { createArmorPartStates } from "./game/combat/armor";
+import { createEnemyTacticalState } from "./game/enemies/enemy-attack-system";
 import { spawnHazard } from "./game/entities/hazard-system";
 import { spawnObstacle } from "./game/entities/obstacle-system";
 import { spawnProjectile } from "./game/entities/projectile-system";
@@ -84,6 +86,8 @@ function applyEnemy(id: string): void {
     enemy.definitionId = definition.id;
     enemy.radius = definition.radius;
     enemy.speed = definition.baseMoveSpeed;
+    enemy.armorParts = createArmorPartStates(definition.armorProfileId);
+    enemy.tactical = createEnemyTacticalState(enemy.id, definition.attackProfile);
   }
   enemySelect.value = id;
   refresh();

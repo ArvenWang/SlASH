@@ -54,6 +54,12 @@ interface EnemyVisualRuntime {
   corpse: CorpsePresentationRuntime | null;
   armorRoot: THREE.Group;
   armorMeshes: Map<string, THREE.Mesh>;
+  telegraphRoot: THREE.Group;
+  telegraphLine: THREE.Line;
+  telegraphLineGeometry: THREE.BufferGeometry;
+  telegraphLineMaterial: THREE.LineBasicMaterial;
+  telegraphRing: THREE.Mesh;
+  telegraphRingMaterial: THREE.MeshBasicMaterial;
 }
 
 interface SimpleEntityVisualRuntime {
@@ -92,6 +98,7 @@ export interface PresentationRuntime {
     audio: ReturnType<RendererRuntime["audio"]["snapshot"]>;
     postFx: ReturnType<RendererRuntime["postFx"]["snapshot"]>;
     environment: ReturnType<RendererRuntime["environment"]["snapshot"]>;
+    enemyTelegraphs: { visibleEnemyIds: string[] };
   };
   dispose(): void;
 }
@@ -249,6 +256,8 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     metalness: 0.86,
     roughness: 0.24,
   });
+  const enemyTelegraphRingGeometry = new THREE.RingGeometry(0.72, 1, 36);
+  enemyTelegraphRingGeometry.rotateX(-Math.PI / 2);
   const projectileGeometry = new THREE.SphereGeometry(1, 10, 8);
   const hostileProjectileMaterial = new THREE.MeshBasicMaterial({ color: 0xff4c39, toneMapped: false });
   const returnedProjectileMaterial = new THREE.MeshBasicMaterial({ color: 0xc7ffff, toneMapped: false });
@@ -312,8 +321,33 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     const armorRoot = new THREE.Group();
     armorRoot.name = `armor-presentation/${enemy.id}`;
     const armorMeshes = createArmorMeshes(enemy, armorRoot);
+    const telegraphRoot = new THREE.Group();
+    telegraphRoot.name = `enemy-telegraph/${enemy.id}`;
+    const telegraphLineGeometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0.08, 0),
+      new THREE.Vector3(0, 0.08, 0),
+    ]);
+    const telegraphLineMaterial = new THREE.LineBasicMaterial({
+      color: 0xffa65c,
+      transparent: true,
+      opacity: 0.78,
+      depthWrite: false,
+    });
+    const telegraphLine = new THREE.Line(telegraphLineGeometry, telegraphLineMaterial);
+    const telegraphRingMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffa65c,
+      transparent: true,
+      opacity: 0.44,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const telegraphRing = new THREE.Mesh(enemyTelegraphRingGeometry, telegraphRingMaterial);
+    telegraphRing.position.y = 0.055;
+    telegraphRoot.add(telegraphLine, telegraphRing);
+    telegraphRoot.visible = false;
     scene.add(actor.root);
     scene.add(armorRoot);
+    scene.add(telegraphRoot);
     enemyVisuals.set(enemy.id, {
       actor,
       deathAge: null,
@@ -328,6 +362,12 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       corpse: null,
       armorRoot,
       armorMeshes,
+      telegraphRoot,
+      telegraphLine,
+      telegraphLineGeometry,
+      telegraphLineMaterial,
+      telegraphRing,
+      telegraphRingMaterial,
     });
   }
 
@@ -361,13 +401,19 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   }
 
   function rebuildEnemyVisuals(): void {
-    for (const visual of enemyVisuals.values()) {
-      visual.corpse?.dispose();
-      visual.armorRoot.removeFromParent();
-      visual.actor.dispose();
-    }
+    for (const visual of enemyVisuals.values()) disposeEnemyVisual(visual);
     enemyVisuals.clear();
     gameState.enemies.forEach(createEnemyVisual);
+  }
+
+  function disposeEnemyVisual(visual: EnemyVisualRuntime): void {
+    visual.corpse?.dispose();
+    visual.armorRoot.removeFromParent();
+    visual.telegraphRoot.removeFromParent();
+    visual.telegraphLineGeometry.dispose();
+    visual.telegraphLineMaterial.dispose();
+    visual.telegraphRingMaterial.dispose();
+    visual.actor.dispose();
   }
 
   function syncEnemyVisuals(): void {
@@ -741,6 +787,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
 
   function updateEnemyVisual(enemy: EnemyState, visual: EnemyVisualRuntime, dt: number): void {
     const root = visual.actor.root;
+    updateEnemyTelegraph(enemy, visual);
     visual.armorRoot.position.copy(root.position);
     visual.armorRoot.rotation.copy(root.rotation);
     visual.armorRoot.scale.copy(root.scale);
@@ -810,7 +857,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     root.position.y = 0;
     const toPlayerX = gameState.player.position.x - enemy.position.x;
     const toPlayerZ = gameState.player.position.z - enemy.position.z;
-    const targetHeading = Math.atan2(toPlayerX, toPlayerZ);
+    const targetHeading = Math.atan2(enemy.facing.x, enemy.facing.z);
     const turnDelta = signedAngleDelta(visual.heading, targetHeading);
     visual.heading = dampAngle(visual.heading, targetHeading, 11, dt);
     root.rotation.y = visual.heading;
@@ -821,15 +868,54 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       1,
     );
     const threat = 1 - THREE.MathUtils.smoothstep(distanceToPlayer, 1.2, 3.1);
+    const attackPhase = enemy.tactical?.attackPhase;
     visual.actor.animation.update({
-      state: speedNormalized > 0.05 || threat > 0.05 ? "action" : "idle",
+      state: attackPhase === "telegraph"
+        ? "anticipation"
+        : attackPhase === "active"
+          ? "action"
+          : attackPhase === "recovery"
+            ? "recovery"
+            : speedNormalized > 0.05 || threat > 0.05 ? "action" : "idle",
       timeSeconds: worldTime,
       deltaSeconds: dt,
       distanceMoved,
       speedNormalized,
       turn: THREE.MathUtils.clamp(turnDelta / 0.72, -1, 1),
       threat,
+      sourceProgress: enemy.tactical && enemy.tactical.phaseDurationMs > 0
+        ? THREE.MathUtils.clamp(enemy.tactical.phaseElapsedMs / enemy.tactical.phaseDurationMs, 0, 1)
+        : 0,
     });
+  }
+
+  function updateEnemyTelegraph(enemy: EnemyState, visual: EnemyVisualRuntime): void {
+    const tactical = enemy.tactical;
+    const visible = enemy.alive && tactical !== undefined && (
+      tactical.attackPhase === "telegraph" || tactical.attackPhase === "active"
+    );
+    visual.telegraphRoot.visible = visible;
+    if (!visible || !tactical) return;
+    visual.telegraphRoot.position.set(enemy.position.x, 0, enemy.position.z);
+    const target = tactical.lockedTarget ?? {
+      x: enemy.position.x + tactical.lockedDirection.x * 5,
+      z: enemy.position.z + tactical.lockedDirection.z * 5,
+    };
+    const positions = visual.telegraphLineGeometry.getAttribute("position") as THREE.BufferAttribute;
+    positions.setXYZ(0, 0, 0.08, 0);
+    positions.setXYZ(1, target.x - enemy.position.x, 0.08, target.z - enemy.position.z);
+    positions.needsUpdate = true;
+    visual.telegraphLineGeometry.computeBoundingSphere();
+    const active = tactical.attackPhase === "active";
+    const progress = tactical.phaseDurationMs <= 0
+      ? 1
+      : THREE.MathUtils.clamp(tactical.phaseElapsedMs / tactical.phaseDurationMs, 0, 1);
+    const pulse = active ? 1.25 : 1 + Math.sin(worldTime * 18) * 0.08;
+    visual.telegraphRing.scale.setScalar((enemy.radius + 0.6) * pulse);
+    visual.telegraphLineMaterial.color.setHex(active ? 0xfff2dd : 0xffa65c);
+    visual.telegraphRingMaterial.color.setHex(active ? 0xfff2dd : 0xffa65c);
+    visual.telegraphLineMaterial.opacity = active ? 0.92 : 0.42 + progress * 0.46;
+    visual.telegraphRingMaterial.opacity = active ? 0.68 : 0.24 + progress * 0.28;
   }
 
   function updateEnemyContactShadows(): void {
@@ -1078,14 +1164,15 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
         audio: audio.snapshot(),
         postFx: postFx.snapshot(),
         environment: environment.snapshot(),
+        enemyTelegraphs: {
+          visibleEnemyIds: [...enemyVisuals.entries()]
+            .filter(([, visual]) => visual.telegraphRoot.visible)
+            .map(([enemyId]) => enemyId),
+        },
       };
     },
     dispose() {
-      for (const visual of enemyVisuals.values()) {
-        visual.corpse?.dispose();
-        visual.armorRoot.removeFromParent();
-        visual.actor.dispose();
-      }
+      for (const visual of enemyVisuals.values()) disposeEnemyVisual(visual);
       enemyVisuals.clear();
       clearWorldEntityVisuals();
       playerActor.dispose();
@@ -1101,6 +1188,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       enemyContactShadowTexture.dispose();
       armorPlateGeometry.dispose();
       armorPlateMaterial.dispose();
+      enemyTelegraphRingGeometry.dispose();
       projectileGeometry.dispose();
       hostileProjectileMaterial.dispose();
       returnedProjectileMaterial.dispose();

@@ -178,3 +178,19 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 真实浏览器通过：首次无 Continue、Planning 写入、整页重载恢复、Combat 不覆盖、战斗重载回安全 Planning、损坏存档显示明确错误且原始值保留；Console 0。
 - 当前边界：Threat Protocol、Assist、Boss Boundary 和 Profile 尚未实现，因此 FG-SV01–SV03 仍需在这些系统接入后扩展；100 Seed × 4 Build 完整 Replay Matrix 等完整内容后执行。
 - 下一步：P5 Enemy Roster / Attack Strategy，让正式敌人真实生产已完成的 Projectile / Obstacle / Hazard。
+
+## 2026-08-12 — Complete Enemy Roster / Attack Strategies
+
+- 生产 Enemy Registry 现为 10 Standard + 4 Elite，另保留 Phase 1 Legacy Grunt 兼容夹具；14 类正式敌人全部具备 Movement、Attack Profile、Energy、Armor、Presentation 和 Content Lab 路由。
+- 新增固定 Tick Attack State Machine：Cooldown → Telegraph → Active → Recovery；状态保存锁定目标 / 方向、阶段剩余、Attack Sequence、Combo Step 与 Conductor 前摇倍率，并进入 Game Event、Snapshot、Replay Hash。
+- Striker / Vanguard / Bastion / Fortress 的接触伤害只在真实 Active 攻击段生效；Charging 仍会被 Active 攻击杀死，但敌人普通贴近不再绕过 Telegraph 直接致命。
+- Gunner / Twin Gunner / Sniper 真实生成 Standard / Sniper Projectile；Constructor / Architect 真实生成 900ms 后激活、7s 后消失的 Barrier；Mine Layer 真实生成 1s 武装、触发后 550ms 爆炸的 Mine。
+- Lancer 使用锁定线与冲锋；Redline Lancer 的第二段至少 500ms 前摇并重新读取玩家位置；Blink Stalker 在 700ms 以上残影前摇后移动到预测落点附近再突刺。
+- Conductor 每 2s 左右为 8m 内友军设置一次性 0.8 Telegraph Multiplier；各 Profile 的基础前摇预留 20%，所以受 Buff 后仍满足 Striker 450 / Gunner 500 / Lancer 650 / Sniper 900 / Blink 700ms 硬下限。
+- Elite 不增加 HP：Twin 是三发 18° 扇射，Architect 是两墙与移动墙，Fortress 是前 / 左 / 右 / 后四块独立 Coverage，Redline 是两段冲锋。
+- 同时处于 Telegraph / Active 的 Lancer + Blink 总数硬封顶 3；既有 Projectile / Obstacle / Hazard 全局上限继续生效。
+- Presentation 增加状态驱动的地面环 + 锁定线两种非颜色提示；Active 改变强度。敌人角色朝向改为读取 Gameplay Facing，避免视觉胸甲方向与真实 Coverage 不一致。
+- 自动化全量：24 files / 147 tests；14 类逐项生命周期、受 Buff 后硬下限、三威胁并发、双段重锁、18° 扇射、移动双墙、四甲与移动确定性均通过。TypeScript、Build、Design Manifest、whitespace 通过。
+- 真实浏览器逐类验证 14 / 14 可见 Telegraph 和实际动作产物，Gunner Projectile、Constructor Barrier、Fortress Armor 均有截图，Console 0。首次脚本因 50ms 小步导致数千次软件渲染而主动中止，改成不跨越最短前摇的 200ms 批次后保持同一判定门。
+- 当前边界：Campaign 仍只复用首个 Striker Encounter；P6 必须把 Roster 编入 28 Standard / 12 Elite / 9 Challenge 模板并完成 Spawn Safety / Pressure Validator，不能把单体生命周期误报为完整内容。
+- 下一步：P6 Encounter Content 与精确 Route Threat Preview。

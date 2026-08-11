@@ -303,6 +303,11 @@ export async function bootstrapSlashApplication(): Promise<void> {
         tuning.enemyMotion = false;
         resetPresentationStage();
       },
+      setEnemyAttackScenario(definitionId) {
+        gameRuntime.loadEnemyAttackScenario(definitionId);
+        tuning.enemyMotion = false;
+        resetPresentationStage();
+      },
       dashTo: (x, z) => dispatchPrimaryAbility({ x, z }),
       beginChargeTo(x, z) {
         return gameRuntime.dispatch({ type: "begin-charge", target: { x, z } }).result;

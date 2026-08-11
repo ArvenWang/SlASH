@@ -34,6 +34,7 @@ import {
 } from "../upgrades/skill-system";
 import type { FullGameCampaignState } from "./types";
 import { createArmorPartStates } from "../combat/armor";
+import { createEnemyTacticalState } from "../enemies/enemy-attack-system";
 
 export type CampaignCommandResult =
   | "run-started"
@@ -528,13 +529,14 @@ function spawnEncounterWave(
       position: copyVec2(spawn.position),
       facing: copyVec2(spawn.facing ?? vec2(0, -1)),
       radius: definition.radius,
-      speed: authoredMoveSpeed,
+      speed: definition.baseMoveSpeed * Math.max(0.5, authoredMoveSpeed / 2.75),
       alive: true,
       state: "active",
       spawnedAtMs: state.elapsedMs,
       killedAtMs: null,
       armorParts: createArmorPartStates(definition.armorProfileId),
       staggerRemainingMs: 0,
+      tactical: createEnemyTacticalState(id, definition.attackProfile),
     });
     ids.push(id);
   }

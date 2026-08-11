@@ -8,6 +8,7 @@ import {
   createBasicPassiveValidationGame,
   createCampaignEventValidationGame,
   createCampaignForgeValidationGame,
+  createEnemyAttackValidationGame,
   createUltimateValidationGame,
   createStressGame,
   dispatchGameCommand,
@@ -37,6 +38,7 @@ export interface GameRuntime {
   loadBasicPassiveScenario(): void;
   loadCampaignEventScenario(): void;
   loadCampaignForgeScenario(): void;
+  loadEnemyAttackScenario(definitionId: string): void;
   loadState(state: GameState): void;
   resetRun(): void;
 }
@@ -104,6 +106,9 @@ export function createGameRuntime(initialStageIndex = 0): GameRuntime {
     },
     loadCampaignForgeScenario() {
       replaceState(createCampaignForgeValidationGame(state.rules));
+    },
+    loadEnemyAttackScenario(definitionId) {
+      replaceState(createEnemyAttackValidationGame(definitionId, state.rules));
     },
     loadState(nextState) {
       replaceState(structuredClone(nextState));
@@ -175,6 +180,9 @@ export function createFullGameRuntime(seed?: number): GameRuntime {
     },
     loadCampaignForgeScenario() {
       replaceState(createCampaignForgeValidationGame(state.rules));
+    },
+    loadEnemyAttackScenario(definitionId) {
+      replaceState(createEnemyAttackValidationGame(definitionId, state.rules));
     },
     loadState(nextState) {
       replaceState(structuredClone(nextState));

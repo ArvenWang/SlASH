@@ -20,6 +20,7 @@ export interface SlashValidationApi {
   setBasicPassiveScenario(): void;
   setCampaignEventScenario(): void;
   setCampaignForgeScenario(): void;
+  setEnemyAttackScenario(definitionId: string): void;
   dashTo(x: number, z: number): string;
   beginChargeTo(x: number, z: number): string;
   updateChargeTo(x: number, z: number): string;

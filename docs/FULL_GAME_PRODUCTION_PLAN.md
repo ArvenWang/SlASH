@@ -222,25 +222,28 @@ P11 Visual Branch Integration Contract + Git Push
 ### 主要文件
 
 - `src/content/enemies/definitions.ts`
-- `src/game/simulation/enemy-movement/`
-- `src/game/simulation/enemy-attacks/`
-- `src/game/simulation/enemy-system.ts`
+- `src/content/enemies/attack-definitions.ts`
+- `src/game/simulation/enemy-behavior.ts`
+- `src/game/enemies/enemy-attack-system.ts`
+- `src/runtime/presentation-runtime.ts`
 
 ### 任务顺序
 
-1. [ ] Striker：现有 Direct Chase 拆成 Movement + Contact / Thrust Attack。
-2. [ ] Gunner：距离控制 + 普通 Projectile。
-3. [ ] Lancer：Line Telegraph + Charge + Recovery。
-4. [ ] Constructor：Barrier 投掷与上限。
-5. [ ] Mine Layer：放置 / 武装 / 诱爆。
-6. [ ] Sniper：远距锚定与 Telegraph Projectile。
-7. [ ] Vanguard：单前甲 Coverage。
-8. [ ] Bastion：三块甲、转向与后部裸露区。
-9. [ ] Blink Stalker：预测落点、Teleport Telegraph、突刺。
-10. [ ] Conductor：区域 Attack Timing Buff。
-11. [ ] 4 Elite：只增加新机制，不堆 HP。
+1. [x] Striker：现有 Direct Chase 拆成 Movement + Contact / Thrust Attack。
+2. [x] Gunner：距离控制 + 普通 Projectile。
+3. [x] Lancer：Line Telegraph + Charge + Recovery。
+4. [x] Constructor：Barrier 投掷与上限。
+5. [x] Mine Layer：放置 / 武装 / 诱爆。
+6. [x] Sniper：远距锚定与 Telegraph Projectile。
+7. [x] Vanguard：单前甲 Coverage。
+8. [x] Bastion：三块甲、转向与后部裸露区。
+9. [x] Blink Stalker：预测落点、Teleport Telegraph、突刺。
+10. [x] Conductor：区域 Attack Timing Buff。
+11. [x] 4 Elite：只增加新机制，不堆 HP。
 
 每类敌人同一工作包必须包含 Definition、Movement、Attack、Events、Presentation Hook、Tests、Content Sandbox 和真实 Combat 截图。
+
+实现状态：14 类均已完成上述单体生命周期；FG-E03 的 Encounter Spawn Safety 与 Sniper / Constructor 组合上限仍在 P6 内容编排中完成，不能仅凭单体通过宣称 Enemy / Encounter 全部门结束。
 
 ### 完成门
 

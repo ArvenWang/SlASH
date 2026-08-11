@@ -11,6 +11,7 @@ import {
 } from "../src/game/abilities/charged-dash";
 import { createArmorPartStates, resolveArmorContact } from "../src/game/combat/armor";
 import type { EnemyState, GameState } from "../src/game/domain/types";
+import { createEnemyTacticalState } from "../src/game/enemies/enemy-attack-system";
 import {
   createGame,
   dispatchGameCommand,
@@ -105,6 +106,10 @@ describe("Charged Dash input lifecycle", () => {
   test("is rooted and vulnerable while charging", () => {
     const enemy = createVanguard({ x: 0.9, z: 0 });
     enemy.armorParts = [];
+    enemy.tactical = createEnemyTacticalState(enemy.id, "vanguard-thrust-v1");
+    if (!enemy.tactical) throw new Error("Missing Vanguard attack state.");
+    enemy.tactical.attackPhase = "active";
+    enemy.tactical.phaseDurationMs = 260;
     const state = armorScenario({ x: 0, z: 0 }, [enemy]);
     dispatchGameCommand(state, { type: "begin-charge", target: { x: 8, z: 0 } });
     stepGame(state);

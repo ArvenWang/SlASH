@@ -47,6 +47,21 @@ export type GamePhase =
   | "game-complete"
   | "victory";
 export type EnemyRuntimeMode = "active" | "dead";
+export type EnemyAttackPhase = "cooldown" | "telegraph" | "active" | "recovery";
+
+export interface EnemyTacticalState {
+  readonly attackProfileId: string;
+  attackPhase: EnemyAttackPhase;
+  phaseElapsedMs: number;
+  phaseDurationMs: number;
+  attackSequence: number;
+  comboStep: number;
+  lockedTarget: Vec2 | null;
+  lockedDirection: Vec2;
+  nextTelegraphMultiplier: number;
+  currentTelegraphMultiplier: number;
+  movementSign: -1 | 1;
+}
 
 export interface DashState {
   abilityId: AbilityId;
@@ -172,6 +187,7 @@ export interface EnemyState {
   killedAtMs: number | null;
   armorParts: ArmorPartState[];
   staggerRemainingMs: number;
+  tactical?: EnemyTacticalState;
 }
 
 export interface ProjectileState {
@@ -301,6 +317,18 @@ export type GameEventPayload =
   | { type: "armor-broken"; enemyId: EntityId; armorPartId: string; attackId: AbilityId; position: Vec2; contactRegion: string }
   | { type: "armor-blocked"; enemyId: EntityId; armorPartId: string; attackId: AbilityId; position: Vec2 }
   | { type: "rear-execution"; enemyId: EntityId; attackId: AbilityId; position: Vec2 }
+  | {
+      type: "enemy-attack-phase-changed";
+      enemyId: EntityId;
+      attackProfileId: string;
+      phase: EnemyAttackPhase;
+      durationMs: number;
+      attackSequence: number;
+      target: Vec2 | null;
+      direction: Vec2;
+    }
+  | { type: "enemy-blinked"; enemyId: EntityId; from: Vec2; to: Vec2; target: Vec2 }
+  | { type: "enemy-support-pulse"; enemyId: EntityId; affectedEnemyIds: EntityId[]; telegraphMultiplier: number }
   | { type: "ultimate-energy-changed"; before: number; after: number; source: string }
   | { type: "ultimate-planning-started"; abilityId: AbilityId; requiredPointCount: number; durationMs: number; worldTimeScale: number }
   | { type: "ultimate-point-added"; abilityId: AbilityId; pointIndex: number; point: Vec2 }
@@ -491,6 +519,16 @@ export interface GameSnapshot {
     scheduledSlashes: Array<{ id: string; executeAtMs: number; attackId: AbilityId }>;
     storedPath: null | { id: string; abilityId: AbilityId; remainingMs: number; segmentCount: number };
     gravityPulls: Array<{ enemyId: EntityId; remainingMs: number }>;
+    enemyTactics: Array<{
+      enemyId: EntityId;
+      attackProfileId: string;
+      phase: EnemyAttackPhase;
+      remainingMs: number;
+      sequence: number;
+      target: Vec2 | null;
+      comboStep: number;
+      nextTelegraphMultiplier: number;
+    }>;
   };
   campaign: null | {
     phase: string;
