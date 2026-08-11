@@ -4,8 +4,11 @@
 
 ## Runtime art and audio
 
-Phase 1 当前运行版本没有导入第三方角色、场景、贴图、动画、音效或从其他商业游戏提取的内容。
+Phase 2A 当前运行版本没有导入第三方商业游戏提取内容；新增两份由本项目原创概念图生成的第一方角色候选。
 
+- `public/models/characters/hero-v5-rigged.glb`：依据本项目原创 Hero V5 三视图通过 Tripo API 生成并自动绑定；模型和三张内嵌贴图仅用于本项目。SHA-256：`7f6bbfa6a33cfd7e9a361f79a652fb2214f88afc0b2c565d673c48476420f4de`。
+- `public/models/characters/enemy-v5-rigged.glb`：依据本项目原创 Enemy V5 三视图通过 Tripo API 生成并自动绑定；模型和三张内嵌贴图仅用于本项目。SHA-256：`4a90edbed731599ce1918132136d568db7d44a78b97621bce31efc77b790905a`。
+- 两份 GLB 当前均有 Skin / Skeleton，但没有内置 `AnimationClip`；运行时使用本项目代码驱动骨骼，不将缺失动画伪装为已存在动画。
 - 主角、敌人、武器、Arena、城市、列车、雨、蒸汽、血液、切割、尸体、材质与程序化纹理由本项目代码原创生成。
 - 环境声、Dash、命中与死亡声音由本项目 Web Audio 代码实时合成。
 - `art/concepts/` 与 `art/characters/concepts/` 是为本项目生成的内部概念基准，不会作为预渲染画面冒充实时游戏，也不直接打包为运行时画面资产。

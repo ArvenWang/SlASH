@@ -22,6 +22,11 @@ const runtimeFiles = [
 const distFiles = await filesBelow("dist");
 const binaryAssetPattern = /\.(?:avif|bin|fbx|glb|gltf|hdr|jpeg|jpg|ktx2?|mp3|obj|ogg|png|tga|wav|webm|webp|woff2?)$/i;
 const runtimeBinaryAssets = distFiles.filter((file) => binaryAssetPattern.test(file));
+const declaredFirstPartyBinaryAssets = new Set([
+  "dist/models/characters/hero-v5-rigged.glb",
+  "dist/models/characters/enemy-v5-rigged.glb",
+]);
+const undeclaredBinaryAssets = runtimeBinaryAssets.filter((file) => !declaredFirstPartyBinaryAssets.has(file));
 
 const sourceTextFiles = runtimeFiles.filter((file) => /\.(?:css|html|js|json|mjs|ts)$/i.test(file));
 const secretPatterns = [
@@ -42,7 +47,7 @@ for (const file of sourceTextFiles) {
   }
 }
 
-const dependencyNames = ["three", "lil-gui", "playwright", "typescript", "vite", "@types/three"];
+const dependencyNames = ["three", "lil-gui", "playwright", "typescript", "vite", "vitest", "@types/three"];
 const dependencies = [];
 for (const name of dependencyNames) {
   const manifestPath = path.join(projectRoot, "node_modules", name, "package.json");
@@ -52,12 +57,14 @@ for (const name of dependencyNames) {
 
 const allowedLicenses = new Set(["MIT", "Apache-2.0"]);
 const unknownDependencies = dependencies.filter(({ license }) => !allowedLicenses.has(license));
+const assetLicenseManifest = await readFile(path.join(projectRoot, "ASSET_LICENSES.md"), "utf8");
 const gates = {
-  noPackagedBinaryArtOrAudio: runtimeBinaryAssets.length === 0,
+  packagedBinaryAssetsDeclared: undeclaredBinaryAssets.length === 0
+    && runtimeBinaryAssets.every((file) => assetLicenseManifest.includes(path.basename(file))),
   noRuntimeExternalUrls: externalRuntimeUrls.length === 0,
   noSecretPatterns: secretFindings.length === 0,
   dependencyLicensesKnown: unknownDependencies.length === 0,
-  licenseManifestPresent: (await readFile(path.join(projectRoot, "ASSET_LICENSES.md"), "utf8")).includes("Runtime dependencies"),
+  licenseManifestPresent: assetLicenseManifest.includes("Runtime dependencies"),
 };
 const passed = Object.values(gates).every(Boolean);
 
@@ -73,6 +80,7 @@ const lines = [
   "",
   "Packaged binary art/audio",
   ...(runtimeBinaryAssets.length > 0 ? runtimeBinaryAssets.map((file) => `- ${file}`) : ["- None"]),
+  ...(undeclaredBinaryAssets.length > 0 ? ["- Undeclared:", ...undeclaredBinaryAssets.map((file) => `  - ${file}`)] : []),
   "",
   "Runtime external URLs",
   ...(externalRuntimeUrls.length > 0 ? externalRuntimeUrls.map((url) => `- ${url}`) : ["- None"]),
@@ -88,7 +96,7 @@ const lines = [
   "",
   "Conclusion",
   passed
-    ? "- Production runtime is code-generated and contains no packaged third-party art or audio. Declared dependencies use approved licenses."
+    ? "- Production runtime contains only declared first-party binary assets and no undeclared third-party art or audio. Declared dependencies use approved licenses."
     : "- Audit failed. Resolve every failed gate before public delivery.",
   "",
 ];

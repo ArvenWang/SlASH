@@ -1,18 +1,19 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { createEnemyAnimator, createHeroAnimator } from "./characters/animation";
-import { createEnemyCharacter } from "./characters/enemy";
-import { createHeroCharacter } from "./characters/hero";
+import { createCharacterProviderRegistry } from "./presentation/characters/providers";
+import type { CharacterRuntime } from "./presentation/characters/types";
 
 type Actor = "hero" | "enemy" | "both";
 type View = "front" | "side" | "back" | "three-quarter";
 type Mode = "idle" | "walk" | "dash" | "hit" | "threat";
+type ProviderMode = "procedural" | "gltf";
 
 interface CharacterLabSnapshot {
   actor: Actor;
   view: View | null;
   projection: "perspective" | "orthographic";
   mode: Mode;
+  provider: ProviderMode;
   frozenAtMs: number | null;
   canvas: { cssWidth: number; cssHeight: number; backingWidth: number; backingHeight: number; devicePixelRatio: number };
   camera: { type: string; position: number[]; target: number[]; orthographicHeight: number | null };
@@ -20,6 +21,16 @@ interface CharacterLabSnapshot {
     heightWorldUnits: number;
     position: number[];
     asset: CharacterAssetStats;
+    runtime: {
+      providerId: string;
+      source: "procedural" | "gltf";
+      animationState: string;
+      animationClipNames: readonly string[];
+      skeletonBoneCount: number;
+      forwardAxis: "+Z";
+      groundAligned: boolean;
+      inspection: CharacterRuntime["asset"]["inspection"] | null;
+    };
     renderer: RendererStats;
     comparison: CharacterComparisonProjection | null;
   }>;
@@ -77,6 +88,7 @@ const selectedActor = parseActor(params.get("actor"));
 const selectedView = parseView(params.get("view"));
 const projection = params.get("projection") === "orthographic" ? "orthographic" : "perspective";
 const mode = parseMode(params.get("mode"));
+const providerMode = parseProviderMode(params.get("provider"));
 const frozenAtMs = parseFreezeMs(params.get("freezeMs"));
 const autoTurn = params.get("turn") === "1";
 const cleanCapture = params.get("clean") === "1";
@@ -169,19 +181,30 @@ ring.position.y = 0.004;
 ring.visible = !comparisonCapture;
 scene.add(ring);
 
-const hero = selectedActor === "enemy" ? null : createHeroCharacter();
+const characterProviders = createCharacterProviderRegistry();
+const heroProviderId = providerMode === "gltf" ? "gltf-tripo-hero-v5" : "procedural-hero-v5";
+const enemyProviderId = providerMode === "gltf" ? "gltf-tripo-enemy-v5" : "procedural-enemy-v5";
+const requiredProviderIds = [
+  ...(selectedActor === "enemy" ? [] : [heroProviderId]),
+  ...(selectedActor === "hero" ? [] : [enemyProviderId]),
+];
+await characterProviders.prepare(requiredProviderIds);
+
+const hero: CharacterRuntime | null = selectedActor === "enemy"
+  ? null
+  : characterProviders.get(heroProviderId).create({ role: "hero" });
 if (hero) {
   hero.root.position.x = selectedActor === "both" ? -1.72 : 0;
   scene.add(hero.root);
 }
-const enemy = selectedActor === "hero" ? null : createEnemyCharacter(0);
+const enemy: CharacterRuntime | null = selectedActor === "hero"
+  ? null
+  : characterProviders.get(enemyProviderId).create({ role: "enemy", variant: 0 });
 if (enemy) {
   enemy.root.position.x = selectedActor === "both" ? 1.72 : 0;
   scene.add(enemy.root);
 }
 
-const heroAnimator = hero ? createHeroAnimator(hero.rig) : null;
-const enemyAnimator = enemy ? createEnemyAnimator(enemy.rig, 1.7) : null;
 let last = performance.now();
 let time = 0;
 let lastRendererStats: RendererStats = rendererStats();
@@ -196,6 +219,10 @@ function parseView(value: string | null): View | null {
 
 function parseMode(value: string | null): Mode {
   return value === "walk" || value === "dash" || value === "hit" || value === "threat" ? value : "idle";
+}
+
+function parseProviderMode(value: string | null): ProviderMode {
+  return value === "gltf" ? "gltf" : "procedural";
 }
 
 function parseFreezeMs(value: string | null) {
@@ -241,26 +268,48 @@ function applyAnimation(frameTime: number, dt: number) {
   const recoveryProgress = mode === "dash" && cycle >= 0.34 && cycle < 0.68 ? (cycle - 0.34) / 0.34 : null;
   const walking = mode === "walk";
   const hitAge = mode === "hit" ? frameTime % 1.5 : null;
-  heroAnimator?.update({
-    time: frameTime,
-    dt,
+  const heroState = hitAge !== null
+    ? "death"
+    : dashProgress !== null && dashProgress < 0.18
+      ? "anticipation"
+      : dashProgress !== null && dashProgress < 0.72
+        ? "action"
+        : dashProgress !== null
+          ? "arrival"
+          : recoveryProgress !== null
+            ? "recovery"
+            : "idle";
+  hero?.animation.update({
+    state: heroState,
+    timeSeconds: frameTime,
+    deltaSeconds: dt,
     turn: mode === "threat" ? Math.sin(frameTime * 2.1) : 0,
-    dashProgress,
-    recoveryProgress,
-    deathProgress: hitAge === null ? null : Math.min(1, hitAge / 0.5),
+    sourceProgress: hitAge === null
+      ? dashProgress ?? recoveryProgress
+      : Math.min(1, hitAge / 0.5),
   });
-  enemyAnimator?.update({
-    time: frameTime,
-    dt,
+  enemy?.animation.update({
+    state: hitAge !== null && hitAge < 0.19
+      ? "hit"
+      : walking || mode === "threat"
+        ? "action"
+        : "idle",
+    timeSeconds: frameTime,
+    deltaSeconds: dt,
     distanceMoved: walking ? dt * 2.8 : 0,
     speedNormalized: walking ? 0.9 : 0,
     turn: mode === "threat" ? -Math.sin(frameTime * 1.7) : 0,
     threat: mode === "threat" ? 1 : 0,
-    deathAge: hitAge !== null && hitAge < 0.19 ? hitAge : null,
+    hitAgeSeconds: hitAge !== null && hitAge < 0.19 ? hitAge : null,
+    sourceProgress: hitAge === null ? null : Math.min(1, hitAge / 0.5),
   });
   if (enemy) {
-    enemy.cutSeam.setVisible(mode === "hit" && hitAge !== null && hitAge > 0.045 && hitAge < 0.42);
-    enemy.cutSeam.setHeat(hitAge === null ? 0 : THREE.MathUtils.smoothstep(hitAge, 0.04, 0.12));
+    enemy.deathPresentation?.setCutVisible(
+      mode === "hit" && hitAge !== null && hitAge > 0.045 && hitAge < 0.42,
+    );
+    enemy.deathPresentation?.setCutHeat(
+      hitAge === null ? 0 : THREE.MathUtils.smoothstep(hitAge, 0.04, 0.12),
+    );
   }
   if (autoTurn) {
     if (hero) hero.root.rotation.y = frameTime * 0.35;
@@ -269,8 +318,8 @@ function applyAnimation(frameTime: number, dt: number) {
 }
 
 function prepareFrozenPose(freezeMs: number) {
-  heroAnimator?.reset();
-  enemyAnimator?.reset();
+  hero?.animation.reset();
+  enemy?.animation.reset();
   const fixedStep = 1000 / 60;
   const steps = Math.max(1, Math.ceil(freezeMs / fixedStep));
   for (let index = 1; index <= steps; index += 1) {
@@ -394,6 +443,35 @@ function comparisonProjection(
   };
 }
 
+function runtimeComparisonProjection(runtime: CharacterRuntime): CharacterComparisonProjection | null {
+  const leftShoulder = runtime.landmarks.get("left-shoulder");
+  const rightShoulder = runtime.landmarks.get("right-shoulder");
+  const leftUpperLeg = runtime.landmarks.get("left-upper-leg");
+  const rightUpperLeg = runtime.landmarks.get("right-upper-leg");
+  const leftShin = runtime.landmarks.get("left-shin");
+  const rightShin = runtime.landmarks.get("right-shin");
+  const weaponRoot = runtime.weaponMounts.get("primary-weapon");
+  if (
+    !leftShoulder
+    || !rightShoulder
+    || !leftUpperLeg
+    || !rightUpperLeg
+    || !leftShin
+    || !rightShin
+    || !weaponRoot
+  ) {
+    return null;
+  }
+  return comparisonProjection(runtime.root, {
+    leftShoulder,
+    rightShoulder,
+    leftUpperLeg,
+    rightUpperLeg,
+    leftShin,
+    rightShin,
+  }, weaponRoot);
+}
+
 function snapshot(): CharacterLabSnapshot {
   const rect = canvas.getBoundingClientRect();
   const characters: CharacterLabSnapshot["characters"] = {};
@@ -402,8 +480,18 @@ function snapshot(): CharacterLabSnapshot {
       heightWorldUnits: 3.3,
       position: hero.root.position.toArray(),
       asset: assetStats(hero.root),
+      runtime: {
+        providerId: hero.asset.providerId,
+        source: hero.asset.source,
+        animationState: hero.animation.snapshot().state,
+        animationClipNames: hero.asset.animationClipNames,
+        skeletonBoneCount: hero.asset.skeletonBoneCount,
+        forwardAxis: hero.asset.forwardAxis,
+        groundAligned: hero.asset.groundAligned,
+        inspection: hero.asset.inspection ?? null,
+      },
       renderer: lastRendererStats,
-      comparison: comparisonCapture ? comparisonProjection(hero.root, hero.rig, hero.rig.swordPivot) : null,
+      comparison: comparisonCapture ? runtimeComparisonProjection(hero) : null,
     };
   }
   if (enemy) {
@@ -411,8 +499,18 @@ function snapshot(): CharacterLabSnapshot {
       heightWorldUnits: 3.15,
       position: enemy.root.position.toArray(),
       asset: assetStats(enemy.root),
+      runtime: {
+        providerId: enemy.asset.providerId,
+        source: enemy.asset.source,
+        animationState: enemy.animation.snapshot().state,
+        animationClipNames: enemy.asset.animationClipNames,
+        skeletonBoneCount: enemy.asset.skeletonBoneCount,
+        forwardAxis: enemy.asset.forwardAxis,
+        groundAligned: enemy.asset.groundAligned,
+        inspection: enemy.asset.inspection ?? null,
+      },
       renderer: lastRendererStats,
-      comparison: comparisonCapture ? comparisonProjection(enemy.root, enemy.rig, enemy.rig.weaponPivot) : null,
+      comparison: comparisonCapture ? runtimeComparisonProjection(enemy) : null,
     };
   }
   return {
@@ -420,6 +518,7 @@ function snapshot(): CharacterLabSnapshot {
     view: selectedView,
     projection,
     mode,
+    provider: providerMode,
     frozenAtMs,
     canvas: {
       cssWidth: rect.width,

@@ -1,5 +1,11 @@
 import { getGameSnapshot } from "./game/game";
 import { levelByIndex } from "./content/levels/definitions";
+import { createCharacterProviderRegistry } from "./presentation/characters/providers";
+import {
+  PLAYER_CHARACTER_PRESENTATION_ID,
+  characterPresentationRegistry,
+  enemyPresentationRegistry,
+} from "./presentation/registry";
 import { createDebugRuntime, type RuntimeTuning } from "./runtime/debug-runtime";
 import { createGameRuntime } from "./runtime/game-runtime";
 import { createInputRuntime } from "./runtime/input-runtime";
@@ -57,11 +63,20 @@ export async function bootstrapSlashApplication(): Promise<void> {
     enemyMotion: true,
     dashPreview: true,
   };
+  const characterProviders = createCharacterProviderRegistry();
+  const activeCharacterProviderIds = [
+    characterPresentationRegistry.get(PLAYER_CHARACTER_PRESENTATION_ID).providerId,
+    ...enemyPresentationRegistry.list().map((presentation) => (
+      characterPresentationRegistry.get(presentation.characterId).providerId
+    )),
+  ];
+  await characterProviders.prepare(activeCharacterProviderIds);
   const presentationRuntime = createPresentationRuntime({
     shell,
     rendererRuntime,
     gameState,
     tuning,
+    characterProviders,
   });
   setLoadingPhase(0.78, "LINKING COMBATANTS");
 

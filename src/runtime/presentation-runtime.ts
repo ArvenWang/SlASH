@@ -1,14 +1,8 @@
 import * as THREE from "three";
 import {
-  createEnemyAnimator,
-  createHeroAnimator,
   dampAngle,
   signedAngleDelta,
-  type EnemyAnimator,
 } from "../characters/animation";
-import { createCorpseRuntime, type CorpseRuntime } from "../characters/corpse";
-import { createEnemyCharacter, type EnemyCharacter } from "../characters/enemy";
-import { createHeroCharacter } from "../characters/hero";
 import type { Vec2 } from "../core/math/vec2";
 import type { EnemyState, GameEvent, GameState } from "../game/domain/types";
 import {
@@ -20,12 +14,16 @@ import {
   enemyPresentationRegistry,
   vfxRegistry,
 } from "../presentation/registry";
+import type { CharacterProviderRegistry } from "../presentation/characters/provider-registry";
+import type {
+  CharacterRuntime,
+  CorpsePresentationRuntime,
+} from "../presentation/characters/types";
 import type { RuntimeTuning } from "./debug-runtime";
 import type { RendererRuntime } from "./renderer-runtime";
 
 interface EnemyVisualRuntime {
-  actor: EnemyCharacter;
-  animator: EnemyAnimator;
+  actor: CharacterRuntime;
   deathAge: number | null;
   phase: number;
   heading: number;
@@ -34,7 +32,8 @@ interface EnemyVisualRuntime {
   contactSpawned: boolean;
   impactSpawned: boolean;
   separated: boolean;
-  corpse: CorpseRuntime | null;
+  corpseAttempted: boolean;
+  corpse: CorpsePresentationRuntime | null;
 }
 
 export interface PresentationShell {
@@ -66,10 +65,11 @@ export interface PresentationRuntimeOptions {
   readonly rendererRuntime: RendererRuntime;
   readonly gameState: GameState;
   readonly tuning: RuntimeTuning;
+  readonly characterProviders: CharacterProviderRegistry;
 }
 
 export function createPresentationRuntime(options: PresentationRuntimeOptions): PresentationRuntime {
-  const { shell, rendererRuntime, gameState, tuning } = options;
+  const { shell, rendererRuntime, gameState, tuning, characterProviders } = options;
   const {
     scene,
     camera,
@@ -89,9 +89,8 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   } = rendererRuntime.lighting;
 
   const playerPresentation = characterPresentationRegistry.get(PLAYER_CHARACTER_PRESENTATION_ID);
-  if (playerPresentation.providerId !== "procedural-hero-v5") {
-    throw new Error(`Unsupported active hero provider: ${playerPresentation.providerId}`);
-  }
+  const playerProvider = characterProviders.get(playerPresentation.providerId);
+  if (!playerProvider.ready) throw new Error(`${playerProvider.id} is not prepared.`);
 
   const raycaster = new THREE.Raycaster();
   const pointerNdc = new THREE.Vector2();
@@ -113,8 +112,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   previewLine.renderOrder = 4;
   scene.add(previewLine);
 
-  const playerActor = createHeroCharacter();
-  const playerAnimator = createHeroAnimator(playerActor.rig);
+  const playerActor = playerProvider.create({ role: "hero" });
   scene.add(playerActor.root);
 
   const enemyContactShadowSize = 48;
@@ -189,27 +187,24 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
 
   function rebuildEnemyVisuals(): void {
     for (const visual of enemyVisuals.values()) {
-      scene.remove(visual.actor.root);
       visual.corpse?.dispose();
-      visual.actor.cutSeam.dispose();
+      visual.actor.dispose();
     }
     enemyVisuals.clear();
     gameState.enemies.forEach((enemy, index) => {
       const enemyPresentation = enemyPresentationRegistry.get(enemy.definitionId);
       const characterPresentation = characterPresentationRegistry.get(enemyPresentation.characterId);
-      if (characterPresentation.providerId !== "procedural-enemy-v5") {
-        throw new Error(`Unsupported active enemy provider: ${characterPresentation.providerId}`);
-      }
-      const actor = createEnemyCharacter(index);
+      const provider = characterProviders.get(characterPresentation.providerId);
+      if (!provider.ready) throw new Error(`${provider.id} is not prepared.`);
+      const actor = provider.create({ role: "enemy", variant: index });
       actor.root.position.set(enemy.position.x, 0, enemy.position.z);
       const heading = (index * 2.399) % (Math.PI * 2);
       actor.root.rotation.y = heading;
-      actor.cutSeam.setVisible(false);
-      actor.cutSeam.setHeat(0);
+      actor.deathPresentation?.setCutVisible(false);
+      actor.deathPresentation?.setCutHeat(0);
       scene.add(actor.root);
       enemyVisuals.set(enemy.id, {
         actor,
-        animator: createEnemyAnimator(actor.rig, index * 0.77),
         deathAge: null,
         phase: index * 0.77,
         heading,
@@ -218,6 +213,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
         contactSpawned: false,
         impactSpawned: false,
         separated: false,
+        corpseAttempted: false,
         corpse: null,
       });
     });
@@ -326,19 +322,18 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     environment.reactToDash(start, end, Math.min(1.6, 1 + kills.length * 0.08));
     playerHeading = Math.atan2(direction.x, direction.z);
     playerActor.root.rotation.y = playerHeading;
-    playerAnimator.update({
-      time: worldTime,
-      dt: 1 / 30,
+    playerActor.animation.update({
+      state: "action",
+      timeSeconds: worldTime,
+      deltaSeconds: 1 / 30,
       turn: 0,
-      dashProgress: 0.43,
-      recoveryProgress: null,
-      deathProgress: null,
+      sourceProgress: 0.43,
     });
     if (pendingAbilityInputId !== null) {
       diagnostics.markDashLogic(pendingAbilityInputId);
       pendingAbilityInputId = null;
     }
-    vfx.spawnSlash({ start, end, killPositions: kills, actor: playerActor.root });
+    vfx.spawnSlash({ start, end, killPositions: kills, actor: playerActor.afterimageSource });
     audio.playDash(kills.length);
     postFx.impact = Math.min(0.62, 0.15 + kills.length * 0.055);
     heroAnchorLight.intensity = Math.min(34, 18 + kills.length * 2.6);
@@ -360,17 +355,19 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       const heatIn = THREE.MathUtils.smoothstep(t, 0.006, 0.042);
       const heatOut = 1 - THREE.MathUtils.smoothstep(t, 0.24, 0.72);
       const instantHeat = 1 - THREE.MathUtils.smoothstep(t, 0.028, 0.075);
-      visual.actor.cutSeam.setVisible(t >= 0.006);
-      visual.actor.cutSeam.setHeat(Math.max(instantHeat * 0.92, heatIn * heatOut));
+      visual.actor.deathPresentation?.setCutVisible(t >= 0.006);
+      visual.actor.deathPresentation?.setCutHeat(Math.max(instantHeat * 0.92, heatIn * heatOut));
       if (!visual.separated) {
-        visual.animator.update({
-          time: worldTime,
-          dt,
+        visual.actor.animation.update({
+          state: t < 0.12 ? "hit" : "death",
+          timeSeconds: worldTime,
+          deltaSeconds: dt,
           distanceMoved: 0,
           speedNormalized: 0,
           turn: 0,
           threat: 0,
-          deathAge: t,
+          hitAgeSeconds: t,
+          sourceProgress: THREE.MathUtils.clamp(t / 0.72, 0, 1),
         });
       }
       if (!visual.contactSpawned && t >= 0.012) {
@@ -389,15 +386,14 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
         });
         visual.impactSpawned = true;
       }
-      if (!visual.separated && t >= 0.12) {
-        visual.corpse = createCorpseRuntime(
+      if (!visual.corpseAttempted && t >= 0.12) {
+        visual.corpseAttempted = true;
+        visual.corpse = visual.actor.deathPresentation?.separate(
           scene,
-          root,
-          visual.actor.deathModules,
           visual.slashDirection,
           visual.phase * 101 + gameState.stage.index * 17,
-        );
-        visual.separated = true;
+        ) ?? null;
+        visual.separated = visual.corpse !== null;
       }
       visual.corpse?.update(dt);
       return;
@@ -425,14 +421,14 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       1,
     );
     const threat = 1 - THREE.MathUtils.smoothstep(distanceToPlayer, 1.2, 3.1);
-    visual.animator.update({
-      time: worldTime,
-      dt,
+    visual.actor.animation.update({
+      state: speedNormalized > 0.05 || threat > 0.05 ? "action" : "idle",
+      timeSeconds: worldTime,
+      deltaSeconds: dt,
       distanceMoved,
       speedNormalized,
       turn: THREE.MathUtils.clamp(turnDelta / 0.72, -1, 1),
       threat,
-      deathAge: null,
     });
   }
 
@@ -460,9 +456,9 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   function resetStage(): void {
     vfx.clearStage();
     rebuildEnemyVisuals();
-    playerAnimator.reset();
-    playerActor.root.visible = true;
-    playerActor.root.position.set(gameState.player.position.x, 0, gameState.player.position.z);
+    playerActor.animation.reset();
+    playerActor.setVisible(true);
+    playerActor.setPosition(gameState.player.position);
     playerHeading = Math.atan2(gameState.player.facing.x, gameState.player.facing.z);
     playerActor.root.rotation.set(0, playerHeading, 0);
     phaseAge = 0;
@@ -482,8 +478,9 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
           visual.contactSpawned = false;
           visual.impactSpawned = false;
           visual.separated = false;
-          visual.actor.cutSeam.setVisible(false);
-          visual.actor.cutSeam.setHeat(0);
+          visual.corpseAttempted = false;
+          visual.actor.deathPresentation?.setCutVisible(false);
+          visual.actor.deathPresentation?.setCutHeat(0);
         }
       } else if (event.type === "player-died") {
         phaseAge = 0;
@@ -536,15 +533,25 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     const recoveryProgress = !player.dash && player.recoveryRemainingMs > 0
       ? 1 - THREE.MathUtils.clamp(player.recoveryRemainingMs / gameState.rules.recoveryMs, 0, 1)
       : null;
-    playerAnimator.update({
-      time: worldTime,
-      dt,
+    const playerAnimationState = gameState.stage.phase === "dead"
+      ? "death"
+      : dashProgress !== null && dashProgress < 0.18
+        ? "anticipation"
+        : dashProgress !== null && dashProgress < 0.72
+          ? "action"
+          : dashProgress !== null
+            ? "arrival"
+            : recoveryProgress !== null
+              ? "recovery"
+              : "idle";
+    playerActor.animation.update({
+      state: playerAnimationState,
+      timeSeconds: worldTime,
+      deltaSeconds: dt,
       turn: THREE.MathUtils.clamp(playerTurnDelta / 0.65, -1, 1),
-      dashProgress,
-      recoveryProgress,
-      deathProgress: gameState.stage.phase === "dead"
+      sourceProgress: gameState.stage.phase === "dead"
         ? THREE.MathUtils.clamp(phaseAge / 0.78, 0, 1)
-        : null,
+        : dashProgress ?? recoveryProgress,
     });
     for (const enemy of gameState.enemies) {
       const visual = enemyVisuals.get(enemy.id);
@@ -604,12 +611,12 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     },
     dispose() {
       for (const visual of enemyVisuals.values()) {
-        scene.remove(visual.actor.root);
         visual.corpse?.dispose();
-        visual.actor.cutSeam.dispose();
+        visual.actor.dispose();
       }
       enemyVisuals.clear();
-      scene.remove(playerActor.root, previewLine, enemyContactShadows);
+      playerActor.dispose();
+      scene.remove(previewLine, enemyContactShadows);
       previewGeometry.dispose();
       previewMaterial.dispose();
       enemyContactShadowGeometry.dispose();

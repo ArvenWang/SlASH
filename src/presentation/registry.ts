@@ -16,6 +16,11 @@ import { DASH_SLASH_ABILITY_ID, abilityDefinitions } from "../content/abilities/
 import { PHASE_ONE_GRUNT_ID, enemyDefinitions } from "../content/enemies/definitions";
 import { LEVEL_DEFINITIONS } from "../content/levels/definitions";
 import { DefinitionRegistry } from "../content/registry";
+import type {
+  AnimationSetDefinition,
+  AnimationStateDefinition,
+  CharacterAnimationState,
+} from "./animation/controller";
 
 export interface CharacterPresentationDefinition {
   readonly id: CharacterPresentationId;
@@ -23,12 +28,6 @@ export interface CharacterPresentationDefinition {
   readonly animationSetId: AnimationSetId;
   readonly afterimageSource: "character-root";
   readonly weaponMounts: readonly string[];
-}
-
-export interface AnimationSetDefinition {
-  readonly id: AnimationSetId;
-  readonly controllerId: string;
-  readonly states: readonly string[];
 }
 
 export interface EnemyPresentationDefinition {
@@ -64,20 +63,71 @@ export interface PresentationProfileReference {
 
 export const PLAYER_CHARACTER_PRESENTATION_ID: CharacterPresentationId = "hero-procedural-v5";
 
+const STATE_PRIORITIES: Readonly<Record<CharacterAnimationState, number>> = {
+  idle: 0,
+  anticipation: 20,
+  action: 30,
+  arrival: 25,
+  recovery: 10,
+  hit: 80,
+  death: 100,
+};
+
+function animationStates(
+  clips: Partial<Record<CharacterAnimationState, string>> = {},
+): Readonly<Record<CharacterAnimationState, AnimationStateDefinition>> {
+  const state = (
+    id: CharacterAnimationState,
+    fadeInMs: number,
+    fadeOutMs: number,
+    loop: "repeat" | "once",
+  ): AnimationStateDefinition => ({
+    clip: clips[id] ?? null,
+    fadeInMs,
+    fadeOutMs,
+    timeScale: 1,
+    loop,
+    priority: STATE_PRIORITIES[id],
+  });
+  return {
+    idle: state("idle", 140, 100, "repeat"),
+    anticipation: state("anticipation", 35, 35, "once"),
+    action: state("action", 30, 45, "once"),
+    arrival: state("arrival", 35, 70, "once"),
+    recovery: state("recovery", 70, 100, "once"),
+    hit: state("hit", 20, 80, "once"),
+    death: state("death", 45, 0, "once"),
+  };
+}
+
 export const characterPresentationRegistry = new DefinitionRegistry<CharacterPresentationDefinition>([
   {
     id: PLAYER_CHARACTER_PRESENTATION_ID,
     providerId: "procedural-hero-v5",
     animationSetId: "hero-procedural-v5",
     afterimageSource: "character-root",
-    weaponMounts: ["sword-hand"],
+    weaponMounts: ["primary-weapon"],
   },
   {
     id: "enemy-procedural-v5",
     providerId: "procedural-enemy-v5",
     animationSetId: "enemy-procedural-v5",
     afterimageSource: "character-root",
-    weaponMounts: ["weapon-hand"],
+    weaponMounts: ["primary-weapon"],
+  },
+  {
+    id: "hero-tripo-rig-v5",
+    providerId: "gltf-tripo-hero-v5",
+    animationSetId: "hero-tripo-additive-v1",
+    afterimageSource: "character-root",
+    weaponMounts: ["primary-weapon"],
+  },
+  {
+    id: "enemy-tripo-rig-v5",
+    providerId: "gltf-tripo-enemy-v5",
+    animationSetId: "enemy-tripo-additive-v1",
+    afterimageSource: "character-root",
+    weaponMounts: ["primary-weapon"],
   },
 ]);
 
@@ -85,12 +135,35 @@ export const animationSetRegistry = new DefinitionRegistry<AnimationSetDefinitio
   {
     id: "hero-procedural-v5",
     controllerId: "hero-procedural-pose-driver-v5",
-    states: ["idle", "action", "recovery", "death"],
+    states: animationStates(),
   },
   {
     id: "enemy-procedural-v5",
     controllerId: "enemy-procedural-pose-driver-v5",
-    states: ["locomotion", "threat", "death"],
+    states: animationStates(),
+  },
+  {
+    id: "hero-tripo-additive-v1",
+    controllerId: "tripo-hero-character-space-driver-v1",
+    states: animationStates(),
+  },
+  {
+    id: "enemy-tripo-additive-v1",
+    controllerId: "tripo-enemy-character-space-driver-v1",
+    states: animationStates(),
+  },
+  {
+    id: "validation-native-clips-v1",
+    controllerId: "native-animation-mixer-v1",
+    states: animationStates({
+      idle: "Idle",
+      anticipation: "Anticipation",
+      action: "Action",
+      arrival: "Arrival",
+      recovery: "Recovery",
+      hit: "Hit",
+      death: "Death",
+    }),
   },
 ]);
 

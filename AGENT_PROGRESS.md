@@ -15,6 +15,8 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - `render_game_to_text` 现已暴露 Encounter、Run Seed / Tick、Ability Slot 以及 Projectile / Obstacle / Hazard 状态；现有表现层直接消费事件携带的命中位置与方向，不再从后续可变状态反推视觉事实。
 - Phase 2A Runtime / Presentation Registry 已完成：Gameplay Definition 不再携带模型与特效细节；Character、Animation、Enemy、Ability、VFX、Audio、Environment、Lighting、Post FX 的当前映射统一注册并做交叉完整性检查。
 - `main.ts` 已收缩为启动入口，应用装配层只连接 Game / Input / Debug / Renderer / Presentation Runtime。角色、HUD、事件表现、指针投影与视觉生命周期已进入独立 Presentation Runtime；当前视觉参数只迁移、不重新设计，仍明确为未获用户签核。
+- Phase 2A Character Provider / Animation 2.0 已完成：程序化 Hero / Enemy 继续作为默认生产 Provider；两份 Tripo Rigged GLB 已作为按需加载 Provider 接入，使用 `SkeletonUtils.clone()`、每实例材质与 `AnimationMixer`，并统一暴露武器挂点、残影源、死亡能力和释放接口。
+- 角色动画已改为明确的 Idle / Anticipation / Action / Arrival / Recovery / Hit / Death 状态机；当前程序动画成为 Additive Driver，GLB 的 Base Clip 可通过相同 Controller 淡入淡出。两份生产 GLB 原文件没有 AnimationClip，因此明确走自制骨骼驱动，不把缺失 Clip 冒充完成。
 - 已有可运行的 TypeScript + Vite + Three.js Web 游戏：三关（8 / 12 / 18 敌人）、点击地面无限距离直线 Dash、路径多杀、玩家 1HP、Dash 无敌、Recovery/Input Buffer、死亡点击重开、自动过关/通关、HUD、声音、后处理、鼠标与触控输入。
 - 环境方向为 Transit Cathedral：深湿金属竞技台、交叉轨道与巨拱、五节列车、近中远城市、雨雾与蒸汽。
 - 角色美术已进入 V5：新三视图位于 `art/characters/concepts/hero-turnaround-v5.png` 与 `art/characters/concepts/enemy-turnaround-v5.png`；当前实现重点是连续人体大形、关节衔接、低位蓄势和冲跑动势，不再用旧 V4 数值叠加代替主观视觉判断。
@@ -62,9 +64,9 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 
 ## 下一步计划
 
-1. 建立程序化 / GLTF Character Provider 与 Animation Controller；只选择性引入已确认的 Tripo GLB 和加载工具，不合入 Vector Focus 的玩法、镜头或环境改动。
-2. 建立可持续的 VFX、Audio、材质、灯光与环境 Profile 及真实调试 Labs。
-3. 补齐架构文档和接力说明，最后只执行一次整体验证。
+1. 建立可持续的 VFX、Audio、材质、灯光与环境 Profile、通用 Pool、性能预算及真实调试 Labs。
+2. 补齐架构文档、扩展操作说明和接力状态。
+3. 只执行一次整体验证，确认三关、Replay、GLB、浏览器、性能与资产门。
 
 ## 遇到的问题
 
@@ -84,6 +86,8 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 修复旧事件缺少稳定 ID、Run Tick 和完整表现事实的问题；表现层不再根据已经变化的敌人或玩家状态重建击杀位置、攻击方向。
 - 将 Dash 的硬编码入口改为可注册 Ability 与通用缓冲命令；Recovery 与 Hit Radius 只能通过白名单 Modifier 字段改变，调试扩展不会污染生产内容注册表。
 - 修复 `main.ts` 同时承担玩法推进、输入、调试、Renderer、角色与 HUD 集成的问题；现在各 Runtime 有独立职责，Gameplay Definition 与可替换视觉 Profile 也已解耦。
+- 修复程序角色创建与动画类型被写死在 Presentation Runtime 的问题；角色来源现在由 Provider Registry 决定，Gameplay 位置继续拥有唯一真实 Root Motion，动画只控制视觉姿态。
+- 恢复并加固 Tripo 生成 / Rig / Animation 三条工具链：只从环境变量读取密钥、支持短连接轮询与 Task ID 恢复；未合入远端 Vector Focus、镜头、地图或玩法代码。
 - 完成公开仓库清理、初始提交与 `main` 首次推送；本地大型验证证据未删除，也未进入 Git。
 
 ## 未解决问题
@@ -104,6 +108,9 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - Phase 2A Ability / Event / Replay：`npm run check`、`npm run build` 通过；一次真实运行冒烟中 Idle / Post Dash 均为 `playing`，Primary Ability 为 `dash-slash`，浏览器问题 0。未重复输入延迟、性能或浏览器矩阵。
 - Phase 2A Runtime / Presentation Registry：4 个相关测试文件 / 12 个测试通过；包含 Phase 1 指纹、Content Domain、Registry 完整性、稳定 GameState 引用和无敌人移动的真实玩家时间线。
 - Phase 2A Runtime / Presentation Registry：`npm run check`、`npm run build` 通过；真实页面 Idle / Post Dash 均为 `playing`、Primary Ability 为 `dash-slash`、浏览器问题 0。未重复性能、输入延迟或浏览器矩阵。
+- Phase 2A Character Provider / Animation 2.0：3 个相关测试文件 / 9 个测试通过；包含真实二进制 GLB 导出再加载、独立 Skeleton / Material / Mixer、Idle → Action → Recovery、Death 终态和 Phase 1 指纹。
+- 两份生产 GLB 资产门：主角 7,934 triangles / 1 material / 3×2048 texture / 52 bones / 3.3m；敌人 7,757 triangles / 1 material / 3×2048 texture / 49 bones / 3.157m；均落地、+Z、无外链，内置 AnimationClip 均为 0。
+- Character Provider 浏览器门：Procedural Idle、GLTF Idle、GLTF Action、GLTF Recovery 四个真实 WebGL 场景通过，浏览器问题 0；游戏页 Idle / Post Dash 均保持 `playing`。`npm run check`、`npm run build`、三条 Tripo Python 语法检查和更新后的第一方二进制资产许可门通过。
 - `npm run check`：通过。
 - `npm run build`：通过；仅有 Three.js 核心 chunk 体积提示。
 - `git diff --check`：通过。
