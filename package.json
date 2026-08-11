@@ -8,6 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:baseline": "vitest run tests/gameplay-baseline.test.ts",
     "verify:full-run": "node validation/tools/capture-full-run.mjs",
     "verify:gameplay": "node validation/tools/run-gameplay-acceptance.mjs",
     "verify:input": "node validation/tools/profile-input-latency.mjs",
@@ -27,6 +29,7 @@
     "@types/three": "0.185.4",
     "playwright": "1.62.1",
     "typescript": "7.0.2",
-    "vite": "8.2.1"
+    "vite": "8.2.1",
+    "vitest": "4.1.10"
   }
 }

@@ -10,13 +10,25 @@ const sampleTarget = Number(process.argv[4] ?? 100);
 await mkdir(outputDirectory, { recursive: true });
 
 const viewport = { width: 1920, height: 1080 };
-const camera = new THREE.PerspectiveCamera(36, viewport.width / viewport.height, 0.1, 260);
-camera.position.set(28, 29.4, 38);
-camera.lookAt(new THREE.Vector3(-0.5, 1.35, -3.8));
-camera.updateProjectionMatrix();
-camera.updateMatrixWorld(true);
-
-function project(target) {
+function project(target, cameraState) {
+  const camera = new THREE.PerspectiveCamera(
+    cameraState.fov,
+    viewport.width / viewport.height,
+    cameraState.near,
+    cameraState.far,
+  );
+  camera.position.set(
+    cameraState.position.x,
+    cameraState.position.y,
+    cameraState.position.z,
+  );
+  camera.lookAt(new THREE.Vector3(
+    cameraState.target.x,
+    cameraState.target.y,
+    cameraState.target.z,
+  ));
+  camera.updateProjectionMatrix();
+  camera.updateMatrixWorld(true);
   const point = new THREE.Vector3(target.x, 0.04, target.z).project(camera);
   return {
     x: ((point.x + 1) * 0.5) * viewport.width,
@@ -24,7 +36,6 @@ function project(target) {
   };
 }
 
-const screenTargets = [project({ x: -4, z: 0 }), project({ x: 4, z: 0 })];
 const url = new URL(rawBaseUrl);
 url.searchParams.set("validation", "1");
 const browserIssues = [];
@@ -56,6 +67,11 @@ try {
     window.reset_slash_diagnostics();
   });
   await page.waitForTimeout(500);
+  const baselineState = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+  const screenTargets = [
+    project({ x: -4, z: 0 }, baselineState.camera),
+    project({ x: 4, z: 0 }, baselineState.camera),
+  ];
 
   for (let index = 0; index < sampleTarget; index += 1) {
     const target = screenTargets[index % screenTargets.length];
@@ -69,13 +85,19 @@ try {
   await page.waitForTimeout(250);
   const diagnostics = await page.evaluate(() => window.get_slash_diagnostics());
   const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
-  await page.screenshot({ path: path.join(outputDirectory, "final.png") });
+  let screenshotError = null;
+  try {
+    await page.screenshot({ path: path.join(outputDirectory, "final.png"), timeout: 15_000 });
+  } catch (error) {
+    screenshotError = error instanceof Error ? error.message : String(error);
+  }
   const gates = {
     sampleCount: diagnostics.input.sampleCount === sampleTarget,
     p95Logic: diagnostics.input.p95InputToLogicMs !== null && diagnostics.input.p95InputToLogicMs <= 1000 / 120,
     p95Presented: diagnostics.input.p95InputToPresentedMs !== null && diagnostics.input.p95InputToPresentedMs <= 33,
     cleanState: state.phase === "playing" && state.kills === 0,
     browserClean: browserIssues.length === 0,
+    screenshotCaptured: screenshotError === null,
   };
   report = {
     capturedAt: new Date().toISOString(),
@@ -83,12 +105,15 @@ try {
     viewport,
     inputMethod: "100 real Playwright pointer clicks on alternating valid Canvas ground targets",
     sampleTarget,
+    camera: baselineState.camera,
+    screenTargets,
     diagnostics,
     state,
     thresholds: { p95LogicMsMax: 1000 / 120, p95PresentedMsMax: 33 },
     gates,
     passed: Object.values(gates).every(Boolean),
     browserIssues,
+    screenshotError,
   };
   await context.close();
 } finally {

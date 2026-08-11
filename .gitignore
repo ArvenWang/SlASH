@@ -3,6 +3,7 @@ dist/
 test-results/
 screenshots/
 .playwright-cli/
+.vitest/
 output/
 *.log
 .DS_Store

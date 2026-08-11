@@ -28,6 +28,7 @@ import {
   type GameState,
 } from "./game/game";
 import { createPostFx } from "./postfx";
+import { GAMEPLAY_CAMERA_CONFIG } from "./presentation/camera-config";
 import { createEnvironment } from "./scene/environment";
 import { createVfxRuntime } from "./vfx";
 
@@ -111,9 +112,14 @@ scene.fog = new THREE.FogExp2(0x0a1622, 0.0058);
 
 // Framing budget: keep the complete 40 x 25 m deck in view while giving the
 // 3.15 m combatants enough pixels to read head, chest and legs at 1080p.
-const camera = new THREE.PerspectiveCamera(28.5, 1, 0.1, 260);
-const cameraBase = new THREE.Vector3(32.2, 31, 43.7);
-const cameraTarget = new THREE.Vector3(-0.5, -3, -3.5);
+const camera = new THREE.PerspectiveCamera(
+  GAMEPLAY_CAMERA_CONFIG.fov,
+  1,
+  GAMEPLAY_CAMERA_CONFIG.near,
+  GAMEPLAY_CAMERA_CONFIG.far,
+);
+const cameraBase = new THREE.Vector3(...GAMEPLAY_CAMERA_CONFIG.position);
+const cameraTarget = new THREE.Vector3(...GAMEPLAY_CAMERA_CONFIG.target);
 camera.position.copy(cameraBase);
 camera.lookAt(cameraTarget);
 
@@ -846,6 +852,13 @@ window.render_game_to_text = () => JSON.stringify({
   coordinateSystem: "World ground plane. Origin at arena center; +x is screen-right-ish, +z is toward the near camera edge.",
   qualityMode: compatibilityMode ? "compatibility" : "high",
   graphicsContextState,
+  camera: {
+    fov: camera.fov,
+    near: camera.near,
+    far: camera.far,
+    position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+    target: { x: cameraTarget.x, y: cameraTarget.y, z: cameraTarget.z },
+  },
   ...getGameSnapshot(gameState),
   diagnostics: diagnostics.snapshot(),
 });

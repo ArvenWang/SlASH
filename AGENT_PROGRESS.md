@@ -2,10 +2,13 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 
 # Project Slash — Agent Progress
 
-更新时间：2026-08-10
+更新时间：2026-08-11
 
 ## 当前进展
 
+- Phase 2A 已在 `codex/phase2a-foundation` 分支启动。本阶段只建立可扩展 Gameplay 与视觉生产架构，不把当前画面描述为视觉合格，也不合入 Vector Focus、镜头或关卡改动。
+- Phase 2A-0 基线层已完成：新增 Vitest 独立测试，锁定三关定义、初始状态、代表性 Dash 与事件顺序；生产镜头参数已有单一事实源，输入延迟脚本不再复制旧镜头，也不会因截图失败丢失测量报告。
+- Phase 2A-0 小规模验证已通过：3 个基线测试、TypeScript 检查和 100 次真实输入均通过；本轮 P95 输入到逻辑 1.1ms、输入到可见结果 16.7ms，浏览器问题 0。该项除非相关输入/镜头代码再次变化，不重复运行。
 - 已有可运行的 TypeScript + Vite + Three.js Web 游戏：三关（8 / 12 / 18 敌人）、点击地面无限距离直线 Dash、路径多杀、玩家 1HP、Dash 无敌、Recovery/Input Buffer、死亡点击重开、自动过关/通关、HUD、声音、后处理、鼠标与触控输入。
 - 环境方向为 Transit Cathedral：深湿金属竞技台、交叉轨道与巨拱、五节列车、近中远城市、雨雾与蒸汽。
 - 角色美术已进入 V5：新三视图位于 `art/characters/concepts/hero-turnaround-v5.png` 与 `art/characters/concepts/enemy-turnaround-v5.png`；当前实现重点是连续人体大形、关节衔接、低位蓄势和冲跑动势，不再用旧 V4 数值叠加代替主观视觉判断。
@@ -53,9 +56,9 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 
 ## 下一步计划
 
-1. 当前基线发布已完成，不再改动已验证的玩法与视觉实现。
-2. Tripo 主角/敌人生成、筛选、绑骨与接入作为后续美术里程碑；用户回到电脑后可从现有输入和 Generated Model Lab 直接恢复。
-3. 后续角色资产完成后，再进行一次针对新模型的主观视觉签核与短实机复核。
+1. 迁移 Gameplay V2、类型化 Content、Level / Encounter / Spawn、Enemy Behavior 与碰撞系统，同时保持三关和 Dash 结果不变。
+2. 接入 Ability、Modifier、Event 2.0、Seed 与 Replay，再拆分 Presentation Runtime。
+3. 建立程序化 / GLTF Character Provider、Animation Controller 和可持续的 VFX、Audio、材质、灯光与环境 Profile；最后只执行一次整体验证。
 
 ## 遇到的问题
 
@@ -83,6 +86,9 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 
 ## 验证情况
 
+- Phase 2A-0：`npm run test:baseline` 通过，1 个测试文件 / 3 个测试全部通过。
+- Phase 2A-0：`npm run check` 通过。
+- Phase 2A-0：100 次真实 Canvas 输入通过；逻辑 P95 1.1ms、首个可见结果 P95 16.7ms、截图与浏览器清洁门通过。证据保存在本次临时目录，不进入仓库。
 - `npm run check`：通过。
 - `npm run build`：通过；仅有 Three.js 核心 chunk 体积提示。
 - `git diff --check`：通过。
@@ -101,4 +107,5 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 
 ## 暂勿并行修改
 
-- Tripo 候选生成已延期；不要删除现有角色实现或三视图输入。发布基线已同步，后续 Agent 应从 `AGENT_PROGRESS.md` 与 `main` 当前 HEAD 继续。
+- Phase 2A 正在迁移 Gameplay 与 Presentation 边界；不要并行修改 `src/game/`、`src/main.ts`、`src/presentation/`、测试基线或 Tripo 角色管线。
+- 不要删除现有程序化角色、三视图输入或本地验证证据；它们仍是视觉回退与迁移对照。

@@ -25,7 +25,7 @@ Project Slash 是一个运行于浏览器的 3D 赛博朋克高速动作游戏�
 
 ## 本地运行
 
-需要 Node.js 20 或更高版本。
+需要 Node.js 20.19+ 或 22.12+。
 
 ```bash
 npm install
