@@ -12,7 +12,7 @@ import type {
 import type { Vec2 } from "../../core/math/vec2";
 import type { SeededRandomState } from "../../core/random/seeded-random";
 import type { AbilitySlot } from "../../content/abilities/definitions";
-import type { FullGameRunProgressState } from "../run/types";
+import type { FullGameCampaignState } from "../campaign/types";
 
 export type { Vec2 } from "../../core/math/vec2";
 
@@ -35,7 +35,15 @@ export interface StageDefinition {
   enemySpawns: Vec2[];
 }
 
-export type GamePhase = "playing" | "dead" | "stage-cleared" | "game-complete";
+export type GamePhase =
+  | "title"
+  | "planning"
+  | "playing"
+  | "reward"
+  | "dead"
+  | "stage-cleared"
+  | "game-complete"
+  | "victory";
 export type EnemyRuntimeMode = "active" | "dead";
 
 export interface DashState {
@@ -109,7 +117,7 @@ export interface RunState {
   random: SeededRandomState;
   selectedUpgrades: UpgradeId[];
   acquiredResources: Record<string, number>;
-  fullGame: FullGameRunProgressState | null;
+  fullGame: FullGameCampaignState | null;
 }
 
 export interface StageRuntimeState {
@@ -150,6 +158,14 @@ export type GameEventPayload =
   | { type: "enemy-killed"; enemyId: EntityId; sourceId: EntityId; attackId: AbilityId; position: Vec2; direction: Vec2 }
   | { type: "dash-ended"; abilityId: AbilityId; sourceId: EntityId; position: Vec2 }
   | { type: "player-died"; enemyId: EntityId; position: Vec2 }
+  | { type: "campaign-started"; seed: number }
+  | { type: "route-node-started"; nodeId: string; encounterId: EncounterId }
+  | { type: "encounter-wave-warning"; encounterId: EncounterId; waveId: string; activationAtMs: number }
+  | { type: "encounter-wave-started"; encounterId: EncounterId; waveId: string; enemyIds: EntityId[] }
+  | { type: "encounter-wave-completed"; encounterId: EncounterId; waveId: string }
+  | { type: "skill-points-granted"; amount: number; total: number; source: string }
+  | { type: "route-node-completed"; nodeId: string; result: string }
+  | { type: "campaign-victory"; seed: number }
   | { type: "stage-cleared" | "game-complete"; stageIndex: number; levelId: LevelId };
 
 type WithEventBase<TPayload> = TPayload extends unknown ? TPayload & BaseGameEvent : never;
@@ -187,9 +203,27 @@ export interface GameInput {
 export type GameCommand =
   | { type: "activate-ability"; slot: AbilitySlot; target: Vec2 }
   | { type: "restart-stage" }
-  | { type: "advance-stage" };
+  | { type: "advance-stage" }
+  | { type: "start-full-game-run" }
+  | { type: "preview-route-node"; nodeId: string }
+  | { type: "preview-skill-purchase"; skillId: UpgradeId }
+  | { type: "preview-skill-refund"; skillId: UpgradeId }
+  | { type: "discard-skill-draft" }
+  | { type: "confirm-planning" }
+  | { type: "acknowledge-reward" };
 
-export type GameCommandResult = DashRequestResult | "restarted" | "advanced" | "ignored";
+export type GameCommandResult =
+  | DashRequestResult
+  | "restarted"
+  | "advanced"
+  | "run-started"
+  | "route-previewed"
+  | "skill-drafted"
+  | "skill-refunded"
+  | "draft-discarded"
+  | "planning-confirmed"
+  | "reward-acknowledged"
+  | "ignored";
 
 export interface GameCommandDispatchResult {
   sequence: number;
@@ -235,6 +269,24 @@ export interface GameSnapshot {
   projectiles: Array<{ id: EntityId; definitionId: ProjectileDefinitionId; x: number; z: number }>;
   obstacles: Array<{ id: EntityId; definitionId: ObstacleDefinitionId; x: number; z: number }>;
   hazards: Array<{ id: EntityId; definitionId: HazardDefinitionId; x: number; z: number }>;
+  campaign: null | {
+    phase: string;
+    actIndex: number;
+    layerIndex: number;
+    currentNodeId: string | null;
+    provisionalRouteNodeId: string | null;
+    availableNodes: Array<{ id: string; kind: string; reward: string }>;
+    completedNodeIds: string[];
+    skillPoints: { earned: number; spent: number; unspent: number };
+    committedSkillIds: UpgradeId[];
+    draftAddedSkillIds: UpgradeId[];
+    draftRemovedSkillIds: UpgradeId[];
+    encounter: null | {
+      id: EncounterId;
+      completed: boolean;
+      waves: Array<{ id: string; status: string; spawnedEnemyIds: EntityId[] }>;
+    };
+  };
 }
 
 export interface GameplaySelfCheckResult {

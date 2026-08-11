@@ -121,15 +121,20 @@ Elite 额外奖励：最多 +2 点 / Run
 
 最终 Boss 之前一定能使用全部保证点数。Elite 奖励超过 2 次时改为 `Reroute Token` 或 Ultimate 起始能量，不能突破 12 点上限。
 
-### 3.2 分配流程
+### 3.2 分配流程：Planning Board
 
-1. 战斗或奖励结算。
-2. 显示下一层可选节点及其 Enemy / Armor / Projectile / Obstacle / Hazard 标签。
-3. 若本节点获得 Skill Point，打开完整技能树；玩家也可以主动查看但不能在战斗中改点。
-4. 选择节点后显示效果、触发、限制、前置，以及本次修改前后的准确差异。
-5. 当前访问中新增的点可以任意撤销；以前已经提交的点保持锁定。
-6. 玩家可以存点，不被强制消费。
-7. 选择下一节点并确认后，本次新增点正式提交。
+技能分配与下一节点选择合并成一个清晰的安全阶段，不再先盲点技能、再看到下一场威胁：
+
+1. 新 Run 先进入 `Initial Planning`：同时显示 Act I 两个入口的完整 Threat Tag 与 2 个初始 SP。
+2. 每次战斗或事件结算后，先显示本次奖励，再进入 `Planning Board`。
+3. 左侧是下一层可选路线；右侧是 Basic / Charged / Ultimate 三列完整技能树。玩家先点选一个“暂定路线”，系统据此高亮直接相关的技能，但不替玩家推荐唯一答案。
+4. 点击技能只进入 `Draft`。面板必须同时显示 Effect、Trigger、Limit、Prerequisite，以及购买前后的准确数值差异。
+5. 本次 Planning 新增的点可任意撤销；以前已提交的点显示为 `Committed`，普通 Planning 中不能退款。
+6. 玩家可以保留未消费点。未消费点、Draft 和暂定路线都必须在确认区明确显示。
+7. `LOCK BUILD & ENTER` 是一个原子确认：同时提交本次 Draft 并锁定下一节点；确认前任何操作都不改变正式 Build。
+8. 战斗中技能树只读，购买、退款、Forge 命令一律拒绝。
+
+这样玩家每次花点都能回答一个明确问题：**下一场已知威胁是什么，我要用哪个被动去改变三种基础主动模组？**
 
 ### 3.3 Forge 重接
 
@@ -143,7 +148,8 @@ Elite 额外奖励：最多 +2 点 / Run
 - 所有可购买被动固定为 1 SP。
 - 基础模组和基础兼容规则为 0 SP。
 - 不使用隐藏的“本分支累计投入”门槛；所有前置按稳定 Node ID 明示。
-- 状态只有：Base、Available、Preview、Owned、Locked、Not In Pool。
+- 状态只有：Base、Available、Draft、Committed、Locked、Not In Pool。
+- 颜色不是唯一状态提示；每个状态同时使用文字标签、边框样式和连接线样式。
 
 ## 4. 三种主动模组
 
@@ -178,6 +184,8 @@ Elite 额外奖励：最多 +2 点 / Run
 7. 同一敌人同一次 Charged 默认只结算一次，防止宽 Corridor 同帧卸掉多块甲。
 8. Obstacle 仍可终止或折射 Charged 路径。
 
+以上全部属于 `Breach Drive` 的 0 SP 基础能力，不由任何被动节点解锁。正面、侧面或背面只要实际命中仍存在的 Armor Coverage，就一定卸掉该块甲；只有实际命中裸露身体才击杀。
+
 #### 基础代价
 
 - 基础 Recovery 比 Basic 多 200ms。
@@ -205,28 +213,28 @@ Elite 额外奖励：最多 +2 点 / Run
 | B-01 | Wide Slash / 宽刃 | Basic Root | Basic Corridor 宽度 +30%。 |
 | B-02 | Gravity Slash / 磁轨 | B-01 | 路径外圈敌人被轻吸向刀线 0.35 秒；不直接伤害。 |
 | B-03 | Curve Dash / 弧线冲刺 | Basic Root | 目标点输入生成可控弧线；碰撞、Cross、Echo 使用真实弧线。 |
-| B-04 | Mirror Slash / 镜像分身 | Basic Root | 以关卡对称轴生成 65% Corridor 的镜像斩线；镜像不移动玩家。 |
-| B-05 | Refraction / 折射 | Basic Root | 每次 Dash 第一次撞可折射 Obstacle 时按法线反射并继续。 |
-| B-06 | Prism Momentum / 折光续势 | B-05 | 折射第二段宽度 +25%；第二段每击杀 1 人减少本次 Recovery 40ms，最多 3 人。 |
-| B-07 | Cross Execution / 交叉处决 | Basic Root | 保存最近实际路径 2.5 秒；下一条不交叉则替换，交叉则在首个交点触发空间冲击并清空两线。 |
+| B-04 | Refraction / 折射 | Basic Root | 每次 Dash 第一次撞可折射 Obstacle 时按法线反射并继续。 |
+| B-05 | Prism Momentum / 折光续势 | B-04 | 折射第二段宽度 +25%；第二段每击杀 1 人减少本次 Recovery 40ms，最多 3 人。 |
+| B-06 | Cross Execution / 交叉处决 | Basic Root | 保存最近实际路径 2.5 秒；下一条不交叉则替换，交叉则在首个交点触发空间冲击并清空两线。 |
+| B-07 | Cross Purge / 交点净空 | B-06 | Cross 冲击同时抵消 3m 内普通 Projectile，并打断非 Boss 装甲敌人 0.45 秒；不卸甲。 |
 | B-08 | Echo Slash / 残响斩 | Basic Root | 0.4 秒后回放实际路径一次；玩家不移动，不新建 Stored Line。 |
-| B-09 | Impact Burst / 落点爆炸 | Basic Root | 路径终点命中敌人或进入 1.2m 容错区时触发一次 2.2m 冲击。 |
-| B-10 | Shatter Shot / 弹幕裂变 | Basic Root | 被切掉的普通 Projectile 生成最多 2 枚回弹碎片；每次 Dash 最多 8 枚。 |
-| B-11 | Armor Phase / 穿甲位移 | Basic Root | Basic 可穿过装甲敌人，但不伤害、不卸甲。 |
+| B-09 | Double Echo / 双重残响 | B-08 | 0.8 秒时再回放一次相同路径；第二次不变宽、不写 Stored Line。 |
+| B-10 | Impact Burst / 落点爆发 | Basic Root | 路径终点命中敌人或进入 1.2m 容错区时触发一次 2.2m 冲击。 |
+| B-11 | Projectile Reversal / 弹反 | Basic Root | Basic 切掉的普通 Projectile 以 1.25 倍速度返回来源；每次 Dash 最多 8 枚。 |
 | B-12 | Rapid Dash / 短距高频 | Basic Root | Basic 最大距离 -35%，基础 Recovery -30%；受全局下限约束。 |
 
 ### 5.2 Charged Dash：9 个
 
 | ID | 节点 | 前置 | 效果 |
 | --- | --- | --- | --- |
-| C-01 | Quick Charge / 速蓄 | Charged Root | 满蓄阈值 -150ms；Charged 额外 Recovery +120ms。 |
-| C-02 | Adaptive Aim / 蓄势修正 | C-01 | Charging 中可按最大 120°/s 修正，总修正不超过 60°；不自动瞄准。 |
-| C-03 | Overpressure / 过压斩 | C-02 | 满蓄后可额外保持 350ms；Corridor +40%，落点非致命推开 2.5m；额外 Recovery +250ms。 |
+| C-01 | Adaptive Aim / 蓄势修正 | Charged Root | Charging 中可按最大 120°/s 修正，总修正不超过 60°；不自动瞄准。 |
+| C-02 | Quick Ignition / 快速点火 | C-01 | 满蓄阈值从 650ms 降到 500ms；不增加 Recovery。 |
+| C-03 | Overdrive / 过载推进 | C-02 | 满蓄后可额外保持最多 350ms；保持到上限时 Corridor +40%，期间仍原地且可被击杀。 |
 | C-04 | Breach Momentum / 破甲动能 | Charged Root | 每卸 1 块甲减少 Charged 额外 Recovery 80ms，最多 3 块。 |
-| C-05 | Breach Shock / 破甲冲击 | C-04 | 每次 Charged 第一次卸甲产生 2.5m 非致命打断与轻推。 |
-| C-06 | Armor Shrapnel / 甲片飞刃 | C-05 | 卸甲生成定向碎片，可杀普通敌人；每次 Charged 最多 6 枚。 |
+| C-05 | Chain Breach / 连锁破阵 | C-04 | 每卸 1 块甲，本次 Charged 剩余路径宽度 +15%，最多 +45%；同一敌人仍只结算一次。 |
+| C-06 | Armor Shrapnel / 甲片飞刃 | C-05 | 每块脱落甲片攻击 6m 内最近的裸露普通敌人；每次 Charged 最多 6 枚，不伤 Boss、不破甲。 |
 | C-07 | Execution Tempo / 处决节奏 | Charged Root | 本次 Charged 至少一次裸露区击杀时，取消其相对 Basic 多出的 Recovery。 |
-| C-08 | Predator Drive / 猎杀蓄势 | C-07 | 背袭处决储存 1 层；下一次 Charged 蓄力时间 -35%，释放后消耗。 |
+| C-08 | Predator Drive / 猎杀蓄势 | C-07 | 背袭处决储存 1 层，持续 4 秒；下一次 Charged 蓄力阈值 -35%，开始蓄力时消耗。 |
 | C-09 | Backline Battery / 背线回充 | C-08 | 每次 Charged 第一次背袭处决恢复 15 Ultimate Energy。 |
 
 ### 5.3 Ultimate：6 个
@@ -236,8 +244,8 @@ Elite 额外奖励：最多 +2 点 / Run
 | U-01 | Additional Ultimate Slash / 大招追加突进 | Ultimate Root | 路径点和执行段数 +1，最多 4 段。 |
 | U-02 | Tactical Window / 战术延时 | U-01 | Planning 时间 +0.75 秒；不进一步降低世界时间。 |
 | U-03 | Vector Echo / 矢量残响 | U-01 + B-08 | 最后一段 0.4 秒后回放斩击；不移动、不写 Stored Line。 |
-| U-04 | Cross Cascade / 交叉级联 | U-01 + B-07 | 每次 Ultimate 内部第一次路径交叉触发一次 Cross 冲击；结束不留旧线。 |
-| U-05 | Projectile Return / 终式回弹 | B-10 | Ultimate 切弹碎片集中返回来源；每段最多 8 枚。 |
+| U-04 | Cross Cascade / 交叉级联 | U-01 + B-06 | 每次 Ultimate 内部第一次路径交叉触发一次 Cross 冲击；结束不留旧线。 |
+| U-05 | Projectile Return / 终式回弹 | B-11 | Ultimate 切掉的普通 Projectile 集中返回来源；每段最多 8 枚。 |
 | U-06 | Residual Charge / 余能回流 | U-01 | Ultimate 击杀至少 3 人时，结束保留 20 Energy。 |
 
 ### 5.4 跨模组：1 个
@@ -248,10 +256,11 @@ Elite 额外奖励：最多 +2 点 / Run
 
 ### 5.5 免费基础兼容
 
-- Cross、Echo 和 Ultimate 联动读取真实完成的直线、弧线、镜像或折射路径。
+- Cross、Echo 和 Ultimate 联动读取真实完成的直线、弧线或折射路径。
 - 拥有 Cross 后 Charged 实际路径直接参与 Stored Line，不另收点。
 - Echo 继承路径几何，但不复制玩家位移、Charged 破甲冲量或 Cross 消耗权。
 - Impact Burst 只在整条真实路径终点触发，不在每次卸甲或折射点触发。
+- Charged Root 已经拥有任意角度的 Coverage 破甲、敌体贯穿和裸露区击杀；C-04～C-06 只强化连续破阵，不负责解锁这些基础规则。
 - 同名效果采用稳定叠加顺序：基础值 → Module Modifier → Conditional Modifier → 全局安全 Clamp。
 
 ## 6. 敌人系统

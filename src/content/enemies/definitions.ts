@@ -12,6 +12,7 @@ export interface EnemyDefinition {
 }
 
 export const PHASE_ONE_GRUNT_ID: EnemyDefinitionId = "enemy-grunt-v1";
+export const STRIKER_ENEMY_ID: EnemyDefinitionId = "enemy-striker-v1";
 
 export const enemyDefinitions = new DefinitionRegistry<EnemyDefinition>([
   {
@@ -22,5 +23,14 @@ export const enemyDefinitions = new DefinitionRegistry<EnemyDefinition>([
     movementProfile: "direct-chase",
     attackProfile: "contact-lethal",
     tags: ["enemy", "humanoid", "melee"],
+  },
+  {
+    id: STRIKER_ENEMY_ID,
+    archetype: "striker",
+    radius: 0.55,
+    baseMoveSpeed: 2.75,
+    movementProfile: "direct-chase",
+    attackProfile: "contact-lethal",
+    tags: ["enemy", "standard", "humanoid", "melee", "act-1"],
   },
 ]);

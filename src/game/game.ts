@@ -49,6 +49,23 @@ import {
   PLAYER_RADIUS,
 } from "./rules/constants";
 import { moveEnemiesWithBehaviors } from "./simulation/enemy-behavior";
+import {
+  acknowledgeCampaignReward,
+  advanceCampaignEncounterScheduler,
+  campaignAvailableRouteNodes,
+  campaignEncounterCanComplete,
+  completeCampaignEncounter,
+  confirmCampaignPlanning,
+  discardCampaignSkillDraft,
+  initializeFullGameCampaign,
+  markCampaignDefeat,
+  previewCampaignRouteNode,
+  previewCampaignSkillPurchase,
+  previewCampaignSkillRefund,
+  restartCampaignEncounter,
+  startFullGameRun,
+} from "./campaign/campaign-system";
+import { skillAllocationSnapshot } from "./upgrades/skill-system";
 
 export type {
   ArenaBounds,
@@ -245,6 +262,17 @@ export function createGame(stageIndex = 0, rules: Partial<GameRules> = {}): Game
   return state;
 }
 
+/** Creates the production campaign shell. Legacy createGame remains available
+ * as the Phase 1 compatibility fixture and validation harness. */
+export function createFullGameGame(
+  seed = DEFAULT_RUN_SEED,
+  rules: Partial<GameRules> = {},
+): GameState {
+  const state = createGame(0, rules);
+  initializeFullGameCampaign(state, seed);
+  return state;
+}
+
 /** Validation-only worst-case state: 20 renderable enemies with an authored
  * eight-target line and the remaining hostiles distributed across the arena. */
 export function createStressGame(enemyCount = 20, rules: Partial<GameRules> = {}): GameState {
@@ -280,6 +308,10 @@ export function createStressGame(enemyCount = 20, rules: Partial<GameRules> = {}
 
 /** Mutates the supplied state in place, preserving references held by a renderer. */
 export function restartStage(state: GameState): GameState {
+  if (state.run.fullGame !== null) {
+    restartCampaignEncounter(state);
+    return state;
+  }
   const nextAttempt = state.stage.attempt + 1;
   const replacement = createGame(state.stage.index, state.rules);
   replacement.run = {
@@ -490,6 +522,10 @@ function resolveStageCompletion(state: GameState): boolean {
     return false;
   }
 
+  if (state.run.fullGame !== null) {
+    return campaignEncounterCanComplete(state) && completeCampaignEncounter(state);
+  }
+
   state.stage.phase =
     state.stage.index === STAGE_DEFINITIONS.length - 1
       ? "game-complete"
@@ -525,6 +561,7 @@ function resolvePlayerContact(state: GameState): void {
     state.player.recoveryRemainingMs = 0;
     state.player.bufferedAbility = null;
     state.stage.phase = "dead";
+    markCampaignDefeat(state);
     emitGameEvent(state, {
       type: "player-died",
       enemyId: enemy.id,
@@ -542,7 +579,12 @@ function simulateFixedStep(state: GameState): void {
   state.tick += 1;
   state.run.tick += 1;
   state.elapsedMs += FIXED_STEP_MS;
+  advanceCampaignEncounterScheduler(state);
   advancePlayerAction(state, FIXED_STEP_MS);
+
+  // A dash can finish a wave during this tick. Running the scheduler again
+  // allows an authored zero-warning follow-up to activate deterministically.
+  advanceCampaignEncounterScheduler(state);
 
   if (resolveStageCompletion(state)) {
     return;
@@ -561,11 +603,26 @@ export function dispatchGameCommand(
   if (command.type === "activate-ability") {
     result = activateAbility(state, command.slot, command.target);
   } else if (command.type === "restart-stage") {
+    const wasCampaign = state.run.fullGame !== null;
     restartStage(state);
-    result = "restarted";
+    result = wasCampaign && state.stage.phase !== "playing" ? "ignored" : "restarted";
   } else if (command.type === "advance-stage" && state.stage.phase === "stage-cleared") {
     advanceStage(state);
     result = "advanced";
+  } else if (command.type === "start-full-game-run") {
+    result = startFullGameRun(state);
+  } else if (command.type === "preview-route-node") {
+    result = previewCampaignRouteNode(state, command.nodeId);
+  } else if (command.type === "preview-skill-purchase") {
+    result = previewCampaignSkillPurchase(state, command.skillId);
+  } else if (command.type === "preview-skill-refund") {
+    result = previewCampaignSkillRefund(state, command.skillId);
+  } else if (command.type === "discard-skill-draft") {
+    result = discardCampaignSkillDraft(state);
+  } else if (command.type === "confirm-planning") {
+    result = confirmCampaignPlanning(state);
+  } else if (command.type === "acknowledge-reward") {
+    result = acknowledgeCampaignReward(state);
   }
   return { sequence: state.commandSequence, result };
 }
@@ -643,6 +700,8 @@ function roundForSnapshot(value: number): number {
 /** Compact, stable state intended for renderGameToText and browser QA agents. */
 export function getGameSnapshot(state: GameState): GameSnapshot {
   const dash = state.player.dash;
+  const campaign = state.run.fullGame;
+  const allocation = campaign ? skillAllocationSnapshot(campaign.skills) : null;
   return {
     stage: {
       index: state.stage.index,
@@ -748,6 +807,36 @@ export function getGameSnapshot(state: GameState): GameSnapshot {
       x: roundForSnapshot(hazard.position.x),
       z: roundForSnapshot(hazard.position.z),
     })),
+    campaign: campaign === null || allocation === null ? null : {
+      phase: campaign.phase,
+      actIndex: campaign.routeProgress.actIndex,
+      layerIndex: campaign.routeProgress.layerIndex,
+      currentNodeId: campaign.routeProgress.currentNodeId,
+      provisionalRouteNodeId: campaign.provisionalRouteNodeId,
+      availableNodes: campaignAvailableRouteNodes(state).map((node) => ({
+        id: node.id,
+        kind: node.kind,
+        reward: node.reward,
+      })),
+      completedNodeIds: [...campaign.routeProgress.completedNodeIds],
+      skillPoints: {
+        earned: allocation.totalEarnedPoints,
+        spent: allocation.spentPoints,
+        unspent: allocation.unspentPoints,
+      },
+      committedSkillIds: [...allocation.committedSkillIds],
+      draftAddedSkillIds: [...allocation.draftAddedSkillIds],
+      draftRemovedSkillIds: [...allocation.draftRemovedSkillIds],
+      encounter: campaign.encounterRuntime === null ? null : {
+        id: campaign.encounterRuntime.encounterId,
+        completed: campaign.encounterRuntime.completed,
+        waves: campaign.encounterRuntime.waves.map((wave) => ({
+          id: wave.id,
+          status: wave.status,
+          spawnedEnemyIds: [...wave.spawnedEntityIds],
+        })),
+      },
+    },
   };
 }
 

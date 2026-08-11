@@ -8,6 +8,7 @@ import type {
 } from "./types";
 
 export const DEFAULT_SPAWN_WARNING_MS = 750;
+const TIME_EPSILON_MS = 1e-6;
 
 export function createEncounterRuntime(
   definition: EncounterDefinition,
@@ -66,7 +67,7 @@ export function updateEncounterScheduler(
     if (
       waveRuntime.status !== "warning" ||
       waveRuntime.activationAtMs === null ||
-      context.elapsedMs < waveRuntime.activationAtMs
+      context.elapsedMs + TIME_EPSILON_MS < waveRuntime.activationAtMs
     ) {
       continue;
     }

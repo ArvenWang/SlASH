@@ -8,10 +8,11 @@ import {
 } from "./presentation/registry";
 import { createPerformanceBudgetSnapshot } from "./presentation/performance/budgets";
 import { createDebugRuntime, type RuntimeTuning } from "./runtime/debug-runtime";
-import { createGameRuntime } from "./runtime/game-runtime";
+import { createFullGameRuntime, createGameRuntime } from "./runtime/game-runtime";
 import { createInputRuntime } from "./runtime/input-runtime";
 import { createPresentationRuntime } from "./runtime/presentation-runtime";
 import { createRendererRuntime } from "./runtime/renderer-runtime";
+import { createCampaignUiRuntime } from "./runtime/campaign-ui-runtime";
 
 function requiredElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -32,6 +33,7 @@ export async function bootstrapSlashApplication(): Promise<void> {
     phaseSubtitle: requiredElement<HTMLElement>("#phase-subtitle"),
     loadingLabel: requiredElement<HTMLParagraphElement>("#loading-label"),
     loadingProgress: requiredElement<HTMLSpanElement>("#loading-progress"),
+    campaignUi: requiredElement<HTMLDivElement>("#campaign-ui"),
   };
   const pageParameters = new URLSearchParams(window.location.search);
   const qualityMode = pageParameters.get("quality") === "compatibility"
@@ -47,7 +49,8 @@ export async function bootstrapSlashApplication(): Promise<void> {
   }
 
   setLoadingPhase(0.12, "INITIALIZING RENDERER");
-  const gameRuntime = createGameRuntime(0);
+  const useLegacyValidationFixture = validationMode && pageParameters.get("campaign") !== "1";
+  const gameRuntime = useLegacyValidationFixture ? createGameRuntime(0) : createFullGameRuntime();
   const gameState = gameRuntime.state;
   const initialLevel = levelByIndex(gameState.stage.index);
   const rendererRuntime = createRendererRuntime({
@@ -81,6 +84,21 @@ export async function bootstrapSlashApplication(): Promise<void> {
     gameState,
     tuning,
     characterProviders,
+  });
+  const campaignUiRuntime = createCampaignUiRuntime({
+    root: shell.campaignUi,
+    gameState,
+    dispatch: (command) => gameRuntime.dispatch(command),
+    onStateTransition(result) {
+      if (
+        result === "planning-confirmed" ||
+        result === "reward-acknowledged" ||
+        result === "restarted" ||
+        result === "run-started"
+      ) {
+        presentationRuntime.resetStage();
+      }
+    },
   });
   setLoadingPhase(0.78, "LINKING COMBATANTS");
 
@@ -122,6 +140,7 @@ export async function bootstrapSlashApplication(): Promise<void> {
       gameRuntime.resetRun();
       resetPresentationStage();
     }
+    campaignUiRuntime.update();
   }
 
   function renderScene(): void {
@@ -251,6 +270,7 @@ export async function bootstrapSlashApplication(): Promise<void> {
       if (gameState.stage.phase === "dead") {
         gameRuntime.dispatch({ type: "restart-stage" });
         resetPresentationStage();
+        campaignUiRuntime.update();
         return;
       }
       presentationRuntime.updatePointer(clientX, clientY);
@@ -309,6 +329,7 @@ export async function bootstrapSlashApplication(): Promise<void> {
   }
 
   presentationRuntime.resetStage();
+  campaignUiRuntime.update();
   resize();
   renderScene();
   setLoadingPhase(0.96, "FINALIZING FIRST FRAME");

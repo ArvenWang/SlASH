@@ -96,3 +96,15 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 已实现 Encounter Scheduler 的 Immediate / Timed / After Previous Killed / Triggered、Spawn Warning、实体归属、完成判定与 JSON-safe State。
 - 定向验证：`tests/run-graph.test.ts`、`tests/run-system.test.ts`、`tests/encounter-scheduler.test.ts` 共 11 项通过；`npm run check` 通过。
 - 当前边界：Route 与 Scheduler 仍需接入正式 GameState、Replay、浏览器 Route Map 和两波真实 Combat，不能计为 P1 完成。
+
+## 2026-08-12 — Planning Board / Skill Allocation Integration
+
+- 根据用户反馈重做 Charged Dash：基础 Breach Drive 本身即支持任意角度撞甲卸甲、裸露区击杀与敌体贯穿；被动只强化蓄力控制、连续破阵和背袭节奏。
+- 重做 28 节点及完整 Effect / Trigger / Limit / Prerequisite 文案；Basic 12、Charged 9、Ultimate 6、Shared 1 数量保持不变。
+- 实现 Skill Allocation State：2 点开局、12 点封顶、Draft / Committed、存点、历史点锁定、Forge 2 点级联重接和 10,000 次随机合法性测试。
+- 默认入口已形成 Title → Planning → Combat → Reward；路线威胁与完整技能树同屏，路线和技能草案原子确认。
+- 首个正式 Act I 两波 Striker Encounter 已通过 Scheduler 接入，Spawn ID 在重试中稳定。
+- 全量自动化：16 文件 / 57 项通过；TypeScript、Build、Design Manifest 和 whitespace 通过。
+- 浏览器：桌面 28/28 技能卡完整、普通点击完成路线 + 2 技能 Draft + Combat；第一波 3 敌人真实生成，Console 0。390×844 无横向溢出，最小触控目标 44px。
+- 发现并修复：超长 Planning 面板被垂直居中导致顶部路线卡不可达；现改为顶部自然展开。
+- 待完成：通用 Web Game Client 的虚拟时间点击稳定性兼容、Event / Forge 生命周期、Replay、26 个机制型 Skill Hook、Charged / Armor / Ultimate 生产实现。

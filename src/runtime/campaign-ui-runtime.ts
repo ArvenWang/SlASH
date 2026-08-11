@@ -1,0 +1,292 @@
+import { threatPreviewForRouteNode } from "../content/encounters/definitions";
+import { FULL_GAME_ACT_DEFINITIONS } from "../content/runs/definitions";
+import {
+  FULL_GAME_SKILL_DEFINITIONS,
+  SKILL_MODULE_ROOTS,
+} from "../content/upgrades/skill-tree";
+import type { SkillDefinition, SkillModule } from "../content/upgrades/types";
+import type {
+  GameCommand,
+  GameCommandDispatchResult,
+  GameState,
+} from "../game/domain/types";
+import { availableRouteNodes, routeNodeById } from "../game/run/run-system";
+import { skillAllocationSnapshot } from "../game/upgrades/skill-system";
+
+export interface CampaignUiRuntimeOptions {
+  readonly root: HTMLDivElement;
+  readonly gameState: GameState;
+  readonly dispatch: (command: GameCommand) => GameCommandDispatchResult;
+  readonly onStateTransition: (result: GameCommandDispatchResult["result"]) => void;
+}
+
+export interface CampaignUiRuntime {
+  update(): void;
+  dispose(): void;
+}
+
+const MODULE_ORDER: readonly SkillModule[] = ["basic", "charged", "ultimate", "shared"];
+
+const BRANCH_NAMES: Readonly<Record<string, string>> = {
+  "basic-corridor": "走廊控制",
+  "basic-geometry": "路径几何",
+  "basic-collision": "障碍利用",
+  "basic-path-memory": "路径记忆",
+  "basic-endpoint": "落点控制",
+  "basic-projectile": "弹幕反制",
+  "basic-tempo": "突进节奏",
+  "charged-control": "蓄力控制",
+  "charged-breach": "连续破阵",
+  "charged-execution": "背线处决",
+  "ultimate-planning": "规划容量",
+  "ultimate-synergy": "路径联动",
+  "ultimate-projectile": "弹幕终式",
+  "ultimate-energy": "能量循环",
+  "shared-tempo": "跨模组节奏",
+};
+
+const NODE_STATUS_TEXT = {
+  available: "可分配",
+  draft: "本次草案",
+  committed: "已锁定",
+  locked: "未解锁",
+} as const;
+
+export function createCampaignUiRuntime(options: CampaignUiRuntimeOptions): CampaignUiRuntime {
+  const { root, gameState, dispatch, onStateTransition } = options;
+  let renderedSignature = "";
+
+  const onClick = (event: MouseEvent) => {
+    const target = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-action]") : null;
+    if (!target) return;
+    const action = target.dataset.action;
+    let result: GameCommandDispatchResult | null = null;
+    if (action === "start-run") {
+      result = dispatch({ type: "start-full-game-run" });
+    } else if (action === "select-route" && target.dataset.nodeId) {
+      result = dispatch({ type: "preview-route-node", nodeId: target.dataset.nodeId });
+    } else if (action === "skill" && target.dataset.skillId) {
+      const nodeState = target.dataset.nodeState;
+      const draftAction = target.dataset.draftAction;
+      if (nodeState === "available" || (nodeState === "draft" && draftAction === "remove")) {
+        result = dispatch({ type: "preview-skill-purchase", skillId: target.dataset.skillId });
+      } else if (nodeState === "draft" || nodeState === "committed") {
+        result = dispatch({ type: "preview-skill-refund", skillId: target.dataset.skillId });
+      }
+    } else if (action === "discard-draft") {
+      result = dispatch({ type: "discard-skill-draft" });
+    } else if (action === "confirm-planning") {
+      result = dispatch({ type: "confirm-planning" });
+    } else if (action === "acknowledge-reward") {
+      result = dispatch({ type: "acknowledge-reward" });
+    }
+    if (result) {
+      renderedSignature = "";
+      onStateTransition(result.result);
+      update();
+    }
+  };
+
+  root.addEventListener("click", onClick);
+
+  function update(): void {
+    const campaign = gameState.run.fullGame;
+    const signature = campaign === null ? "legacy" : JSON.stringify({
+      phase: campaign.phase,
+      act: campaign.routeProgress.actIndex,
+      layer: campaign.routeProgress.layerIndex,
+      provisional: campaign.provisionalRouteNodeId,
+      available: campaign.routeProgress.availableNodeIds,
+      reward: campaign.pendingReward,
+      skills: skillAllocationSnapshot(campaign.skills),
+    });
+    if (signature === renderedSignature) return;
+    renderedSignature = signature;
+    root.className = campaign ? `campaign-ui phase-${campaign.phase}` : "campaign-ui hidden";
+    document.body.classList.toggle("campaign-ui-active", Boolean(campaign && campaign.phase !== "combat" && campaign.phase !== "defeat"));
+
+    if (!campaign || campaign.phase === "combat" || campaign.phase === "defeat") {
+      root.replaceChildren();
+      return;
+    }
+    if (campaign.phase === "title") {
+      root.innerHTML = renderTitle();
+    } else if (campaign.phase === "planning") {
+      root.innerHTML = renderPlanning(gameState);
+    } else if (campaign.phase === "reward") {
+      root.innerHTML = renderReward(gameState);
+    } else {
+      root.innerHTML = renderVictory(gameState);
+    }
+  }
+
+  update();
+  return {
+    update,
+    dispose() {
+      root.removeEventListener("click", onClick);
+      root.replaceChildren();
+      document.body.classList.remove("campaign-ui-active");
+    },
+  };
+}
+
+function renderTitle(): string {
+  return `
+    <section class="campaign-panel title-panel" aria-labelledby="campaign-title">
+      <p class="panel-kicker">PROJECT SLASH / FULL GAME</p>
+      <h1 id="campaign-title">REDLINE ASCENT</h1>
+      <p class="panel-copy">三种主动模组。四个区域。每局最多 12 点，只能完成 28 个被动中的一部分。</p>
+      <div class="base-rules" aria-label="基础战斗规则">
+        <span>Basic：点击突进</span>
+        <span>Charged：撞甲卸甲，撞裸露区击杀</span>
+        <span>Ultimate：满能量后规划多段路径</span>
+      </div>
+      <button class="primary-action" type="button" data-action="start-run">NEW RUN / 开始新局</button>
+    </section>`;
+}
+
+function renderPlanning(state: GameState): string {
+  const campaign = state.run.fullGame;
+  if (!campaign) return "";
+  const allocation = skillAllocationSnapshot(campaign.skills);
+  const routeNodes = availableRouteNodes(campaign.routeProgress);
+  const selectedNode = campaign.provisionalRouteNodeId
+    ? routeNodeById(campaign.routeProgress.route, campaign.provisionalRouteNodeId)
+    : null;
+  const act = FULL_GAME_ACT_DEFINITIONS[campaign.routeProgress.actIndex];
+  const moduleColumns = MODULE_ORDER.map((module) => renderSkillModule(module, allocation.nodes)).join("");
+  return `
+    <section class="campaign-panel planning-panel" aria-labelledby="planning-title">
+      <header class="planning-header">
+        <div>
+          <p class="panel-kicker">ACT ${campaign.routeProgress.actIndex + 1} / LAYER ${campaign.routeProgress.layerIndex + 1}</p>
+          <h1 id="planning-title">${escapeHtml(act?.name ?? "PLANNING BOARD")}</h1>
+          <p>先暂定下一节点，再用已知威胁决定是否花点；确认前路线与技能都不会锁定。</p>
+        </div>
+        <div class="point-counter" aria-label="技能点">
+          <strong>${allocation.unspentPoints}</strong>
+          <span>UNSPENT SP</span>
+          <small>${allocation.spentPoints} 已投入 / ${allocation.totalEarnedPoints} 已获得</small>
+        </div>
+      </header>
+
+      <div class="planning-grid">
+        <aside class="route-panel" aria-labelledby="route-title">
+          <div class="section-heading">
+            <span>01</span><div><h2 id="route-title">下一节点</h2><p>显示确定内容，不隐藏致命机制。</p></div>
+          </div>
+          <div class="route-options">${routeNodes.map((node) => renderRouteCard(node, campaign.provisionalRouteNodeId === node.id)).join("")}</div>
+        </aside>
+
+        <main class="skill-board" aria-labelledby="skill-board-title">
+          <div class="section-heading">
+            <span>02</span><div><h2 id="skill-board-title">完整技能树</h2><p>所有节点 1 SP；卡片内直接写明效果、触发、限制与前置。</p></div>
+          </div>
+          <div class="skill-module-grid">${moduleColumns}</div>
+        </main>
+      </div>
+
+      <footer class="planning-confirmation">
+        <div>
+          <strong>${selectedNode ? escapeHtml(threatPreviewForRouteNode(selectedNode).title) : "尚未暂定路线"}</strong>
+          <span>${allocation.draftAddedSkillIds.length} 个新增草案 · ${allocation.unspentPoints} 点将在确认后保留</span>
+        </div>
+        <button class="secondary-action" type="button" data-action="discard-draft" ${allocation.draftAddedSkillIds.length === 0 && allocation.draftRemovedSkillIds.length === 0 ? "disabled" : ""}>撤销本次草案</button>
+        <button class="primary-action" type="button" data-action="confirm-planning" ${selectedNode ? "" : "disabled"}>LOCK BUILD & ENTER / 锁定并进入</button>
+      </footer>
+    </section>`;
+}
+
+function renderRouteCard(node: ReturnType<typeof availableRouteNodes>[number], selected: boolean): string {
+  const preview = threatPreviewForRouteNode(node);
+  return `
+    <button class="route-card ${selected ? "selected" : ""}" type="button" data-action="select-route" data-node-id="${escapeHtml(node.id)}" ${preview.available ? "" : "disabled"}>
+      <span class="route-kind">${escapeHtml(node.kind.toUpperCase())}</span>
+      <strong>${escapeHtml(preview.title)}</strong>
+      <p>${escapeHtml(preview.summary)}</p>
+      <div class="tag-row">${preview.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>
+      <small>${preview.hostileCount} HOSTILES · ${preview.waveCount} WAVES · REWARD ${escapeHtml(node.reward.toUpperCase())}</small>
+    </button>`;
+}
+
+function renderSkillModule(
+  module: SkillModule,
+  nodeViews: ReturnType<typeof skillAllocationSnapshot>["nodes"],
+): string {
+  const root = SKILL_MODULE_ROOTS.find((candidate) => candidate.module === module);
+  const skills = FULL_GAME_SKILL_DEFINITIONS.filter((definition) => definition.module === module);
+  const branches = [...new Set(skills.map((definition) => definition.branchId))];
+  return `
+    <section class="skill-module module-${module}">
+      <div class="module-root">
+        <span>BASE / 0 SP</span>
+        <h3>${escapeHtml(root?.nameEn ?? module.toUpperCase())}</h3>
+        <strong>${escapeHtml(root?.nameZh ?? module)}</strong>
+        <p>${escapeHtml(root?.description ?? "")}</p>
+      </div>
+      <div class="module-branches">
+        ${branches.map((branchId) => `
+          <section class="skill-branch">
+            <h4>${escapeHtml(BRANCH_NAMES[branchId] ?? branchId)}</h4>
+            ${skills.filter((definition) => definition.branchId === branchId).map((definition) => (
+              renderSkillNode(definition, nodeViews.find((view) => view.id === definition.id))
+            )).join("")}
+          </section>`).join("")}
+      </div>
+    </section>`;
+}
+
+function renderSkillNode(
+  definition: SkillDefinition,
+  view: ReturnType<typeof skillAllocationSnapshot>["nodes"][number] | undefined,
+): string {
+  const state = view?.state ?? "locked";
+  const draftAction = view?.draftAction ?? "";
+  const status = state === "draft" && draftAction === "remove" ? "待移除" : NODE_STATUS_TEXT[state];
+  return `
+    <button class="skill-node state-${state} tier-${definition.tier}" type="button"
+      data-action="skill" data-skill-id="${escapeHtml(definition.id)}" data-node-state="${state}" data-draft-action="${draftAction}"
+      aria-label="${escapeHtml(`${definition.presentation.code} ${definition.presentation.nameZh} ${status}`)}">
+      <span class="skill-connector" aria-hidden="true"></span>
+      <span class="skill-meta"><b>${escapeHtml(definition.presentation.code)}</b><i>${escapeHtml(status)}</i></span>
+      <strong>${escapeHtml(definition.presentation.nameZh)} <small>${escapeHtml(definition.presentation.nameEn)}</small></strong>
+      <dl>
+        <div><dt>效果</dt><dd>${escapeHtml(definition.presentation.effect)}</dd></div>
+        <div><dt>触发</dt><dd>${escapeHtml(definition.presentation.trigger)}</dd></div>
+        <div><dt>限制</dt><dd>${escapeHtml(definition.presentation.limit)}</dd></div>
+        <div><dt>前置</dt><dd>${escapeHtml(definition.presentation.prerequisite)}</dd></div>
+      </dl>
+    </button>`;
+}
+
+function renderReward(state: GameState): string {
+  const reward = state.run.fullGame?.pendingReward;
+  return `
+    <section class="campaign-panel reward-panel" aria-labelledby="reward-title">
+      <p class="panel-kicker">NODE COMPLETE</p>
+      <h1 id="reward-title">战斗结算</h1>
+      <div class="reward-value"><strong>+${reward?.skillPointsGranted ?? 0}</strong><span>SKILL POINT</span></div>
+      <p>${reward?.skillPointsGranted ? "新点数会在下一张 Planning Board 中进入 Draft，可花费也可保留。" : "本节点没有技能点奖励；现有未消费点仍会保留。"}</p>
+      <button class="primary-action" type="button" data-action="acknowledge-reward">CONTINUE TO PLANNING / 继续规划</button>
+    </section>`;
+}
+
+function renderVictory(state: GameState): string {
+  const campaign = state.run.fullGame;
+  return `
+    <section class="campaign-panel reward-panel" aria-labelledby="victory-title">
+      <p class="panel-kicker">RUN COMPLETE</p>
+      <h1 id="victory-title">REDLINE CLEARED</h1>
+      <p>${campaign?.routeProgress.completedNodeIds.length ?? 0} 节点 · ${campaign?.skills.committedSkillIds.length ?? 0} 个已锁定技能 · Seed ${state.run.seed}</p>
+    </section>`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}

@@ -87,13 +87,13 @@ P11 Visual Branch Integration Contract + Git Push
 - [x] 新增 `RunDefinition / ActDefinition / RouteNodeDefinition / RouteGraphState`。
 - [x] 新增 4 Act 稳定 ID 与 6 Layer 拓扑约束。
 - [x] Seeded Route Generator，100 Seed 无断路。
-- [ ] Game Phase 扩展：title / map / allocation / playing / reward / boss / victory / defeat。
+- [x] Game Phase 扩展：title / map / allocation / playing / reward / boss / victory / defeat。
 - [x] Encounter Runtime State：Current Wave、Pending、Activated、Completed、Triggers。
 - [x] 实现 Immediate / Timed / After Previous Killed / Triggered。
-- [ ] 生成稳定 Spawn / Entity ID，支持 Restart / Replay。
-- [ ] Stage Completion 改为 Required Wave + Hostile + Boss Objective。
-- [ ] Snapshot 暴露 Act、Layer、Node、Route Choice、Wave。
-- [ ] 保留 Phase 1 三关兼容测试，明确 Content Version 升级。
+- [x] 生成稳定 Spawn / Entity ID，支持 Restart；Replay 升级仍待完成。
+- [x] Stage Completion 改为 Required Wave + Hostile；Boss Objective 在 P7 接入。
+- [x] Snapshot 暴露 Act、Layer、Node、Route Choice、Wave。
+- [x] 保留 Phase 1 三关兼容测试，明确 Content Version 升级。
 
 ### 测试
 
@@ -124,15 +124,15 @@ P11 Visual Branch Integration Contract + Git Push
 
 ### 任务
 
-- [ ] Upgrade Definition 扩展：cost、prerequisites、module、tier、hook IDs。
-- [ ] 28 个稳定 Skill ID 和完整文案。
-- [ ] `preview / commit / refund-current-visit / forge-reroute` Commands。
-- [ ] SP 奖励计划与 Elite 12 点封顶。
-- [ ] 合法性检查：前置、后代级联、战斗锁定、存点。
-- [ ] 完整 Skill Tree UI，不使用随机三选一。
-- [ ] Threat Preview 与 Allocation 同屏或连续安全流程。
+- [x] Upgrade Definition 扩展：cost、prerequisites、module、tier、hook IDs。
+- [x] 28 个稳定 Skill ID 和完整文案。
+- [x] `preview / commit / refund-current-visit / forge-reroute` 规则引擎；Forge UI / Campaign Command 仍待接入。
+- [x] SP 奖励计划与 Elite 12 点封顶。
+- [x] 合法性检查：前置、后代级联、战斗锁定、存点。
+- [x] 完整 Skill Tree UI，不使用随机三选一。
+- [x] Threat Preview 与 Allocation 合并为 Planning Board。
 - [ ] Save / Replay 记录 Skill Commands。
-- [ ] 先接入可由现有 Modifier 表达的节点，再为机制节点增加 typed Hooks。
+- [ ] 先接入可由现有 Modifier 表达的节点，再为机制节点增加 typed Hooks（B-01 / B-12 已接入，26 个机制 Hook 待后续工作包）。
 
 ### 测试
 

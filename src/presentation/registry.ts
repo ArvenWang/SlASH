@@ -10,7 +10,11 @@ import type {
   VfxProfileId,
 } from "../core/ids";
 import { DASH_SLASH_ABILITY_ID, abilityDefinitions } from "../content/abilities/definitions";
-import { PHASE_ONE_GRUNT_ID, enemyDefinitions } from "../content/enemies/definitions";
+import {
+  PHASE_ONE_GRUNT_ID,
+  STRIKER_ENEMY_ID,
+  enemyDefinitions,
+} from "../content/enemies/definitions";
 import { LEVEL_DEFINITIONS } from "../content/levels/definitions";
 import { DefinitionRegistry } from "../content/registry";
 import type {
@@ -169,6 +173,14 @@ export const animationSetRegistry = new DefinitionRegistry<AnimationSetDefinitio
 export const enemyPresentationRegistry = new DefinitionRegistry<EnemyPresentationDefinition>([
   {
     id: PHASE_ONE_GRUNT_ID,
+    characterId: "enemy-procedural-v5",
+    animationSetId: "enemy-procedural-v5",
+    vfxProfileId: "enemy-cut-humanoid-v1",
+    audioProfileId: "enemy-cyber-grunt-v1",
+    deathProfileId: "humanoid-soft-v1",
+  },
+  {
+    id: STRIKER_ENEMY_ID,
     characterId: "enemy-procedural-v5",
     animationSetId: "enemy-procedural-v5",
     vfxProfileId: "enemy-cut-humanoid-v1",

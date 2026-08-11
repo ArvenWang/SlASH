@@ -192,6 +192,35 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   let previewSuppressedUntil = 0;
   let playerHeading = Math.PI;
   let pendingAbilityInputId: number | null = null;
+  let waveWarningLabel: string | null = null;
+  let waveWarningRemaining = 0;
+
+  function createEnemyVisual(enemy: EnemyState, index: number): void {
+    const enemyPresentation = enemyPresentationRegistry.get(enemy.definitionId);
+    const characterPresentation = characterPresentationRegistry.get(enemyPresentation.characterId);
+    const provider = characterProviders.get(characterPresentation.providerId);
+    if (!provider.ready) throw new Error(`${provider.id} is not prepared.`);
+    const actor = provider.create({ role: "enemy", variant: index });
+    actor.root.position.set(enemy.position.x, 0, enemy.position.z);
+    const heading = (index * 2.399) % (Math.PI * 2);
+    actor.root.rotation.y = heading;
+    actor.deathPresentation?.setCutVisible(false);
+    actor.deathPresentation?.setCutHeat(0);
+    scene.add(actor.root);
+    enemyVisuals.set(enemy.id, {
+      actor,
+      deathAge: null,
+      phase: index * 0.77,
+      heading,
+      lastPosition: new THREE.Vector3(enemy.position.x, 0, enemy.position.z),
+      slashDirection: new THREE.Vector3(1, 0, 0),
+      contactSpawned: false,
+      impactSpawned: false,
+      separated: false,
+      corpseAttempted: false,
+      corpse: null,
+    });
+  }
 
   function rebuildEnemyVisuals(): void {
     for (const visual of enemyVisuals.values()) {
@@ -199,31 +228,12 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       visual.actor.dispose();
     }
     enemyVisuals.clear();
+    gameState.enemies.forEach(createEnemyVisual);
+  }
+
+  function syncEnemyVisuals(): void {
     gameState.enemies.forEach((enemy, index) => {
-      const enemyPresentation = enemyPresentationRegistry.get(enemy.definitionId);
-      const characterPresentation = characterPresentationRegistry.get(enemyPresentation.characterId);
-      const provider = characterProviders.get(characterPresentation.providerId);
-      if (!provider.ready) throw new Error(`${provider.id} is not prepared.`);
-      const actor = provider.create({ role: "enemy", variant: index });
-      actor.root.position.set(enemy.position.x, 0, enemy.position.z);
-      const heading = (index * 2.399) % (Math.PI * 2);
-      actor.root.rotation.y = heading;
-      actor.deathPresentation?.setCutVisible(false);
-      actor.deathPresentation?.setCutHeat(0);
-      scene.add(actor.root);
-      enemyVisuals.set(enemy.id, {
-        actor,
-        deathAge: null,
-        phase: index * 0.77,
-        heading,
-        lastPosition: new THREE.Vector3(enemy.position.x, 0, enemy.position.z),
-        slashDirection: new THREE.Vector3(1, 0, 0),
-        contactSpawned: false,
-        impactSpawned: false,
-        separated: false,
-        corpseAttempted: false,
-        corpse: null,
-      });
+      if (!enemyVisuals.has(enemy.id)) createEnemyVisual(enemy, index);
     });
   }
 
@@ -237,7 +247,10 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       for (const enemy of gameState.enemies) if (enemy.alive) alive += 1;
     }
     if (renderedStageIndex !== gameState.stage.index || renderedStageName !== gameState.stage.name) {
-      shell.stageLabel.textContent = `STAGE ${String(gameState.stage.index + 1).padStart(2, "0")} / ${gameState.stage.name}`;
+      const campaign = gameState.run.fullGame;
+      shell.stageLabel.textContent = campaign
+        ? `ACT ${campaign.routeProgress.actIndex + 1} / LAYER ${campaign.routeProgress.layerIndex + 1}`
+        : `STAGE ${String(gameState.stage.index + 1).padStart(2, "0")} / ${gameState.stage.name}`;
       renderedStageIndex = gameState.stage.index;
       renderedStageName = gameState.stage.name;
     }
@@ -248,13 +261,22 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   }
 
   function updatePhaseBanner(): void {
+    const campaign = gameState.run.fullGame;
     let visible = false;
     let tone = "clear";
     let eyebrow = `STAGE ${String(gameState.stage.index + 1).padStart(2, "0")}`;
     let title = gameState.stage.name;
     let subtitle = `ELIMINATE ${String(gameState.combat.totalEnemies).padStart(2, "0")} HOSTILES`;
     if (gameState.stage.phase === "playing") {
-      visible = stageIntroAge < 0.86;
+      if (waveWarningRemaining > 0 && waveWarningLabel) {
+        visible = true;
+        tone = "danger";
+        eyebrow = "HOSTILE SIGNAL";
+        title = "INBOUND";
+        subtitle = `${waveWarningLabel} // ${Math.ceil(waveWarningRemaining * 10) / 10}s`;
+      } else {
+        visible = stageIntroAge < 0.86;
+      }
     } else if (gameState.stage.phase === "dead") {
       visible = true;
       tone = "danger";
@@ -265,6 +287,8 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       visible = true;
       title = "SECTOR CLEARED";
       subtitle = "NEXT STAGE INBOUND";
+    } else if (campaign !== null) {
+      visible = false;
     } else {
       visible = true;
       eyebrow = "COMBAT SEQUENCE";
@@ -467,6 +491,8 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     playerActor.root.rotation.set(0, playerHeading, 0);
     phaseAge = 0;
     stageIntroAge = 0;
+    waveWarningLabel = null;
+    waveWarningRemaining = 0;
     updateHud();
   }
 
@@ -493,6 +519,12 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
         audio.playDeath("player-death-current-v1");
       } else if (event.type === "stage-cleared" || event.type === "game-complete") {
         phaseAge = 0;
+      } else if (event.type === "encounter-wave-warning") {
+        waveWarningLabel = event.waveId.toUpperCase();
+        waveWarningRemaining = Math.max(0, (event.activationAtMs - event.atMs) / 1000);
+      } else if (event.type === "encounter-wave-started") {
+        waveWarningLabel = null;
+        waveWarningRemaining = 0;
       }
     }
   }
@@ -500,6 +532,8 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   function update(dt: number): PresentationLifecycleAction | null {
     worldTime += dt;
     stageIntroAge += dt;
+    waveWarningRemaining = Math.max(0, waveWarningRemaining - dt);
+    syncEnemyVisuals();
     environment.update(worldTime, dt);
     postFx.update(worldTime, dt);
     hostileRim.intensity = THREE.MathUtils.damp(hostileRim.intensity, 52, 5, dt);

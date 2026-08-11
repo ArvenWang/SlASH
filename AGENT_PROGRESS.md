@@ -15,7 +15,7 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 已增加 `FULL_GAME_CONTENT_MANIFEST.json`、统一术语表和 `npm run verify:full-game-design`；机器门已确认 4 Act、28 Skill、10+4 Enemy、4 Boss、3/4/2 Entity、53 个 Encounter 目标和 12/28 点数上限一致。
 - 技能经济已改为完整 Run：开局 2 点、每 Act 保证 2 点、Elite 最多补 2 点；保证 10、上限 12，只能购买 28 节点中的 42.86%。
 - Charged Dash 正式规则锁定为：整条路线贯穿敌群；命中真实 Armor Coverage 就卸对应甲；命中裸露区就击杀；无甲背部可直接处决，后背有甲则先卸后甲。
-- 当前处于 P1 Run Foundation：4 Act Seeded Route Graph、Route Progress State 与 Encounter Scheduler 已实现并通过单元测试；下一步是接入实际浏览器流程，尚未把独立模块冒充可玩完成。
+- 当前已进入 P1/P2 可玩集成：默认产品入口具备 Title → Planning Board → 路线与技能原子确认 → 两波 Combat → Reward → 下一次 Planning；其余 53 Encounter、Forge/Event、完整 Skill Hook、Replay 与后续系统仍按计划推进，不把首个闭环冒充完整游戏。
 
 ## Full Game 已完成内容
 
@@ -33,13 +33,20 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - [x] Route Progress State：选路、逐层推进、跨 Act、最终 Victory、JSON Roundtrip 均通过。
 - [x] Encounter Scheduler：Immediate / Timed / After Previous Killed / Triggered、预警、激活、清场与实体归属均通过。
 - [x] P1 定向验证：3 个测试文件 / 11 项通过；TypeScript 检查通过。
+- [x] Charged Dash 设计纠偏：0 SP Root 已明确为任意角度撞甲卸甲、撞裸露身体击杀、贯穿敌群；被动不再解锁基础破甲。
+- [x] 重做 28 节点：Basic 12 / Charged 9 / Ultimate 6 / Shared 1；移除重复的 Mirror / Armor Phase，新增 Cross Purge、Double Echo、Projectile Reversal、Chain Breach 等清晰节点。
+- [x] 新 Planning Board：路线威胁与完整树同屏；Draft / Committed 分离；确认时原子锁定路线和 Build；每张卡直接显示效果、触发、限制、前置。
+- [x] Skill Economy 规则引擎：2 点开局、12 点封顶、存点、普通访问历史点锁定、Forge 2 点级联重接、10,000 次随机分配不超买 / 不破坏前置。
+- [x] 首个正式两波 Encounter 与 Striker 已接入真实浏览器；稳定 Spawn ID 可在死亡重试后复现。
+- [x] 当前全量验证：16 个测试文件 / 57 项通过；TypeScript、Production Build、设计清单和 whitespace 通过。
+- [x] 浏览器 Planning 验收：28 / 28 完整文案、4 个 Module、2 个真实路线选项、2 点 Draft、进入 Combat 后 3 个第一波敌人、Console 0；390×844 无横向溢出，最小点击目标 44px。
 
 ## Full Game 下一步计划
 
-1. 将 Route Graph 和 Encounter Scheduler 接入正式 GameState、稳定 Spawn ID、Snapshot 与 Replay。
-2. 做出 Title → Route Map → 选择节点 → 两波战斗 → Reward 的首个真实浏览器闭环。
-3. 进入 P2，按用户新反馈重做技能点分配流程与 Charged Dash 分支，不保留旧版含糊或互相重复的技能提案。
-4. 每个有意义变更按 `develop-web-game` 循环执行自动化、截图、`render_game_to_text` 和 Console 检查，再依 P3–P11 推进。
+1. 完成 P1 Replay Route / Wave Command 与非战斗节点生命周期，不让 24 节点 Run 在 Event / Forge 处断路。
+2. 完成 P2 Forge Campaign UI 与 Save / Replay 记录，并逐项接入 28 个 Gameplay Hook。
+3. 进入 P3：实现真实 Hold / Release Charged、Armor Coverage、任意角度破甲 / 裸露区击杀和 Ultimate。
+4. 每个有意义变更继续执行自动化、截图、`render_game_to_text` 和 Console 检查，再依 P4–P11 推进。
 
 ## Full Game 当前问题与边界
 
@@ -47,6 +54,8 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 架构中 Projectile / Obstacle / Hazard、非 Immediate Wave 和远程 Attack Strategy 目前只有接口，没有生产生命周期，必须逐项真实实现。
 - 现有 `game.ts` 仍承担较多编排；新增系统必须进入独立模块，不能继续形成 God Object。
 - Route Graph 第一版曾因错误旋转目标映射造成部分 Seed 节点不可达；已改成旋转源投影，并用 100 Seed 回归锁住该问题。
+- Planning Board 第一版因高内容面板仍采用垂直居中，导致顶部路线卡被推到视口外；真实浏览器已发现并改为顶部展开，普通点击回归通过。
+- `develop-web-game` 通用 Client 的 selector click 在其虚拟时间 shim 下仍会等待稳定性超时；同一页面已用普通 Playwright 点击（无 force）完整通过，因此记录为验证工具兼容问题，不冒充产品输入失败。
 - 人工体验门最终需要真实测试者；自动化不能代替，但在到达该阶段前仍可继续完成所有代码和自动门。
 
 ## Full Game 暂勿并行修改

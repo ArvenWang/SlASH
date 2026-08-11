@@ -112,9 +112,9 @@
 
 1. Refraction + Cross；
 2. Wide + Gravity；
-3. Charged Armor Shrapnel；
+3. Charged Chain Breach + Armor Shrapnel；
 4. Charged Backline Battery；
-5. Projectile Return；
+5. Basic Projectile Reversal + Ultimate Projectile Return；
 6. Rapid + Kill Momentum。
 
 每套构筑至少有 2 项可量化战斗结果不同于无升级基线；不得只是 VFX 差异。
@@ -334,7 +334,7 @@ Stage Clear 仅在以下条件同时成立时发生：
 真实输入验证：
 
 ```text
-Title → New Run → Map → Combat → Reward → Skill Tree → Route Choice
+Title → New Run → Initial Planning → Combat → Reward → Planning Board
 → Act Boss → Next Act → Final Boss → Victory → Run Summary → Title
 ```
 

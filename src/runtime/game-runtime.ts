@@ -2,6 +2,7 @@ import {
   advanceGame,
   advanceStage,
   createGame,
+  createFullGameGame,
   createStressGame,
   dispatchGameCommand,
   drainGameEvents,
@@ -75,6 +76,56 @@ export function createGameRuntime(initialStageIndex = 0): GameRuntime {
     },
     resetRun() {
       replaceState(createGame(0));
+    },
+  };
+}
+
+export function createFullGameRuntime(seed?: number): GameRuntime {
+  const state = createFullGameGame(seed);
+  const frozenEnemySpeeds: number[] = [];
+
+  function replaceState(replacement: GameState): void {
+    Object.assign(state, replacement);
+  }
+
+  return {
+    state,
+    dispatch(command) {
+      return dispatchGameCommand(state, command);
+    },
+    drainEvents() {
+      return drainGameEvents(state);
+    },
+    advance(deltaMs, enemyMotionEnabled = true) {
+      if (enemyMotionEnabled) {
+        advanceGame(state, deltaMs);
+      } else {
+        frozenEnemySpeeds.length = state.enemies.length;
+        state.enemies.forEach((enemy, index) => {
+          frozenEnemySpeeds[index] = enemy.speed;
+          enemy.speed = 0;
+        });
+        advanceGame(state, deltaMs);
+        state.enemies.forEach((enemy, index) => {
+          enemy.speed = frozenEnemySpeeds[index] ?? 0;
+        });
+      }
+      return drainGameEvents(state);
+    },
+    restartStage() {
+      restartStage(state);
+    },
+    advanceStage() {
+      advanceStage(state);
+    },
+    loadStage(stageIndex, rules = {}) {
+      replaceState(createGame(stageIndex, rules));
+    },
+    loadStressScenario(enemyCount = 20) {
+      replaceState(createStressGame(enemyCount, state.rules));
+    },
+    resetRun() {
+      replaceState(createFullGameGame(state.run.seed, state.rules));
     },
   };
 }
