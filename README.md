@@ -41,24 +41,28 @@ npm run preview
 
 ## 项目结构
 
-- `src/game/`：确定性玩法状态与关卡逻辑；
-- `src/characters/`：角色几何、姿态、动画与尸体系统；
-- `src/scene/`：竞技场、列车、城市、雨雾与环境响应；
-- `src/vfx.ts`：Dash、命中、血液和镜头反馈；
+- `src/content/`：敌人、技能、升级、关卡与实体 Definition；
+- `src/game/`：确定性 Gameplay Domain、行为、碰撞、事件与 Replay；
+- `src/runtime/`：输入、游戏、渲染、调试与表现层装配；
+- `src/presentation/`：角色 Provider、动画 Controller、视觉 Profile 与 Registry；
+- `src/characters/`、`src/scene/`、`src/vfx.ts`：当前程序化角色和视觉 Runtime；
 - `art/`：正式视觉概念与角色多视图输入；
-- `docs/`：验收标准和角色美术规范；
+- `docs/architecture/`：Phase 2A 架构、扩展流程与性能预算；
 - `validation/tools/`：可复用的真实浏览器验证工具。
 
 ## 视觉状态
 
-当前版本使用项目内原创的程序化多面几何角色，并已完成低位蓄势、冲跑相位差、薄型全发光刀和战场可读性调整。
+当前生产默认仍使用项目内原创的程序化多面几何角色。程序角色与 GLB 角色现已统一到 Character Provider 和 Animation Controller，视觉替换不再要求修改 Gameplay。
 
-更高精度的生成式角色资产仍是后续美术里程碑。Tripo 多视图输入和本地 GLB 检查台已经准备完成，但候选模型尚未生成或接入；仓库不会将这一项描述为已完成。
+两份 Rigged GLB 已作为按需加载 Provider 接入，但原文件均没有 AnimationClip，因此当前使用自制骨骼驱动；程序角色继续作为正式回退与基准。当前整体视觉仍未获得用户签核，Phase 2A 完成的是后续重做材质、灯光、环境、VFX、角色与动作所需的生产架构，不代表画面已经合格。
+
+架构入口见 [Phase 2A 架构总览](docs/architecture/README.md)。独立检查台包括 Animation Lab、VFX Lab、Environment Lab 与 Content Sandbox，入口文件位于 `validation/tools/`。
 
 ## 验证
 
 ```bash
 npm run check
+npm test
 npm run build
 npm run verify:gameplay
 ```
