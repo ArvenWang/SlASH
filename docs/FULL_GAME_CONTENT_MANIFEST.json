@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "contentVersion": "full-game-v1",
+  "implementationStatus": "planned",
+  "run": {
+    "actCount": 4,
+    "targetVisitedNodes": 24,
+    "minimumVisitedNodes": 22,
+    "maximumVisitedNodes": 26,
+    "guaranteedSkillPoints": 10,
+    "maximumSkillPoints": 12,
+    "purchasableSkillCount": 28
+  },
+  "acts": [
+    "act-01-arrival-yard",
+    "act-02-compression-forge",
+    "act-03-mirror-archive",
+    "act-04-redline-cathedral"
+  ],
+  "skills": {
+    "basic": [
+      "skill-wide-slash-v1",
+      "skill-gravity-slash-v1",
+      "skill-curve-dash-v1",
+      "skill-mirror-slash-v1",
+      "skill-refraction-v1",
+      "skill-prism-momentum-v1",
+      "skill-cross-execution-v1",
+      "skill-echo-slash-v1",
+      "skill-impact-burst-v1",
+      "skill-shatter-shot-v1",
+      "skill-armor-phase-v1",
+      "skill-rapid-dash-v1"
+    ],
+    "charged": [
+      "skill-quick-charge-v1",
+      "skill-adaptive-aim-v1",
+      "skill-overpressure-v1",
+      "skill-breach-momentum-v1",
+      "skill-breach-shock-v1",
+      "skill-armor-shrapnel-v1",
+      "skill-execution-tempo-v1",
+      "skill-predator-drive-v1",
+      "skill-backline-battery-v1"
+    ],
+    "ultimate": [
+      "skill-additional-ultimate-slash-v1",
+      "skill-tactical-window-v1",
+      "skill-vector-echo-v1",
+      "skill-cross-cascade-v1",
+      "skill-projectile-return-v1",
+      "skill-residual-charge-v1"
+    ],
+    "shared": [
+      "skill-kill-momentum-v1"
+    ]
+  },
+  "enemies": {
+    "standard": [
+      "enemy-striker-v1",
+      "enemy-gunner-v1",
+      "enemy-lancer-v1",
+      "enemy-constructor-v1",
+      "enemy-minelayer-v1",
+      "enemy-sniper-v1",
+      "enemy-vanguard-v1",
+      "enemy-bastion-v1",
+      "enemy-blink-stalker-v1",
+      "enemy-conductor-v1"
+    ],
+    "elite": [
+      "elite-redline-lancer-v1",
+      "elite-twin-gunner-v1",
+      "elite-architect-v1",
+      "elite-fortress-v1"
+    ]
+  },
+  "bosses": [
+    "boss-rail-hound-v1",
+    "boss-siege-choir-v1",
+    "boss-mirror-regent-v1",
+    "boss-last-conductor-v1"
+  ],
+  "projectiles": [
+    "projectile-standard-round-v1",
+    "projectile-sniper-round-v1",
+    "projectile-boss-shard-v1"
+  ],
+  "obstacles": [
+    "obstacle-static-reflector-v1",
+    "obstacle-deployable-barrier-v1",
+    "obstacle-anchor-pillar-v1",
+    "obstacle-rail-gate-v1"
+  ],
+  "hazards": [
+    "hazard-armed-mine-v1",
+    "hazard-arc-rail-v1"
+  ],
+  "encounterTargets": {
+    "standard": 28,
+    "elite": 12,
+    "challenge": 9,
+    "boss": 4
+  },
+  "requiredDocuments": [
+    "docs/FULL_GAME_DESIGN.md",
+    "docs/FULL_GAME_ACCEPTANCE.md",
+    "docs/FULL_GAME_PRODUCTION_PLAN.md",
+    "docs/FULL_GAME_GLOSSARY.md"
+  ]
+}

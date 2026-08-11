@@ -67,3 +67,24 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 ## 暂勿并行修改
 
 - Tripo 生成已延期；发布基线已同步，后续工作从当前 `main` 与本进度文档继续。
+
+---
+
+## 2026-08-12 — Full Game Production P0
+
+- 用户目标已升级为完整商业游戏，不再按当前三关 Demo 配置设计。
+- 已建立独立工作树 `/Users/nefish/Desktop/Coding/Slash-full-game` 和分支 `codex/full-game-production`，基于 Phase 2A 新架构提交 `32521fe`；原视觉工作树未修改。
+- 已新增：
+  - `docs/FULL_GAME_DESIGN.md`
+  - `docs/FULL_GAME_ACCEPTANCE.md`
+  - `docs/FULL_GAME_PRODUCTION_PLAN.md`
+- 已锁定规模：4 Act、约 24 个实际节点、4 Boss、28 Skill、保证 10 / 上限 12 SP、10 Standard Enemy、4 Elite、3 Projectile、4 Obstacle、2 Hazard。
+- 已锁定 Charged Dash：贯穿敌群；撞甲卸甲；撞裸露区击杀；无甲背部直接处决；后背有甲先卸甲。
+- 已执行技术基线：
+  - `npm ci`：0 vulnerabilities；
+  - `npm test`：11 files / 36 tests passed；
+  - `npm run check`：passed；
+  - `npm run build`：passed，仅既有 Three.js 604.35kB chunk warning。
+- 下一步：P0 机器可读 Manifest / Glossary，然后 P1 Run Graph 与 Encounter Scheduler。
+- Gotcha：当前新架构只有 Immediate Wave 和 Direct Chase Enemy 真实运行；Projectile / Obstacle / Hazard / 非 Immediate Wave 只是 Domain 入口，不能计为完成内容。
+- P0 补充完成：`FULL_GAME_CONTENT_MANIFEST.json`、`FULL_GAME_GLOSSARY.md`、Architecture Index、`verify:full-game-design`。验证结果为 4 Acts / 28 Skills / 10+4 Enemies / 4 Bosses / 3 Projectiles / 4 Obstacles / 2 Hazards / 53 Encounter Targets，12/28 最大完成比例 0.428571。

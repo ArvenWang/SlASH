@@ -23,7 +23,8 @@
     "verify:characters": "node validation/tools/verify-character-providers.mjs",
     "verify:character-assets": "node validation/tools/inspect-glb-character-assets.mjs",
     "verify:labs": "node validation/tools/verify-presentation-labs.mjs",
-    "verify:assets": "node validation/tools/audit-runtime-assets.mjs"
+    "verify:assets": "node validation/tools/audit-runtime-assets.mjs",
+    "verify:full-game-design": "node validation/tools/verify-full-game-design.mjs"
   },
   "dependencies": {
     "lil-gui": "0.21.0",

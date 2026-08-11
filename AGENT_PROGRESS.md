@@ -2,6 +2,57 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 
 # Project Slash — Agent Progress
 
+更新时间：2026-08-12
+
+## Full Game Production 当前进展
+
+- 用户已把目标从三关 Demo 升级为完整商业游戏：完整 Run / 关卡树、有限点数技能树、敌人、Projectile、Obstacle、Hazard、4 个 Boss、玩法细化、量化验收、真实实现和远端推送。
+- 为避免覆盖正在进行的 3D 视觉工作，已从新架构提交 `32521fe` 建立独立工作树 `/Users/nefish/Desktop/Coding/Slash-full-game` 与分支 `codex/full-game-production`。原 `/Users/nefish/Desktop/Coding/Slash` 脏工作树未被修改。
+- 已完成三份生产事实源：
+  - `docs/FULL_GAME_DESIGN.md`：4 Act、约 24 个实际节点、10+4 Enemy、3 Projectile、4 Obstacle、2 Hazard、4 Boss、28 Skill、最大 12 SP；
+  - `docs/FULL_GAME_ACCEPTANCE.md`：Hard Gate、量化功能 / 内容 / 性能 / Replay / Save / Browser / 人工体验门；
+  - `docs/FULL_GAME_PRODUCTION_PLAN.md`：P0–P11 实施依赖、文件范围、测试与推送门。
+- 已增加 `FULL_GAME_CONTENT_MANIFEST.json`、统一术语表和 `npm run verify:full-game-design`；机器门已确认 4 Act、28 Skill、10+4 Enemy、4 Boss、3/4/2 Entity、53 个 Encounter 目标和 12/28 点数上限一致。
+- 技能经济已改为完整 Run：开局 2 点、每 Act 保证 2 点、Elite 最多补 2 点；保证 10、上限 12，只能购买 28 节点中的 42.86%。
+- Charged Dash 正式规则锁定为：整条路线贯穿敌群；命中真实 Armor Coverage 就卸对应甲；命中裸露区就击杀；无甲背部可直接处决，后背有甲则先卸后甲。
+- 当前处于 P0 收口 / P1 Run Foundation 开始前；尚未把文档内容冒充已实现功能。
+
+## Full Game 已完成内容
+
+- [x] 隔离 Gameplay Worktree / Branch。
+- [x] 审计 Phase 2A Content、Level、Ability、Entity、Replay 与 Test 基线。
+- [x] 完整 GDD、内容矩阵、技能树和 Boss 规格。
+- [x] 可执行生产计划和量化验收标准。
+- [x] 机器可读 Content Manifest、术语词典、Architecture Index 与设计一致性验证。
+- [x] 独立工作树安装锁定依赖，0 个 npm audit 漏洞。
+- [x] 基线 `npm test`：11 文件 / 36 项通过。
+- [x] 基线 `npm run check`：通过。
+- [x] 基线 `npm run build`：通过；仅保留既有 Three.js 604.35kB Chunk 警告。
+- [x] `npm run verify:full-game-design`：通过，最大技能完成比例 0.428571。
+
+## Full Game 下一步计划
+
+1. 完成 P0 机器可读 Content Manifest、术语词典和 Architecture Index。
+2. 开始 P1：RunDefinition、4 Act Route Graph、Game Phase、Encounter Scheduler 与 Replay Command。
+3. 每个有意义变更按 `develop-web-game` 循环执行自动化、截图、`render_game_to_text` 和 Console 检查。
+4. 依 P2–P11 继续到技能、三主动模组、实体、敌人、关卡、Boss、Save、UI、平衡、全量验收和远端推送。
+
+## Full Game 当前问题与边界
+
+- 视觉 Agent 的大量角色 / 动画 / Asset 修改尚未提交，本分支不会从其脏工作树复制文件；最终只合并稳定 Commit。
+- 架构中 Projectile / Obstacle / Hazard、非 Immediate Wave 和远程 Attack Strategy 目前只有接口，没有生产生命周期，必须逐项真实实现。
+- 现有 `game.ts` 仍承担较多编排；新增系统必须进入独立模块，不能继续形成 God Object。
+- 人工体验门最终需要真实测试者；自动化不能代替，但在到达该阶段前仍可继续完成所有代码和自动门。
+
+## Full Game 暂勿并行修改
+
+- 本分支将开始修改 `src/game/domain/`、`src/game/run/`、`src/game/encounters/`、`src/content/runs/` 与 Replay。其他 Agent 不应在 `codex/full-game-production` 平行重构这些文件。
+- 视觉 Agent 可继续在原工作树修改 Presentation / Character / Asset；不要把 Gameplay 规则写入视觉资产层。
+
+---
+
+## Phase 2A 历史基线（保留供接力）
+
 更新时间：2026-08-11
 
 ## 当前进展
