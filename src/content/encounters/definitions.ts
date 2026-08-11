@@ -1,6 +1,7 @@
 import { vec2 } from "../../core/math/vec2";
 import type { RouteNodeState } from "../../game/run/types";
 import { STRIKER_ENEMY_ID } from "../enemies/definitions";
+import { eventForRouteNode } from "../events/definitions";
 import type { EncounterDefinition } from "../levels/definitions";
 import { DefinitionRegistry } from "../registry";
 
@@ -56,16 +57,29 @@ export function encounterForRouteNode(node: RouteNodeState): EncounterDefinition
   return ARRIVAL_PINCER_ENCOUNTER;
 }
 
-export function threatPreviewForRouteNode(node: RouteNodeState): RouteThreatPreview {
+export function threatPreviewForRouteNode(node: RouteNodeState, runSeed?: number): RouteThreatPreview {
   const encounter = encounterForRouteNode(node);
   if (!encounter) {
+    if (node.kind === "forge") {
+      return {
+        title: "FORGE / 构筑重接",
+        summary: "可免费移动最多 2 个已锁定技能点；移除前置会级联移除其后继。Reroute Token 可主动增加本次移动上限。",
+        tags: ["FORGE", "RESPEC", "NO COMBAT"],
+        waveCount: 0,
+        hostileCount: 0,
+        available: true,
+      };
+    }
+    const event = runSeed === undefined ? null : eventForRouteNode(node, runSeed);
     return {
-      title: node.kind === "forge" ? "FORGE / 重接" : "EVENT / 事件",
-      summary: "该非战斗节点的正式选择内容将在对应内容工作包接入。",
-      tags: [node.kind.toUpperCase(), "NON-COMBAT"],
+      title: event?.title ?? "EVENT / 资源抉择",
+      summary: event
+        ? `${event.situation} 可选：${event.choices.map((choice) => choice.title).join(" / ")}。`
+        : "从两个明确选项中获得下一战能量、路线情报或 Forge 重接凭证。",
+      tags: ["EVENT", "2 CHOICES", "NO COMBAT"],
       waveCount: 0,
       hostileCount: 0,
-      available: false,
+      available: true,
     };
   }
   return {

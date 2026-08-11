@@ -6,6 +6,8 @@ import {
   createArmorValidationGame,
   createEntityValidationGame,
   createBasicPassiveValidationGame,
+  createCampaignEventValidationGame,
+  createCampaignForgeValidationGame,
   createUltimateValidationGame,
   createStressGame,
   dispatchGameCommand,
@@ -33,6 +35,8 @@ export interface GameRuntime {
   loadUltimateScenario(): void;
   loadEntityScenario(): void;
   loadBasicPassiveScenario(): void;
+  loadCampaignEventScenario(): void;
+  loadCampaignForgeScenario(): void;
   resetRun(): void;
 }
 
@@ -93,6 +97,12 @@ export function createGameRuntime(initialStageIndex = 0): GameRuntime {
     },
     loadBasicPassiveScenario() {
       replaceState(createBasicPassiveValidationGame(state.rules));
+    },
+    loadCampaignEventScenario() {
+      replaceState(createCampaignEventValidationGame(state.rules));
+    },
+    loadCampaignForgeScenario() {
+      replaceState(createCampaignForgeValidationGame(state.rules));
     },
     resetRun() {
       replaceState(createGame(0));
@@ -155,6 +165,12 @@ export function createFullGameRuntime(seed?: number): GameRuntime {
     },
     loadBasicPassiveScenario() {
       replaceState(createBasicPassiveValidationGame(state.rules));
+    },
+    loadCampaignEventScenario() {
+      replaceState(createCampaignEventValidationGame(state.rules));
+    },
+    loadCampaignForgeScenario() {
+      replaceState(createCampaignForgeValidationGame(state.rules));
     },
     resetRun() {
       replaceState(createFullGameGame(state.run.seed, state.rules));

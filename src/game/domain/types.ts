@@ -38,6 +38,8 @@ export interface StageDefinition {
 export type GamePhase =
   | "title"
   | "planning"
+  | "event"
+  | "forge"
   | "playing"
   | "reward"
   | "dead"
@@ -330,6 +332,9 @@ export type GameEventPayload =
   | { type: "encounter-wave-started"; encounterId: EncounterId; waveId: string; enemyIds: EntityId[] }
   | { type: "encounter-wave-completed"; encounterId: EncounterId; waveId: string }
   | { type: "skill-points-granted"; amount: number; total: number; source: string }
+  | { type: "event-choice-resolved"; nodeId: string; eventDefinitionId: string; choiceId: string; resourceChanges: Array<{ resourceId: string; before: number; after: number }> }
+  | { type: "forge-token-used"; nodeId: string; remainingTokens: number; moveLimit: number }
+  | { type: "forge-completed"; nodeId: string; movedSkillIds: UpgradeId[] }
   | { type: "route-node-completed"; nodeId: string; result: string }
   | { type: "campaign-victory"; seed: number }
   | { type: "stage-cleared" | "game-complete"; stageIndex: number; levelId: LevelId };
@@ -377,6 +382,9 @@ export type GameCommand =
   | { type: "discard-skill-draft" }
   | { type: "confirm-planning" }
   | { type: "acknowledge-reward" }
+  | { type: "resolve-event-choice"; choiceId: string }
+  | { type: "use-forge-token" }
+  | { type: "confirm-forge" }
   | { type: "begin-charge"; target: Vec2 }
   | { type: "update-charge-target"; target: Vec2 }
   | { type: "release-charge"; target: Vec2 }
@@ -396,6 +404,9 @@ export type GameCommandResult =
   | "draft-discarded"
   | "planning-confirmed"
   | "reward-acknowledged"
+  | "event-resolved"
+  | "forge-token-used"
+  | "forge-confirmed"
   | "charge-started"
   | "charge-updated"
   | "charge-cancelled"
@@ -493,6 +504,18 @@ export interface GameSnapshot {
     committedSkillIds: UpgradeId[];
     draftAddedSkillIds: UpgradeId[];
     draftRemovedSkillIds: UpgradeId[];
+    activeEventDefinitionId: string | null;
+    eventHistoryCount: number;
+    resources: {
+      nextCombatEnergy: number;
+      rerouteTokens: number;
+      intel: number;
+    };
+    forge: {
+      movesUsed: number;
+      moveLimit: number;
+      tokensSpentThisVisit: number;
+    };
     encounter: null | {
       id: EncounterId;
       completed: boolean;

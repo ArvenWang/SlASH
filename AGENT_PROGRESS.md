@@ -15,7 +15,7 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 已增加 `FULL_GAME_CONTENT_MANIFEST.json`、统一术语表和 `npm run verify:full-game-design`；机器门已确认 4 Act、28 Skill、10+4 Enemy、4 Boss、3/4/2 Entity、53 个 Encounter 目标和 12/28 点数上限一致。
 - 技能经济已改为完整 Run：开局 2 点、每 Act 保证 2 点、Elite 最多补 2 点；保证 10、上限 12，只能购买 28 节点中的 42.86%。
 - Charged Dash 正式规则锁定为：整条路线贯穿敌群；命中真实 Armor Coverage 就卸对应甲；命中裸露区就击杀；无甲背部可直接处决，后背有甲则先卸后甲。
-- 当前已进入 P1–P3 可玩集成：默认产品入口具备 Title → Planning Board → 路线与技能原子确认 → 两波 Combat → Reward → 下一次 Planning；Charged Dash 与 Vector Focus 的根能力已真实可玩。其余 Encounter、Forge/Event、Projectile/Obstacle/Hazard、Boss、完整 Replay 与后续系统仍按计划推进，不把首个闭环冒充完整游戏。
+- 当前已完成根战斗、28 个被动 Hook、Projectile / Obstacle / Hazard、Event 与 Forge 生命周期；默认产品入口可在战斗和非战斗节点间持续推进。Campaign Save / Replay、完整 Enemy Roster、53 个 Encounter、4 Boss 与后续系统仍按计划推进，不把机制闭环冒充内容齐全。
 
 ## Full Game 已完成内容
 
@@ -62,10 +62,15 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - [x] Gravity 重新定义为致死走廊之外额外 30% 的 Near-Miss 牵引带，0.35s 最多拉 0.6m，为 Echo 创造二次命中，不再出现“已经命中的敌人又被拉”的自相矛盾。
 - [x] Basic / Shared 自动化：Wide、Rapid、Curve、Gravity、Prism、Cross / Purge、Echo / Double、Impact Burst、Kill Momentum 共 10 项场景；全量现为 20 文件 / 111 项通过。
 - [x] Basic 真实浏览器：真实拖拽产生 10 段 Curve Stored Path；非交叉直线替换旧线；真实反向点击触发 Cross，击杀偏离刀线目标、清除 Projectile、仅打断装甲敌人且不卸甲；Console 0。
+- [x] Event 生命周期：4 个确定性事件、每个严格 2 个明确选择；Next Combat Energy、Intel、Reroute Token 均进入真实 Run Resource，选择只结算一次并经 Reward 返回路线。
+- [x] Forge 生命周期：默认可级联移动 2 个历史技能点；Reroute Token 由玩家明确消耗后只给本次 +1 Move；确认前为草案，确认后总 SP 不变且前置关系保持合法。
+- [x] Planning Intel：按资源等级额外显示当前选项之后 1–3 层的确定节点类型、标题与奖励，不把未知内容写成占位卡。
+- [x] 非战斗节点自动化：100 个 Seed 的全部安全层选项均可进入；全量 21 文件 / 115 项通过，TypeScript、Build、Design Manifest、whitespace 通过。
+- [x] 非战斗节点真实浏览器：Event 两项完整描述与即时资源变化、Forge 28/28 技能描述、2 点级联上限、Token 扩容、3 点重接及 Reward 继续均通过；390×844 无横向溢出、最小目标 44px、Console 0。
 
 ## Full Game 下一步计划
 
-1. 完成 P1/P2 剩余的 Event / Forge 生命周期、Forge Allocation UI、Campaign Save / Replay，让 24 节点 Run 不在非战斗节点断路。
+1. 完成 Campaign Safe Save / Resume 与 Full-game Replay，让路线、事件、Forge 和战斗命令可确定性恢复与重放。
 2. 进入 P5 Enemy Roster / Attack Strategy，让 Gunner、Constructor、Mine Layer、Sniper 等真实生成 P4 实体。
 3. 之后按 P6–P8 完成 53 个 Encounter、4 Boss 与全 Run 内容，不把机制齐全误报成内容齐全。
 4. 每个有意义变更继续执行自动化、截图、`render_game_to_text` 和 Console 检查，再依 P4–P11 推进。
@@ -73,10 +78,11 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 ## Full Game 当前问题与边界
 
 - 视觉 Agent 的大量角色 / 动画 / Asset 修改尚未提交，本分支不会从其脏工作树复制文件；最终只合并稳定 Commit。
-- 架构中 Projectile / Obstacle / Hazard、非 Immediate Wave 和远程 Attack Strategy 目前只有接口，没有生产生命周期，必须逐项真实实现。
+- 当前内容清单目标为 53 个 Encounter、10+4 Enemy 与 4 Boss，但运行时仍主要复用首个两波 Encounter 和 Striker / Vanguard；机制基础已完成不等于内容目标完成。
 - 现有 `game.ts` 仍承担较多编排；新增系统必须进入独立模块，不能继续形成 God Object。
 - Route Graph 第一版曾因错误旋转目标映射造成部分 Seed 节点不可达；已改成旋转源投影，并用 100 Seed 回归锁住该问题。
 - Planning Board 第一版因高内容面板仍采用垂直居中，导致顶部路线卡被推到视口外；真实浏览器已发现并改为顶部展开，普通点击回归通过。
+- Forge 第一版复用了超高技能树却遗漏顶部对齐，导致上半部节点位于负坐标；真实浏览器点击门捕获后已修复，并加入桌面与移动端回归。
 - `develop-web-game` 通用 Client 的 selector click 在其虚拟时间 shim 下仍会等待稳定性超时；同一页面已用普通 Playwright 点击（无 force）完整通过，因此记录为验证工具兼容问题，不冒充产品输入失败。
 - 人工体验门最终需要真实测试者；自动化不能代替，但在到达该阶段前仍可继续完成所有代码和自动门。
 

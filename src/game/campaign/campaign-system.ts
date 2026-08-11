@@ -7,6 +7,7 @@ import {
 } from "../../content/encounters/definitions";
 import { enemyDefinitions } from "../../content/enemies/definitions";
 import { FULL_GAME_ACT_DEFINITIONS } from "../../content/runs/definitions";
+import { eventDefinitions, eventForRouteNode } from "../../content/events/definitions";
 import type { GameState } from "../domain/types";
 import {
   createEncounterRuntime,
@@ -23,6 +24,7 @@ import {
   selectRouteNode,
 } from "../run/run-system";
 import {
+  FORGE_MOVE_LIMIT,
   commitSkillDraft,
   createSkillAllocationState,
   grantSkillPoints,
@@ -41,6 +43,9 @@ export type CampaignCommandResult =
   | "draft-discarded"
   | "planning-confirmed"
   | "reward-acknowledged"
+  | "event-resolved"
+  | "forge-token-used"
+  | "forge-confirmed"
   | "restarted"
   | "ignored";
 
@@ -56,6 +61,9 @@ export function createFullGameCampaignState(seed: number): FullGameCampaignState
     activeTriggerIds: [],
     pendingReward: null,
     eliteSkillPointRewardsGranted: 0,
+    activeEventDefinitionId: null,
+    eventHistory: [],
+    forgeTokensSpentThisVisit: 0,
   };
 }
 
@@ -119,19 +127,19 @@ export function previewCampaignRouteNode(
 
 export function previewCampaignSkillPurchase(state: GameState, skillId: string): CampaignCommandResult {
   const campaign = state.run.fullGame;
-  if (!campaign || campaign.phase !== "planning") return "ignored";
+  if (!campaign || (campaign.phase !== "planning" && campaign.phase !== "forge")) return "ignored";
   return previewSkillPurchase(campaign.skills, skillId).ok ? "skill-drafted" : "ignored";
 }
 
 export function previewCampaignSkillRefund(state: GameState, skillId: string): CampaignCommandResult {
   const campaign = state.run.fullGame;
-  if (!campaign || campaign.phase !== "planning") return "ignored";
+  if (!campaign || (campaign.phase !== "planning" && campaign.phase !== "forge")) return "ignored";
   return previewSkillRefund(campaign.skills, skillId).ok ? "skill-refunded" : "ignored";
 }
 
 export function discardCampaignSkillDraft(state: GameState): CampaignCommandResult {
   const campaign = state.run.fullGame;
-  if (!campaign || campaign.phase !== "planning") return "ignored";
+  if (!campaign || (campaign.phase !== "planning" && campaign.phase !== "forge")) return "ignored";
   campaign.skills.draftAddedSkillIds = [];
   campaign.skills.draftRemovedSkillIds = [];
   return "draft-discarded";
@@ -143,7 +151,6 @@ export function confirmCampaignPlanning(state: GameState): CampaignCommandResult
   if (!campaign || campaign.phase !== "planning" || !provisionalId) return "ignored";
   const node = routeNodeById(campaign.routeProgress.route, provisionalId);
   const encounter = encounterForRouteNode(node);
-  if (!encounter) return "ignored";
 
   // Build and route are committed as one transaction. Any failed validation
   // leaves the live campaign untouched.
@@ -155,12 +162,34 @@ export function confirmCampaignPlanning(state: GameState): CampaignCommandResult
   campaign.skills = stagedSkills;
   campaign.routeProgress = stagedRoute;
   campaign.provisionalRouteNodeId = null;
-  campaign.phase = "combat";
-  campaign.activeEncounterTemplateId = encounter.id;
-  campaign.encounterRuntime = createEncounterRuntime(encounter, state.tick, state.elapsedMs);
+  campaign.activeEncounterTemplateId = null;
+  campaign.encounterRuntime = null;
   campaign.activeTriggerIds = [];
   campaign.pendingReward = null;
   state.run.selectedUpgrades = [...campaign.skills.committedSkillIds];
+  if (node.kind === "event") {
+    const event = eventForRouteNode(node, state.run.seed);
+    campaign.phase = "event";
+    campaign.activeEventDefinitionId = event.id;
+    campaign.forgeTokensSpentThisVisit = 0;
+    prepareNonCombatState(state, node.id, node.actIndex, "EVENT", "event");
+    emitGameEvent(state, { type: "route-node-started", nodeId: node.id, encounterId: event.id });
+    return "planning-confirmed";
+  }
+  if (node.kind === "forge") {
+    campaign.phase = "forge";
+    campaign.activeEventDefinitionId = null;
+    campaign.forgeTokensSpentThisVisit = 0;
+    campaign.skills.forgeMoveLimit = FORGE_MOVE_LIMIT;
+    openSkillAllocationVisit(campaign.skills, "forge");
+    prepareNonCombatState(state, node.id, node.actIndex, "FORGE", "forge");
+    emitGameEvent(state, { type: "route-node-started", nodeId: node.id, encounterId: "forge-allocation-v1" });
+    return "planning-confirmed";
+  }
+  if (!encounter) return "ignored";
+  campaign.phase = "combat";
+  campaign.activeEncounterTemplateId = encounter.id;
+  campaign.encounterRuntime = createEncounterRuntime(encounter, state.tick, state.elapsedMs);
   prepareEncounterState(state, node.id, encounter.id, node.actIndex, node.kind.toUpperCase(), false);
   emitGameEvent(state, { type: "route-node-started", nodeId: node.id, encounterId: encounter.id });
   // Immediate waves begin their warning at the exact planning-confirm tick,
@@ -223,7 +252,14 @@ export function completeCampaignEncounter(state: GameState): boolean {
   if (!campaign || !campaignEncounterCanComplete(state)) return false;
   const node = currentRouteNode(campaign.routeProgress);
   if (!node) return false;
+  return completeCampaignNode(state, node.id);
+}
 
+function completeCampaignNode(state: GameState, nodeId: RouteNodeId): boolean {
+  const campaign = state.run.fullGame;
+  if (!campaign) return false;
+  const node = currentRouteNode(campaign.routeProgress);
+  if (!node || node.id !== nodeId) return false;
   let skillPointsGranted = 0;
   let eliteRewardConverted = false;
   if (node.reward === "skill-point") {
@@ -245,6 +281,7 @@ export function completeCampaignEncounter(state: GameState): boolean {
   };
   campaign.encounterRuntime = null;
   campaign.activeEncounterTemplateId = null;
+  campaign.activeEventDefinitionId = null;
   campaign.activeTriggerIds = [];
   state.player.bufferedAbility = null;
   if (skillPointsGranted > 0) {
@@ -265,6 +302,75 @@ export function completeCampaignEncounter(state: GameState): boolean {
     state.stage.phase = "reward";
   }
   return true;
+}
+
+export function resolveCampaignEventChoice(
+  state: GameState,
+  choiceId: string,
+): CampaignCommandResult {
+  const campaign = state.run.fullGame;
+  const node = campaign ? currentRouteNode(campaign.routeProgress) : null;
+  if (!campaign || campaign.phase !== "event" || !node || !campaign.activeEventDefinitionId) return "ignored";
+  const definition = eventDefinitions.get(campaign.activeEventDefinitionId);
+  const choice = definition.choices.find((candidate) => candidate.id === choiceId);
+  if (!choice) return "ignored";
+  const resourceChanges = choice.effects.map((effect) => {
+    const before = state.run.acquiredResources[effect.resourceId] ?? 0;
+    const after = Math.min(effect.maximum, Math.max(0, before + effect.amount));
+    state.run.acquiredResources[effect.resourceId] = after;
+    return { resourceId: effect.resourceId, before, after };
+  });
+  campaign.eventHistory.push({
+    nodeId: node.id,
+    eventDefinitionId: definition.id,
+    choiceId: choice.id,
+  });
+  emitGameEvent(state, {
+    type: "event-choice-resolved",
+    nodeId: node.id,
+    eventDefinitionId: definition.id,
+    choiceId: choice.id,
+    resourceChanges,
+  });
+  completeCampaignNode(state, node.id);
+  return "event-resolved";
+}
+
+export function useCampaignForgeToken(state: GameState): CampaignCommandResult {
+  const campaign = state.run.fullGame;
+  const node = campaign ? currentRouteNode(campaign.routeProgress) : null;
+  const tokens = state.run.acquiredResources["reroute-token"] ?? 0;
+  if (!campaign || campaign.phase !== "forge" || !node || tokens <= 0) return "ignored";
+  state.run.acquiredResources["reroute-token"] = tokens - 1;
+  campaign.forgeTokensSpentThisVisit += 1;
+  campaign.skills.forgeMoveLimit += 1;
+  emitGameEvent(state, {
+    type: "forge-token-used",
+    nodeId: node.id,
+    remainingTokens: tokens - 1,
+    moveLimit: campaign.skills.forgeMoveLimit,
+  });
+  return "forge-token-used";
+}
+
+export function confirmCampaignForge(state: GameState): CampaignCommandResult {
+  const campaign = state.run.fullGame;
+  const node = campaign ? currentRouteNode(campaign.routeProgress) : null;
+  if (!campaign || campaign.phase !== "forge" || !node) return "ignored";
+  const stagedSkills = structuredClone(campaign.skills);
+  const commit = commitSkillDraft(stagedSkills);
+  if (!commit.ok) return "ignored";
+  stagedSkills.forgeMoveLimit = FORGE_MOVE_LIMIT;
+  campaign.skills = stagedSkills;
+  state.run.selectedUpgrades = [...campaign.skills.committedSkillIds];
+  emitGameEvent(state, {
+    type: "forge-completed",
+    nodeId: node.id,
+    movedSkillIds: [...commit.changedSkillIds],
+  });
+  campaign.forgeTokensSpentThisVisit = 0;
+  completeCampaignNode(state, node.id);
+  return "forge-confirmed";
 }
 
 export function acknowledgeCampaignReward(state: GameState): CampaignCommandResult {
@@ -345,7 +451,58 @@ function prepareEncounterState(
   state.combat.scheduledSlashes = [];
   state.combat.storedPath = null;
   state.combat.gravityPulls = [];
+  if (!preserveClock) {
+    const storedEnergy = Math.max(0, state.run.acquiredResources["next-combat-energy"] ?? 0);
+    if (storedEnergy > 0) {
+      const before = state.player.ultimateEnergy;
+      state.player.ultimateEnergy = Math.min(100, before + storedEnergy);
+      state.run.acquiredResources["next-combat-energy"] = 0;
+      emitGameEvent(state, {
+        type: "ultimate-energy-changed",
+        before,
+        after: state.player.ultimateEnergy,
+        source: "event-next-combat-energy",
+      });
+    }
+  }
   if (!preserveClock) state.accumulatorMs = 0;
+}
+
+function prepareNonCombatState(
+  state: GameState,
+  nodeId: RouteNodeId,
+  actIndex: number,
+  nodeLabel: string,
+  phase: "event" | "forge",
+): void {
+  state.stage.index = state.run.fullGame?.routeProgress.completedNodeIds.length ?? 0;
+  state.stage.levelId = nodeId;
+  state.stage.name = `${FULL_GAME_ACT_DEFINITIONS[actIndex]?.name ?? `ACT ${actIndex + 1}`} / ${nodeLabel}`;
+  state.stage.phase = phase;
+  state.stage.attempt = 1;
+  state.stage.encounterId = phase === "event"
+    ? (state.run.fullGame?.activeEventDefinitionId ?? "event-unavailable")
+    : "forge-allocation-v1";
+  state.player.position = vec2(0, 0);
+  state.player.facing = vec2(0, -1);
+  state.player.hp = 1;
+  state.player.dash = null;
+  state.player.charge = null;
+  state.player.ultimatePlanning = null;
+  state.player.ultimateExecution = null;
+  state.player.recoveryRemainingMs = 0;
+  state.player.killMomentumStacks = 0;
+  state.player.bufferedAbility = null;
+  state.enemies = [];
+  state.projectiles = [];
+  state.obstacles = [];
+  state.hazards = [];
+  state.combat.kills = 0;
+  state.combat.totalEnemies = 0;
+  state.combat.scheduledSlashes = [];
+  state.combat.storedPath = null;
+  state.combat.gravityPulls = [];
+  state.accumulatorMs = 0;
 }
 
 function spawnEncounterWave(

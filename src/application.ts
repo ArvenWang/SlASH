@@ -96,6 +96,8 @@ export async function bootstrapSlashApplication(): Promise<void> {
     onStateTransition(result) {
       if (
         result === "planning-confirmed" ||
+        result === "event-resolved" ||
+        result === "forge-confirmed" ||
         result === "reward-acknowledged" ||
         result === "restarted" ||
         result === "run-started"
@@ -266,6 +268,16 @@ export async function bootstrapSlashApplication(): Promise<void> {
       },
       setBasicPassiveScenario() {
         gameRuntime.loadBasicPassiveScenario();
+        tuning.enemyMotion = false;
+        resetPresentationStage();
+      },
+      setCampaignEventScenario() {
+        gameRuntime.loadCampaignEventScenario();
+        tuning.enemyMotion = false;
+        resetPresentationStage();
+      },
+      setCampaignForgeScenario() {
+        gameRuntime.loadCampaignForgeScenario();
         tuning.enemyMotion = false;
         resetPresentationStage();
       },

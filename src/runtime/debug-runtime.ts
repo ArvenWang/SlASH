@@ -18,6 +18,8 @@ export interface SlashValidationApi {
   setUltimateScenario(): void;
   setEntityScenario(): void;
   setBasicPassiveScenario(): void;
+  setCampaignEventScenario(): void;
+  setCampaignForgeScenario(): void;
   dashTo(x: number, z: number): string;
   beginChargeTo(x: number, z: number): string;
   updateChargeTo(x: number, z: number): string;

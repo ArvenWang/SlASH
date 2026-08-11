@@ -1,4 +1,5 @@
 import { threatPreviewForRouteNode } from "../content/encounters/definitions";
+import { eventDefinitions } from "../content/events/definitions";
 import { FULL_GAME_ACT_DEFINITIONS } from "../content/runs/definitions";
 import {
   FULL_GAME_SKILL_DEFINITIONS,
@@ -79,6 +80,12 @@ export function createCampaignUiRuntime(options: CampaignUiRuntimeOptions): Camp
       result = dispatch({ type: "confirm-planning" });
     } else if (action === "acknowledge-reward") {
       result = dispatch({ type: "acknowledge-reward" });
+    } else if (action === "event-choice" && target.dataset.choiceId) {
+      result = dispatch({ type: "resolve-event-choice", choiceId: target.dataset.choiceId });
+    } else if (action === "use-forge-token") {
+      result = dispatch({ type: "use-forge-token" });
+    } else if (action === "confirm-forge") {
+      result = dispatch({ type: "confirm-forge" });
     }
     if (result) {
       renderedSignature = "";
@@ -99,6 +106,10 @@ export function createCampaignUiRuntime(options: CampaignUiRuntimeOptions): Camp
       available: campaign.routeProgress.availableNodeIds,
       reward: campaign.pendingReward,
       skills: skillAllocationSnapshot(campaign.skills),
+      event: campaign.activeEventDefinitionId,
+      eventHistory: campaign.eventHistory.length,
+      resources: gameState.run.acquiredResources,
+      forgeTokensSpent: campaign.forgeTokensSpentThisVisit,
     });
     if (signature === renderedSignature) return;
     renderedSignature = signature;
@@ -113,6 +124,10 @@ export function createCampaignUiRuntime(options: CampaignUiRuntimeOptions): Camp
       root.innerHTML = renderTitle();
     } else if (campaign.phase === "planning") {
       root.innerHTML = renderPlanning(gameState);
+    } else if (campaign.phase === "event") {
+      root.innerHTML = renderEvent(gameState);
+    } else if (campaign.phase === "forge") {
+      root.innerHTML = renderForge(gameState);
     } else if (campaign.phase === "reward") {
       root.innerHTML = renderReward(gameState);
     } else {
@@ -156,6 +171,7 @@ function renderPlanning(state: GameState): string {
     : null;
   const act = FULL_GAME_ACT_DEFINITIONS[campaign.routeProgress.actIndex];
   const moduleColumns = MODULE_ORDER.map((module) => renderSkillModule(module, allocation.nodes)).join("");
+  const intel = Math.max(0, Math.min(3, state.run.acquiredResources.intel ?? 0));
   return `
     <section class="campaign-panel planning-panel" aria-labelledby="planning-title">
       <header class="planning-header">
@@ -171,12 +187,15 @@ function renderPlanning(state: GameState): string {
         </div>
       </header>
 
+      ${renderRunResources(state)}
+
       <div class="planning-grid">
         <aside class="route-panel" aria-labelledby="route-title">
           <div class="section-heading">
             <span>01</span><div><h2 id="route-title">下一节点</h2><p>显示确定内容，不隐藏致命机制。</p></div>
           </div>
-          <div class="route-options">${routeNodes.map((node) => renderRouteCard(node, campaign.provisionalRouteNodeId === node.id)).join("")}</div>
+          <div class="route-options">${routeNodes.map((node) => renderRouteCard(node, campaign.provisionalRouteNodeId === node.id, state.run.seed)).join("")}</div>
+          ${renderIntelLookahead(state, intel)}
         </aside>
 
         <main class="skill-board" aria-labelledby="skill-board-title">
@@ -189,7 +208,7 @@ function renderPlanning(state: GameState): string {
 
       <footer class="planning-confirmation">
         <div>
-          <strong>${selectedNode ? escapeHtml(threatPreviewForRouteNode(selectedNode).title) : "尚未暂定路线"}</strong>
+          <strong>${selectedNode ? escapeHtml(threatPreviewForRouteNode(selectedNode, state.run.seed).title) : "尚未暂定路线"}</strong>
           <span>${allocation.draftAddedSkillIds.length} 个新增草案 · ${allocation.unspentPoints} 点将在确认后保留</span>
         </div>
         <button class="secondary-action" type="button" data-action="discard-draft" ${allocation.draftAddedSkillIds.length === 0 && allocation.draftRemovedSkillIds.length === 0 ? "disabled" : ""}>撤销本次草案</button>
@@ -198,8 +217,12 @@ function renderPlanning(state: GameState): string {
     </section>`;
 }
 
-function renderRouteCard(node: ReturnType<typeof availableRouteNodes>[number], selected: boolean): string {
-  const preview = threatPreviewForRouteNode(node);
+function renderRouteCard(
+  node: ReturnType<typeof availableRouteNodes>[number],
+  selected: boolean,
+  runSeed: number,
+): string {
+  const preview = threatPreviewForRouteNode(node, runSeed);
   return `
     <button class="route-card ${selected ? "selected" : ""}" type="button" data-action="select-route" data-node-id="${escapeHtml(node.id)}" ${preview.available ? "" : "disabled"}>
       <span class="route-kind">${escapeHtml(node.kind.toUpperCase())}</span>
@@ -208,6 +231,50 @@ function renderRouteCard(node: ReturnType<typeof availableRouteNodes>[number], s
       <div class="tag-row">${preview.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>
       <small>${preview.hostileCount} HOSTILES · ${preview.waveCount} WAVES · REWARD ${escapeHtml(node.reward.toUpperCase())}</small>
     </button>`;
+}
+
+function renderRunResources(state: GameState): string {
+  const energy = state.run.acquiredResources["next-combat-energy"] ?? 0;
+  const tokens = state.run.acquiredResources["reroute-token"] ?? 0;
+  const intel = state.run.acquiredResources.intel ?? 0;
+  return `
+    <div class="run-resource-strip" aria-label="本局资源">
+      <span><b>${energy}</b> NEXT COMBAT ENERGY</span>
+      <span><b>${tokens}</b> REROUTE TOKEN</span>
+      <span><b>${intel}</b> INTEL DEPTH</span>
+    </div>`;
+}
+
+function renderIntelLookahead(state: GameState, depthLimit: number): string {
+  const campaign = state.run.fullGame;
+  if (!campaign || depthLimit <= 0) {
+    return `
+      <section class="intel-panel is-empty" aria-label="路线情报">
+        <strong>INTEL / 0</strong>
+        <p>事件可提供路线情报；获得后会在这里显示当前选项之后的确定节点。</p>
+      </section>`;
+  }
+  let frontier = availableRouteNodes(campaign.routeProgress);
+  const layers: string[] = [];
+  for (let depth = 1; depth <= depthLimit; depth += 1) {
+    const nextIds = [...new Set(frontier.flatMap((node) => node.nextNodeIds))];
+    if (nextIds.length === 0) break;
+    frontier = nextIds.map((id) => routeNodeById(campaign.routeProgress.route, id));
+    layers.push(`
+      <div class="intel-layer">
+        <b>+${depth} LAYER</b>
+        ${frontier.map((node) => {
+          const preview = threatPreviewForRouteNode(node, state.run.seed);
+          return `<span><i>${escapeHtml(node.kind.toUpperCase())}</i>${escapeHtml(preview.title)}<small>${escapeHtml(node.reward.toUpperCase())}</small></span>`;
+        }).join("")}
+      </div>`);
+  }
+  return `
+    <section class="intel-panel" aria-label="路线情报">
+      <strong>INTEL / ${depthLimit}</strong>
+      <p>以下为已解析的后续确定节点；当前选择仍只锁定下一层。</p>
+      ${layers.join("") || "<p>本分支之后没有更多可解析节点。</p>"}
+    </section>`;
 }
 
 function renderSkillModule(
@@ -260,12 +327,97 @@ function renderSkillNode(
     </button>`;
 }
 
+function renderEvent(state: GameState): string {
+  const campaign = state.run.fullGame;
+  const definition = eventDefinitions.list().find((candidate) => (
+    candidate.id === campaign?.activeEventDefinitionId
+  ));
+  if (!campaign || !definition) {
+    return `
+      <section class="campaign-panel event-panel" aria-labelledby="event-title">
+        <p class="panel-kicker">EVENT DATA ERROR</p>
+        <h1 id="event-title">事件内容不可用</h1>
+        <p>本节点没有匹配到有效事件定义。为保护本局状态，系统不会自动选择或发放资源。</p>
+      </section>`;
+  }
+  return `
+    <section class="campaign-panel event-panel" aria-labelledby="event-title">
+      <p class="panel-kicker">ROUTE EVENT / 二选一</p>
+      <h1 id="event-title">${escapeHtml(definition.title)}</h1>
+      <p class="event-situation">${escapeHtml(definition.situation)}</p>
+      ${renderRunResources(state)}
+      <div class="event-choice-grid">
+        ${definition.choices.map((choice, index) => `
+          <button class="event-choice" type="button" data-action="event-choice" data-choice-id="${escapeHtml(choice.id)}">
+            <span>OPTION ${index + 1}</span>
+            <strong>${escapeHtml(choice.title)}</strong>
+            <p>${escapeHtml(choice.summary)}</p>
+            <small>${choice.effects.map((effect) => {
+              const before = state.run.acquiredResources[effect.resourceId] ?? 0;
+              const after = Math.min(effect.maximum, Math.max(0, before + effect.amount));
+              return `${escapeHtml(resourceName(effect.resourceId))}: ${before} → ${after}`;
+            }).join(" · ")}</small>
+          </button>`).join("")}
+      </div>
+      <p class="decision-warning">选择会立即生效并完成本节点，不能在本局中撤销。</p>
+    </section>`;
+}
+
+function renderForge(state: GameState): string {
+  const campaign = state.run.fullGame;
+  if (!campaign) return "";
+  const allocation = skillAllocationSnapshot(campaign.skills);
+  const tokens = state.run.acquiredResources["reroute-token"] ?? 0;
+  const moduleColumns = MODULE_ORDER.map((module) => renderSkillModule(module, allocation.nodes)).join("");
+  return `
+    <section class="campaign-panel planning-panel forge-panel" aria-labelledby="forge-title">
+      <header class="planning-header">
+        <div>
+          <p class="panel-kicker">FORGE / BUILD RESPEC</p>
+          <h1 id="forge-title">构筑重接</h1>
+          <p>可移除最多 ${allocation.forgeMoveLimit} 个已锁定技能点并重新分配；移除前置会连同依赖节点一起计入移动数。</p>
+        </div>
+        <div class="point-counter" aria-label="Forge 移动次数">
+          <strong>${allocation.forgeMovesUsed}/${allocation.forgeMoveLimit}</strong>
+          <span>MOVES USED</span>
+          <small>${allocation.unspentPoints} 未投入 SP · ${tokens} 枚凭证</small>
+        </div>
+      </header>
+
+      ${renderRunResources(state)}
+
+      <main class="skill-board forge-skill-board" aria-labelledby="forge-tree-title">
+        <div class="section-heading">
+          <span>01</span><div><h2 id="forge-tree-title">重接技能树</h2><p>先点击已锁定节点退款，再点击合法节点重新分配；总技能点不会增加。</p></div>
+        </div>
+        <div class="skill-module-grid">${moduleColumns}</div>
+      </main>
+
+      <footer class="planning-confirmation">
+        <div>
+          <strong>${allocation.draftRemovedSkillIds.length} 个待移除 · ${allocation.draftAddedSkillIds.length} 个待接入</strong>
+          <span>确认前都只是草案；凭证一经使用会立即消耗。</span>
+        </div>
+        <button class="secondary-action" type="button" data-action="discard-draft" ${allocation.draftAddedSkillIds.length === 0 && allocation.draftRemovedSkillIds.length === 0 ? "disabled" : ""}>撤销重接草案</button>
+        <button class="secondary-action" type="button" data-action="use-forge-token" ${tokens > 0 ? "" : "disabled"}>使用凭证 / +1 MOVE</button>
+        <button class="primary-action" type="button" data-action="confirm-forge">确认并离开 FORGE</button>
+      </footer>
+    </section>`;
+}
+
+function resourceName(resourceId: string): string {
+  if (resourceId === "next-combat-energy") return "NEXT COMBAT ENERGY";
+  if (resourceId === "reroute-token") return "REROUTE TOKEN";
+  if (resourceId === "intel") return "INTEL";
+  return resourceId.toUpperCase();
+}
+
 function renderReward(state: GameState): string {
   const reward = state.run.fullGame?.pendingReward;
   return `
     <section class="campaign-panel reward-panel" aria-labelledby="reward-title">
       <p class="panel-kicker">NODE COMPLETE</p>
-      <h1 id="reward-title">战斗结算</h1>
+      <h1 id="reward-title">节点结算</h1>
       <div class="reward-value"><strong>+${reward?.skillPointsGranted ?? 0}</strong><span>SKILL POINT</span></div>
       <p>${reward?.skillPointsGranted ? "新点数会在下一张 Planning Board 中进入 Draft，可花费也可保留。" : "本节点没有技能点奖励；现有未消费点仍会保留。"}</p>
       <button class="primary-action" type="button" data-action="acknowledge-reward">CONTINUE TO PLANNING / 继续规划</button>

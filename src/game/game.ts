@@ -104,6 +104,7 @@ import {
   campaignAvailableRouteNodes,
   campaignEncounterCanComplete,
   completeCampaignEncounter,
+  confirmCampaignForge,
   confirmCampaignPlanning,
   discardCampaignSkillDraft,
   initializeFullGameCampaign,
@@ -111,10 +112,13 @@ import {
   previewCampaignRouteNode,
   previewCampaignSkillPurchase,
   previewCampaignSkillRefund,
+  resolveCampaignEventChoice,
   restartCampaignEncounter,
   startFullGameRun,
+  useCampaignForgeToken,
 } from "./campaign/campaign-system";
 import { skillAllocationSnapshot } from "./upgrades/skill-system";
+import type { RouteNodeState } from "./run/types";
 
 export type {
   ArenaBounds,
@@ -589,6 +593,64 @@ export function createBasicPassiveValidationGame(rules: Partial<GameRules> = {})
   if (projectile) projectile.velocity = point(0, 0);
   drainGameEvents(state);
   return state;
+}
+
+/** Validation-only state that enters a generated Event through the same
+ * campaign commands used by the player-facing Planning Board. */
+export function createCampaignEventValidationGame(rules: Partial<GameRules> = {}): GameState {
+  const state = createFullGameGame(3108, rules);
+  dispatchGameCommand(state, { type: "start-full-game-run" });
+  const node = state.run.fullGame?.routeProgress.route.acts[0]?.layers[2]
+    ?.find((candidate) => candidate.kind === "event");
+  if (!node) throw new Error("Campaign Event validation fixture has no Event node.");
+  positionCampaignValidationAtNode(state, node);
+  dispatchGameCommand(state, { type: "preview-route-node", nodeId: node.id });
+  dispatchGameCommand(state, { type: "confirm-planning" });
+  drainGameEvents(state);
+  return state;
+}
+
+/** Validation-only Forge state with a legal three-point committed build and
+ * one real Reroute Token, ready for pointer-driven respec verification. */
+export function createCampaignForgeValidationGame(rules: Partial<GameRules> = {}): GameState {
+  let state: GameState | null = null;
+  let forgeNode: RouteNodeState | null = null;
+  for (let seed = 0; seed < 1_000 && !forgeNode; seed += 1) {
+    const candidateState = createFullGameGame(seed, rules);
+    const candidateNode = candidateState.run.fullGame?.routeProgress.route.acts[0]?.layers[2]
+      ?.find((node) => node.kind === "forge") ?? null;
+    if (candidateNode) {
+      state = candidateState;
+      forgeNode = candidateNode;
+    }
+  }
+  if (!state || !forgeNode || !state.run.fullGame) {
+    throw new Error("Campaign Forge validation fixture has no deterministic Forge node.");
+  }
+  dispatchGameCommand(state, { type: "start-full-game-run" });
+  state.run.fullGame.skills.totalEarnedPoints = 3;
+  dispatchGameCommand(state, { type: "preview-skill-purchase", skillId: "skill-wide-slash-v1" });
+  dispatchGameCommand(state, { type: "preview-skill-purchase", skillId: "skill-gravity-slash-v1" });
+  dispatchGameCommand(state, { type: "preview-skill-purchase", skillId: "skill-refraction-v1" });
+  positionCampaignValidationAtNode(state, forgeNode);
+  state.run.acquiredResources["reroute-token"] = 1;
+  dispatchGameCommand(state, { type: "preview-route-node", nodeId: forgeNode.id });
+  dispatchGameCommand(state, { type: "confirm-planning" });
+  drainGameEvents(state);
+  return state;
+}
+
+function positionCampaignValidationAtNode(state: GameState, node: RouteNodeState): void {
+  const campaign = state.run.fullGame;
+  if (!campaign) throw new Error("Campaign validation requires a full-game state.");
+  campaign.phase = "planning";
+  campaign.provisionalRouteNodeId = null;
+  campaign.routeProgress.phase = "route-map";
+  campaign.routeProgress.actIndex = node.actIndex;
+  campaign.routeProgress.layerIndex = node.layerIndex;
+  campaign.routeProgress.currentNodeId = null;
+  campaign.routeProgress.availableNodeIds = [node.id];
+  state.stage.phase = "planning";
 }
 
 /** Mutates the supplied state in place, preserving references held by a renderer. */
@@ -1321,6 +1383,12 @@ export function dispatchGameCommand(
     result = confirmCampaignPlanning(state);
   } else if (command.type === "acknowledge-reward") {
     result = acknowledgeCampaignReward(state);
+  } else if (command.type === "resolve-event-choice") {
+    result = resolveCampaignEventChoice(state, command.choiceId);
+  } else if (command.type === "use-forge-token") {
+    result = useCampaignForgeToken(state);
+  } else if (command.type === "confirm-forge") {
+    result = confirmCampaignForge(state);
   } else if (command.type === "begin-charge") {
     result = beginChargedDash(state, command.target);
   } else if (command.type === "update-charge-target") {
@@ -1604,6 +1672,18 @@ export function getGameSnapshot(state: GameState): GameSnapshot {
       committedSkillIds: [...allocation.committedSkillIds],
       draftAddedSkillIds: [...allocation.draftAddedSkillIds],
       draftRemovedSkillIds: [...allocation.draftRemovedSkillIds],
+      activeEventDefinitionId: campaign.activeEventDefinitionId,
+      eventHistoryCount: campaign.eventHistory.length,
+      resources: {
+        nextCombatEnergy: state.run.acquiredResources["next-combat-energy"] ?? 0,
+        rerouteTokens: state.run.acquiredResources["reroute-token"] ?? 0,
+        intel: state.run.acquiredResources.intel ?? 0,
+      },
+      forge: {
+        movesUsed: allocation.forgeMovesUsed,
+        moveLimit: allocation.forgeMoveLimit,
+        tokensSpentThisVisit: campaign.forgeTokensSpentThisVisit,
+      },
       encounter: campaign.encounterRuntime === null ? null : {
         id: campaign.encounterRuntime.encounterId,
         completed: campaign.encounterRuntime.completed,

@@ -153,3 +153,15 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 自动化全量：20 files / 111 tests；TypeScript、Build、Design Manifest、whitespace 通过。Hook Registry 覆盖全部声明 Hook。
 - 真实浏览器：真实 Drag → 10 段 Curve Stored Path；真实 Click → 非交叉替换；真实 Reverse Click → Cross 击杀偏线目标、清弹、装甲打断且甲片完好；Console 0。Stored Path 在场景内以简单橙线显示。
 - 下一步：Forge / Event / Save / Replay，随后完整 Enemy Roster 与 Attack Strategy。
+
+## 2026-08-12 — Event / Forge Campaign Lifecycle
+
+- 新增 4 个确定性 Event，每个严格提供 2 个完整描述的选择；奖励为 Next Combat Energy、Intel 或 Reroute Token，均进入正式 Run State，不使用假按钮或随机占位。
+- Next Combat Energy 会一直保留到下一次 Combat，入场时与现有 Energy 合并至 100 上限并只消费一次；Intel 让 Planning Board 额外显示后续 1–3 层确定节点；Reroute Token 只在玩家点击后消耗。
+- Forge 复用同一棵 28 节点技能树和 Draft / Commit 规则：默认最多移动 2 个历史点，前置移除会级联计数；Token 只增加本次上限，总 SP 不增加，非法前置与超限操作均拒绝。
+- Event / Forge 均不生成敌人或伪战斗；完成后进入统一 Reward，再返回下一层 Planning。Route 预览不再把非战斗卡禁用。
+- 新增稳定 Snapshot 字段、命令、事件事实、验证场景和浏览器脚本。100 个 Seed 的全部安全层选项均通过真实生命周期选择测试。
+- 自动化全量：21 files / 115 tests；TypeScript、Production Build、Design Manifest、whitespace 全通过。构建仍只有既有 Three.js 605.52kB chunk 提示。
+- 真实浏览器：Event 2 个描述完整的选择、一次性结算；Forge 28/28 文案、2 点级联、第三点拦截、Token 扩为 3、三点重接并进入 Reward；390×844 无横向溢出、最小目标 44px、Console 0。
+- 真实浏览器发现 Forge 高面板被垂直居中后顶部处于负坐标，已将 Forge 与 Planning 一并改为顶部展开；该问题在修复前会让已实现技能真实不可点击，因此已记录为产品缺陷而非脚本问题。
+- 下一步：Campaign Safe Save / Resume 与 Full-game Replay，然后进入完整 Enemy Roster / Attack Strategy。

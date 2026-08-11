@@ -3,7 +3,7 @@ import type { EncounterRuntimeState } from "../encounters/types";
 import type { FullGameRunProgressState, RouteReward } from "../run/types";
 import type { SkillAllocationState } from "../upgrades/types";
 
-export type CampaignPhase = "title" | "planning" | "combat" | "reward" | "defeat" | "victory";
+export type CampaignPhase = "title" | "planning" | "event" | "forge" | "combat" | "reward" | "defeat" | "victory";
 
 export interface CampaignRewardState {
   readonly completedNodeId: RouteNodeId;
@@ -23,4 +23,7 @@ export interface FullGameCampaignState {
   activeTriggerIds: string[];
   pendingReward: CampaignRewardState | null;
   eliteSkillPointRewardsGranted: number;
+  activeEventDefinitionId: string | null;
+  eventHistory: Array<{ nodeId: RouteNodeId; eventDefinitionId: string; choiceId: string }>;
+  forgeTokensSpentThisVisit: number;
 }
