@@ -7,9 +7,6 @@ import type {
   CharacterProviderId,
   DeathProfileId,
   EnemyDefinitionId,
-  EnvironmentPresentationId,
-  LightingProfileId,
-  PostFxProfileId,
   VfxProfileId,
 } from "../core/ids";
 import { DASH_SLASH_ABILITY_ID, abilityDefinitions } from "../content/abilities/definitions";
@@ -21,6 +18,14 @@ import type {
   AnimationStateDefinition,
   CharacterAnimationState,
 } from "./animation/controller";
+import {
+  audioProfileRegistry,
+  environmentProfileRegistry,
+  lightingProfileRegistry,
+  postFxImpactProfileRegistry,
+  postFxProfileRegistry,
+  vfxProfileRegistry,
+} from "./profiles/definitions";
 
 export interface CharacterPresentationDefinition {
   readonly id: CharacterPresentationId;
@@ -44,12 +49,6 @@ export interface AbilityPresentationDefinition {
   readonly vfxProfileId: VfxProfileId;
   readonly audioProfileId: AudioProfileId;
   readonly cameraProfileId: CameraProfileId;
-}
-
-export interface EnvironmentPresentationDefinition {
-  readonly id: EnvironmentPresentationId;
-  readonly lightingProfileId: LightingProfileId;
-  readonly postFxProfileId: PostFxProfileId;
 }
 
 export interface PresentationProfileReference {
@@ -187,31 +186,8 @@ export const abilityPresentationRegistry = new DefinitionRegistry<AbilityPresent
   },
 ]);
 
-export const vfxRegistry = new DefinitionRegistry<PresentationProfileReference>([
-  {
-    id: "dash-slash-current-v1",
-    runtimeId: "procedural-dash-slash-runtime",
-    quality: { high: "full", compatibility: "full" },
-  },
-  {
-    id: "enemy-cut-humanoid-v1",
-    runtimeId: "procedural-humanoid-cut-runtime",
-    quality: { high: "full", compatibility: "full" },
-  },
-]);
-
-export const audioRegistry = new DefinitionRegistry<PresentationProfileReference>([
-  {
-    id: "dash-slash-current-v1",
-    runtimeId: "procedural-dash-audio-runtime",
-    quality: { high: "full", compatibility: "full" },
-  },
-  {
-    id: "enemy-cyber-grunt-v1",
-    runtimeId: "procedural-enemy-audio-runtime",
-    quality: { high: "full", compatibility: "full" },
-  },
-]);
+export const vfxRegistry = vfxProfileRegistry;
+export const audioRegistry = audioProfileRegistry;
 
 export const deathProfileRegistry = new DefinitionRegistry<PresentationProfileReference>([
   {
@@ -229,29 +205,9 @@ export const cameraProfileRegistry = new DefinitionRegistry<PresentationProfileR
   },
 ]);
 
-export const lightingRegistry = new DefinitionRegistry<PresentationProfileReference>([
-  {
-    id: "transit-cathedral-night-rain",
-    runtimeId: "transit-cathedral-lighting-current",
-    quality: { high: "full", compatibility: "reduced" },
-  },
-]);
-
-export const postFxRegistry = new DefinitionRegistry<PresentationProfileReference>([
-  {
-    id: "cinematic-current-v1",
-    runtimeId: "cinematic-postfx-current",
-    quality: { high: "full", compatibility: "reduced" },
-  },
-]);
-
-export const environmentRegistry = new DefinitionRegistry<EnvironmentPresentationDefinition>([
-  {
-    id: "transit-cathedral-v1",
-    lightingProfileId: "transit-cathedral-night-rain",
-    postFxProfileId: "cinematic-current-v1",
-  },
-]);
+export const lightingRegistry = lightingProfileRegistry;
+export const postFxRegistry = postFxProfileRegistry;
+export const environmentRegistry = environmentProfileRegistry;
 
 export interface PresentationRegistryIntegrity {
   readonly ok: true;
@@ -278,6 +234,7 @@ export function assertPresentationRegistryIntegrity(): PresentationRegistryInteg
     vfxRegistry.get(presentation.vfxProfileId);
     audioRegistry.get(presentation.audioProfileId);
     cameraProfileRegistry.get(presentation.cameraProfileId);
+    postFxImpactProfileRegistry.get(presentation.cameraProfileId);
     checked.push(`ability:${ability.id}`);
   }
   for (const level of LEVEL_DEFINITIONS) {
@@ -288,6 +245,11 @@ export function assertPresentationRegistryIntegrity(): PresentationRegistryInteg
     lightingRegistry.get(environment.lightingProfileId);
     postFxRegistry.get(environment.postFxProfileId);
     checked.push(`level:${level.id}`);
+  }
+  for (const environment of environmentRegistry.list()) {
+    lightingRegistry.get(environment.lightingProfileId);
+    postFxRegistry.get(environment.postFxProfileId);
+    checked.push(`environment:${environment.id}`);
   }
   return { ok: true, checked };
 }

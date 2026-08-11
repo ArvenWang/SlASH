@@ -1,8 +1,11 @@
 import * as THREE from "three";
-import { createAudioRuntime, type AudioRuntime } from "../audio";
+import { createAudioRuntime } from "../audio";
 import { createDiagnostics } from "../diagnostics";
-import { createPostFx, type PostFxRuntime } from "../postfx";
+import { createPostFx } from "../postfx";
 import { GAMEPLAY_CAMERA_CONFIG } from "../presentation/camera-config";
+import { createProfiledAudioRuntime, type ProfiledAudioRuntime } from "../presentation/audio/profiled-audio-runtime";
+import { createProfiledPostFxRuntime, type ProfiledPostFxRuntime } from "../presentation/postfx/profiled-postfx-runtime";
+import { createProfiledVfxRuntime, type ProfiledVfxRuntime } from "../presentation/vfx/profiled-vfx-runtime";
 import {
   assertPresentationRegistryIntegrity,
   environmentRegistry,
@@ -10,7 +13,7 @@ import {
   postFxRegistry,
 } from "../presentation/registry";
 import { createEnvironment, type EnvironmentRuntime } from "../scene/environment";
-import { createVfxRuntime, type VfxRuntime } from "../vfx";
+import { createVfxRuntime } from "../vfx";
 
 export type QualityMode = "high" | "compatibility";
 
@@ -31,9 +34,9 @@ export interface RendererRuntime {
   readonly cameraTarget: THREE.Vector3;
   readonly lighting: RendererLightingRuntime;
   readonly environment: EnvironmentRuntime;
-  readonly postFx: PostFxRuntime;
-  readonly vfx: VfxRuntime;
-  readonly audio: AudioRuntime;
+  readonly postFx: ProfiledPostFxRuntime;
+  readonly vfx: ProfiledVfxRuntime;
+  readonly audio: ProfiledAudioRuntime;
   resize(): void;
   render(): void;
   dispose(): void;
@@ -60,6 +63,9 @@ export function createRendererRuntime(options: RendererRuntimeOptions): Renderer
   if (postFxProfile.runtimeId !== "cinematic-postfx-current") {
     throw new Error(`Unsupported post FX runtime: ${postFxProfile.runtimeId}`);
   }
+  if (environmentProfile.runtimeId !== "transit-cathedral-runtime-current") {
+    throw new Error(`Unsupported environment runtime: ${environmentProfile.runtimeId}`);
+  }
   const compatibilityMode = options.qualityMode === "compatibility";
   const renderer = new THREE.WebGLRenderer({
     canvas: options.canvas,
@@ -70,7 +76,7 @@ export function createRendererRuntime(options: RendererRuntimeOptions): Renderer
   });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.98;
+  renderer.toneMappingExposure = lightingProfile.exposure;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.info.autoReset = false;
@@ -90,13 +96,18 @@ export function createRendererRuntime(options: RendererRuntimeOptions): Renderer
   camera.position.copy(cameraBase);
   camera.lookAt(cameraTarget);
 
-  const hemisphere = new THREE.HemisphereLight(0xb8dbe2, 0x080d12, 0.46);
+  const hemisphere = new THREE.HemisphereLight(
+    lightingProfile.hemisphere.sky,
+    lightingProfile.hemisphere.ground,
+    lightingProfile.hemisphere.intensity,
+  );
   scene.add(hemisphere);
-  const keyLight = new THREE.DirectionalLight(0xd9f7ff, 2.25);
-  keyLight.position.set(-18, 34, 19);
+  const keyLight = new THREE.DirectionalLight(lightingProfile.key.color, lightingProfile.key.intensity);
+  keyLight.position.set(...lightingProfile.key.position);
   keyLight.target.position.set(0, 0, 0);
   keyLight.castShadow = true;
-  keyLight.shadow.mapSize.set(compatibilityMode ? 1024 : 1536, compatibilityMode ? 1024 : 1536);
+  const shadowMapSize = lightingProfile.shadowMapSize[options.qualityMode];
+  keyLight.shadow.mapSize.set(shadowMapSize, shadowMapSize);
   keyLight.shadow.camera.left = -26;
   keyLight.shadow.camera.right = 26;
   keyLight.shadow.camera.top = 21;
@@ -107,40 +118,51 @@ export function createRendererRuntime(options: RendererRuntimeOptions): Renderer
   keyLight.shadow.normalBias = 0.045;
   scene.add(keyLight, keyLight.target);
 
-  const coldRim = new THREE.SpotLight(0x62dfff, 610, 90, Math.PI * 0.23, 0.86, 1.7);
-  coldRim.position.set(20, 20, -24);
+  const coldRim = new THREE.SpotLight(lightingProfile.coldRim.color, lightingProfile.coldRim.intensity, 90, Math.PI * 0.23, 0.86, 1.7);
+  coldRim.position.set(...lightingProfile.coldRim.position);
   coldRim.target.position.set(-2, 0, 1);
   scene.add(coldRim, coldRim.target);
-  const cityFill = new THREE.DirectionalLight(0x5a86a0, 1.08);
-  cityFill.position.set(5, 38, -86);
+  const cityFill = new THREE.DirectionalLight(lightingProfile.cityFill.color, lightingProfile.cityFill.intensity);
+  cityFill.position.set(...lightingProfile.cityFill.position);
   cityFill.target.position.set(0, 2, -52);
   scene.add(cityFill, cityFill.target);
-  const arenaFill = new THREE.PointLight(0xa8d8df, 82, 58, 1.8);
-  arenaFill.position.set(0, 13, 5);
+  const arenaFill = new THREE.PointLight(lightingProfile.arenaFill.color, lightingProfile.arenaFill.intensity, 58, 1.8);
+  arenaFill.position.set(...lightingProfile.arenaFill.position);
   scene.add(arenaFill);
-  const hostileRim = new THREE.PointLight(0xff3b1c, 58, 28, 2.2);
-  hostileRim.position.set(-17, 4.5, -7);
+  const hostileRim = new THREE.PointLight(lightingProfile.hostileRim.color, lightingProfile.hostileRim.intensity, 28, 2.2);
+  hostileRim.position.set(...lightingProfile.hostileRim.position);
   scene.add(hostileRim);
-  const heroAnchor = new THREE.PointLight(0xb9f7ff, 2.2, 5.5, 2.2);
+  const heroAnchor = new THREE.PointLight(lightingProfile.heroAnchor.color, lightingProfile.heroAnchor.intensity, 5.5, 2.2);
   heroAnchor.position.set(0, 1.85, 0);
   scene.add(heroAnchor);
   const heroKeyTarget = new THREE.Object3D();
-  const heroKey = new THREE.SpotLight(0xbfd9e6, 380, 10, Math.PI * 0.105, 0.82, 2);
+  const heroKey = new THREE.SpotLight(lightingProfile.heroKey.color, lightingProfile.heroKey.intensity, 10, Math.PI * 0.105, 0.82, 2);
   heroKey.castShadow = false;
   heroKey.position.set(2.8, 5.2, 3.8);
   heroKeyTarget.position.set(0, 1.45, 0);
   heroKey.target = heroKeyTarget;
   scene.add(heroKey, heroKeyTarget);
 
-  const environment = createEnvironment(scene);
-  const postFx = createPostFx(
+  const environment = createEnvironment(scene, {
+    background: environmentProfile.background,
+    fogColor: environmentProfile.fogColor,
+    fogDensity: environmentProfile.fogDensity,
+    rainDensity: environmentProfile.rainDensity,
+    modules: environmentProfile.modules,
+  });
+  const basePostFx = createPostFx(
     renderer,
     scene,
     camera,
-    compatibilityMode ? { bloomStrength: 0.28, bloomRadius: 0.25 } : undefined,
+    {
+      bloomStrength: postFxProfile.bloomStrength[options.qualityMode],
+      bloomRadius: postFxProfile.bloomRadius[options.qualityMode],
+      bloomThreshold: postFxProfile.bloomThreshold,
+    },
   );
-  const vfx = createVfxRuntime(scene);
-  const audio = createAudioRuntime();
+  const postFx = createProfiledPostFxRuntime(basePostFx);
+  const vfx = createProfiledVfxRuntime(createVfxRuntime(scene));
+  const audio = createProfiledAudioRuntime(createAudioRuntime());
 
   return {
     qualityMode: options.qualityMode,
@@ -175,9 +197,10 @@ export function createRendererRuntime(options: RendererRuntimeOptions): Renderer
       diagnostics.markPresented();
     },
     dispose() {
-      vfx.clearStage();
+      vfx.dispose();
       environment.dispose();
       postFx.composer.dispose();
+      void audio.dispose();
       renderer.dispose();
     },
   };

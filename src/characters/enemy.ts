@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { toCreasedNormals } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { createStandardMaterial } from "../presentation/materials/material-library";
 
 /**
  * Formal Vermilion Enforcer character.
@@ -792,36 +793,22 @@ const sharedGeometries = {
 } as const;
 
 const sharedMaterials = {
-  softLayer: new THREE.MeshStandardMaterial({
+  softLayer: createStandardMaterial("enemy-soft-v1", {
     name: "enemy-soft-layer",
-    color: 0x151b1e,
-    roughness: 0.96,
-    metalness: 0.01,
     // Facets come from the authored silhouette breaks, not a hard normal on
     // every triangulation diagonal. This keeps the handmade planes broad.
     flatShading: false,
   }),
-  blackArmor: new THREE.MeshStandardMaterial({
+  blackArmor: createStandardMaterial("enemy-armor-v1", {
     name: "enemy-charcoal-large-armor",
-    color: 0x30383c,
-    roughness: 0.82,
-    metalness: 0.08,
     flatShading: false,
   }),
-  vermilionArmor: new THREE.MeshStandardMaterial({
+  vermilionArmor: createStandardMaterial("enemy-accent-v1", {
     name: "enemy-vermilion-single-matte-block",
-    color: 0xc73518,
-    roughness: 0.82,
-    metalness: 0.03,
     flatShading: false,
   }),
-  sensorHeat: new THREE.MeshStandardMaterial({
+  sensorHeat: createStandardMaterial("enemy-energy-v1", {
     name: "enemy-sensor-and-blade-heat",
-    color: 0xff5b2e,
-    emissive: 0xff2b0d,
-    emissiveIntensity: 3.4,
-    roughness: 0.2,
-    metalness: 0.72,
     toneMapped: false,
   }),
   cutGap: new THREE.MeshStandardMaterial({

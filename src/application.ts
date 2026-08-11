@@ -6,6 +6,7 @@ import {
   characterPresentationRegistry,
   enemyPresentationRegistry,
 } from "./presentation/registry";
+import { createPerformanceBudgetSnapshot } from "./presentation/performance/budgets";
 import { createDebugRuntime, type RuntimeTuning } from "./runtime/debug-runtime";
 import { createGameRuntime } from "./runtime/game-runtime";
 import { createInputRuntime } from "./runtime/input-runtime";
@@ -60,6 +61,9 @@ export async function bootstrapSlashApplication(): Promise<void> {
     exposure: 0.98,
     bloom: 0.34,
     cameraFov: 28.5,
+    vfxDensity: 1,
+    rainDensity: 1,
+    fogDensity: 0.0078,
     enemyMotion: true,
     dashPreview: true,
   };
@@ -128,6 +132,14 @@ export async function bootstrapSlashApplication(): Promise<void> {
     rendererRuntime.resize();
   }
 
+  function performanceSnapshot() {
+    return createPerformanceBudgetSnapshot({
+      diagnostics: rendererRuntime.diagnostics.snapshot(),
+      gameState,
+      vfx: presentationRuntime.snapshot().vfx,
+    });
+  }
+
   const debugRuntime = await createDebugRuntime({
     enabled: validationMode || import.meta.env.DEV,
     validationMode,
@@ -143,6 +155,37 @@ export async function bootstrapSlashApplication(): Promise<void> {
         rendererRuntime.camera.fov = value;
         rendererRuntime.camera.updateProjectionMatrix();
       },
+      setVfxDensity(value) {
+        rendererRuntime.vfx.setDensity(value);
+      },
+      setRainDensity(value) {
+        rendererRuntime.environment.setRainDensity(value);
+      },
+      setFogDensity(value) {
+        rendererRuntime.environment.setFogDensity(value);
+      },
+    },
+    inspect: () => {
+      const game = getGameSnapshot(gameState);
+      const presentation = presentationRuntime.snapshot();
+      return {
+        gameplay: {
+          phase: game.phase,
+          action: game.player.action,
+          enemies: game.aliveEnemies.length,
+          invulnerable: game.player.invulnerable,
+        },
+        content: {
+          level: game.stage.id,
+          ability: game.abilities.primary?.id ?? "none",
+          enemyDefinition: gameState.enemies[0]?.definitionId ?? "none",
+        },
+        visual: {
+          animation: presentation.playerAnimation.state,
+          activeVfx: presentation.vfx.base.activeEffects,
+          drawCalls: rendererRuntime.diagnostics.snapshot().renderer.calls,
+        },
+      };
     },
     renderGameToText: () => JSON.stringify({
       coordinateSystem: "World ground plane. Origin at arena center; +x is screen-right-ish, +z is toward the near camera edge.",
@@ -164,6 +207,8 @@ export async function bootstrapSlashApplication(): Promise<void> {
         },
       },
       ...getGameSnapshot(gameState),
+      presentation: presentationRuntime.snapshot(),
+      performance: performanceSnapshot(),
       diagnostics: rendererRuntime.diagnostics.snapshot(),
     }),
     diagnostics: rendererRuntime.diagnostics,

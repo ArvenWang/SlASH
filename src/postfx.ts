@@ -9,6 +9,7 @@ export interface PostFxRuntime {
   composer: EffectComposer;
   bloom: UnrealBloomPass;
   impact: number;
+  impactDecay: number;
   resize(width: number, height: number, pixelRatio: number): void;
   update(time: number, dt: number): void;
 }
@@ -16,6 +17,7 @@ export interface PostFxRuntime {
 export interface PostFxOptions {
   bloomStrength?: number;
   bloomRadius?: number;
+  bloomThreshold?: number;
 }
 
 const cinematicShader = {
@@ -78,7 +80,7 @@ export function createPostFx(
   const composer = new EffectComposer(renderer);
   const renderPass = new RenderPass(scene, camera);
   const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), baseBloomStrength, baseBloomRadius, 1.02);
-  bloom.threshold = 1.02;
+  bloom.threshold = options.bloomThreshold ?? 1.02;
   bloom.strength = baseBloomStrength;
   bloom.radius = baseBloomRadius;
   const cinematic = new ShaderPass(cinematicShader);
@@ -92,13 +94,14 @@ export function createPostFx(
     composer,
     bloom,
     impact: 0,
+    impactDecay: 11,
     resize(width, height, pixelRatio) {
       composer.setPixelRatio(pixelRatio);
       composer.setSize(width, height);
       cinematic.uniforms.uResolution.value.set(width * pixelRatio, height * pixelRatio);
     },
     update(time, dt) {
-      runtime.impact = THREE.MathUtils.damp(runtime.impact, 0, 11, dt);
+      runtime.impact = THREE.MathUtils.damp(runtime.impact, 0, runtime.impactDecay, dt);
       cinematic.uniforms.uTime.value = time;
       cinematic.uniforms.uImpact.value = runtime.impact;
       bloom.strength = baseBloomStrength + runtime.impact * 0.18;

@@ -8,11 +8,9 @@ import type { EnemyState, GameEvent, GameState } from "../game/domain/types";
 import {
   PLAYER_CHARACTER_PRESENTATION_ID,
   abilityPresentationRegistry,
-  audioRegistry,
   cameraProfileRegistry,
   characterPresentationRegistry,
   enemyPresentationRegistry,
-  vfxRegistry,
 } from "../presentation/registry";
 import type { CharacterProviderRegistry } from "../presentation/characters/provider-registry";
 import type {
@@ -57,6 +55,13 @@ export interface PresentationRuntime {
   clearPointer(): void;
   getPrimaryTarget(): Vec2 | null;
   markPendingAbilityInput(inputId: number): void;
+  snapshot(): {
+    playerAnimation: ReturnType<CharacterRuntime["animation"]["snapshot"]>;
+    vfx: ReturnType<RendererRuntime["vfx"]["snapshot"]>;
+    audio: ReturnType<RendererRuntime["audio"]["snapshot"]>;
+    postFx: ReturnType<RendererRuntime["postFx"]["snapshot"]>;
+    environment: ReturnType<RendererRuntime["environment"]["snapshot"]>;
+  };
   dispose(): void;
 }
 
@@ -114,6 +119,9 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
 
   const playerActor = playerProvider.create({ role: "hero" });
   scene.add(playerActor.root);
+  vfx.setDensity(tuning.vfxDensity);
+  environment.setRainDensity(tuning.rainDensity);
+  environment.setFogDensity(tuning.fogDensity);
 
   const enemyContactShadowSize = 48;
   const enemyContactShadowPixels = new Uint8Array(enemyContactShadowSize ** 2 * 4);
@@ -301,15 +309,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
 
   function triggerDashVisual(event: Extract<GameEvent, { type: "dash-started" }>): void {
     const presentation = abilityPresentationRegistry.get(event.abilityId);
-    const vfxProfile = vfxRegistry.get(presentation.vfxProfileId);
-    const audioProfile = audioRegistry.get(presentation.audioProfileId);
     const cameraProfile = cameraProfileRegistry.get(presentation.cameraProfileId);
-    if (vfxProfile.runtimeId !== "procedural-dash-slash-runtime") {
-      throw new Error(`Unsupported dash VFX runtime: ${vfxProfile.runtimeId}`);
-    }
-    if (audioProfile.runtimeId !== "procedural-dash-audio-runtime") {
-      throw new Error(`Unsupported dash audio runtime: ${audioProfile.runtimeId}`);
-    }
     if (cameraProfile.runtimeId !== "gameplay-camera-impulse-v1") {
       throw new Error(`Unsupported dash camera runtime: ${cameraProfile.runtimeId}`);
     }
@@ -333,9 +333,12 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       diagnostics.markDashLogic(pendingAbilityInputId);
       pendingAbilityInputId = null;
     }
-    vfx.spawnSlash({ start, end, killPositions: kills, actor: playerActor.afterimageSource });
-    audio.playDash(kills.length);
-    postFx.impact = Math.min(0.62, 0.15 + kills.length * 0.055);
+    vfx.spawnSlash(
+      presentation.vfxProfileId,
+      { start, end, killPositions: kills, actor: playerActor.afterimageSource },
+    );
+    audio.playDash(presentation.audioProfileId, kills.length);
+    postFx.triggerImpact(presentation.cameraProfileId, kills.length * 0.055);
     heroAnchorLight.intensity = Math.min(34, 18 + kills.length * 2.6);
     cameraImpulse.add(new THREE.Vector3(
       direction.x * 0.16,
@@ -371,7 +374,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
         });
       }
       if (!visual.contactSpawned && t >= 0.012) {
-        vfx.spawnCutContact({
+        vfx.spawnCutContact("enemy-cut-contact-v1", {
           position: new THREE.Vector3(root.position.x, 0, root.position.z),
           direction: visual.slashDirection,
           intensity: 0.82,
@@ -379,7 +382,8 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
         visual.contactSpawned = true;
       }
       if (!visual.impactSpawned && t >= 0.052) {
-        vfx.spawnKillImpact({
+        const enemyPresentation = enemyPresentationRegistry.get(enemy.definitionId);
+        vfx.spawnKillImpact(enemyPresentation.vfxProfileId, {
           position: new THREE.Vector3(root.position.x, 0, root.position.z),
           direction: visual.slashDirection,
           intensity: 1.05,
@@ -484,9 +488,9 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
         }
       } else if (event.type === "player-died") {
         phaseAge = 0;
-        postFx.impact = 1;
+        postFx.triggerImpact("death-impact-current-v1");
         hostileRim.intensity = 180;
-        audio.playDeath();
+        audio.playDeath("player-death-current-v1");
       } else if (event.type === "stage-cleared" || event.type === "game-complete") {
         phaseAge = 0;
       }
@@ -608,6 +612,15 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     },
     markPendingAbilityInput(inputId) {
       pendingAbilityInputId = inputId;
+    },
+    snapshot() {
+      return {
+        playerAnimation: playerActor.animation.snapshot(),
+        vfx: vfx.snapshot(),
+        audio: audio.snapshot(),
+        postFx: postFx.snapshot(),
+        environment: environment.snapshot(),
+      };
     },
     dispose() {
       for (const visual of enemyVisuals.values()) {

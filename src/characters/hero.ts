@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import { toCreasedNormals } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { createStandardMaterial } from "../presentation/materials/material-library";
+import { MATERIAL_TOKENS } from "../presentation/materials/tokens";
 
 type Point2 = readonly [x: number, y: number];
 type Point3 = readonly [x: number, y: number, z: number];
@@ -335,30 +337,13 @@ function createFootGeometry(side: -1 | 1): THREE.BufferGeometry {
   return geometry;
 }
 
-function material(
-  color: number,
-  roughness: number,
-  metalness: number,
-  emissive = 0x000000,
-  emissiveIntensity = 0,
-): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({
-    color,
-    roughness,
-    metalness,
-    emissive,
-    emissiveIntensity,
-    flatShading: true,
-  });
-}
-
 function createMaterials(): HeroMaterials {
-  const optic = material(0xc6e7e9, 0.3, 0.06, 0xe8ffff, 1.7);
-  const bladeEnergy = material(0xd4f5f7, 0.24, 0.02, 0xf2ffff, 1.45);
+  const optic = createStandardMaterial("hero-optic-v1", { flatShading: true });
+  const bladeEnergy = createStandardMaterial("hero-energy-v1", { flatShading: true });
   bladeEnergy.toneMapped = false;
   bladeEnergy.side = THREE.DoubleSide;
   const bladeGlow = new THREE.MeshBasicMaterial({
-    color: 0xbceff2,
+    color: MATERIAL_TOKENS.energy.playerGlow,
     transparent: true,
     opacity: 0.05,
     blending: THREE.AdditiveBlending,
@@ -369,8 +354,8 @@ function createMaterials(): HeroMaterials {
   optic.name = "hero-cold-white-optic";
   bladeEnergy.name = "hero-full-energy-katana-blade";
   bladeGlow.name = "hero-thin-katana-halo";
-  const undersuit = material(0x070a0c, 0.94, 0.01);
-  const armor = material(0x29363c, 0.74, 0.12);
+  const undersuit = createStandardMaterial("hero-soft-v1");
+  const armor = createStandardMaterial("hero-armor-v1");
   undersuit.flatShading = false;
   armor.flatShading = false;
   undersuit.name = "hero-minimal-near-black-soft-layer";

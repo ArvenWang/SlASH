@@ -1,10 +1,13 @@
 import * as THREE from "three";
+import { ObjectPool, ObjectPoolRegistry, type ObjectPoolStats } from "./core/pool/object-pool";
+import { createStandardMaterial } from "./presentation/materials/material-library";
 
 interface TimedEffect {
   age: number;
   lifetime: number;
   object: THREE.Object3D;
   tick: (normalizedAge: number, dt: number) => void;
+  release?: () => void;
 }
 
 export interface SlashVfxOptions {
@@ -27,6 +30,8 @@ export interface VfxRuntime {
   seedBlood(position: THREE.Vector3, direction?: THREE.Vector3): void;
   clearStage(): void;
   update(dt: number): void;
+  snapshot(): { activeEffects: number; persistentDecals: number; pools: readonly ObjectPoolStats[] };
+  dispose(): void;
 }
 
 function createBloodSplatTexture() {
@@ -242,6 +247,36 @@ function bakeActorSilhouette(source: THREE.Object3D) {
 export function createVfxRuntime(scene: THREE.Scene): VfxRuntime {
   const effects: TimedEffect[] = [];
   const persistentPools: THREE.Mesh[] = [];
+  const poolRegistry = new ObjectPoolRegistry();
+  const impactPool = new ObjectPool({
+    id: "kill-impact-flash",
+    category: "impact-vfx",
+    maximum: 24,
+    prewarm: 8,
+    create() {
+      const material = new THREE.MeshBasicMaterial({
+        color: 0xff7040,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      const mesh = new THREE.Mesh(impactFlashGeometry, material);
+      mesh.renderOrder = 11;
+      return { mesh, material };
+    },
+    reset({ mesh, material }) {
+      mesh.removeFromParent();
+      mesh.visible = false;
+      material.opacity = 0;
+    },
+    destroy({ mesh, material }) {
+      mesh.removeFromParent();
+      material.dispose();
+    },
+  });
+  poolRegistry.register(impactPool);
 
   function addEffect(effect: TimedEffect) {
     scene.add(effect.object);
@@ -256,10 +291,7 @@ export function createVfxRuntime(scene: THREE.Scene): VfxRuntime {
     ) >>> 0;
     const random = createSeededRandom(seed);
     const family = bloodFamilies[seed % bloodFamilies.length];
-    const poolMaterial = new THREE.MeshStandardMaterial({
-      color: 0x740009,
-      emissive: 0x180001,
-      emissiveIntensity: 0.24,
+    const poolMaterial = createStandardMaterial("blood-wet-v1", {
       alphaMap: bloodSplatTexture,
       roughness: 0.18,
       metalness: 0,
@@ -465,15 +497,14 @@ export function createVfxRuntime(scene: THREE.Scene): VfxRuntime {
     if (normalizedDirection.lengthSq() < 0.0001) normalizedDirection.set(1, 0, 0);
     normalizedDirection.normalize();
 
-    const flashMaterial = new THREE.MeshBasicMaterial({
-      color: 0xff7040,
-      transparent: true,
-      opacity: 0.52,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-    const flash = new THREE.Mesh(impactFlashGeometry, flashMaterial);
+    const pooledFlash = impactPool.acquire();
+    if (!pooledFlash) {
+      seedBlood(position, normalizedDirection, intensity);
+      return;
+    }
+    const { mesh: flash, material: flashMaterial } = pooledFlash;
+    flash.visible = true;
+    flashMaterial.opacity = 0.52;
     flash.position.copy(position).add(new THREE.Vector3(0, 1.36, 0));
     flash.scale.set(1.12, 0.12, 1.12);
     flash.rotation.y = Math.atan2(normalizedDirection.x, normalizedDirection.z);
@@ -487,6 +518,7 @@ export function createVfxRuntime(scene: THREE.Scene): VfxRuntime {
         flash.scale.set(0.94 + open * 1.16, 0.1 + open * 0.07, 0.94 + open * 0.26);
         flashMaterial.opacity = 0.52 * (1 - t);
       },
+      release: () => impactPool.release(pooledFlash),
     });
 
     seedBlood(position, normalizedDirection, intensity);
@@ -787,7 +819,8 @@ export function createVfxRuntime(scene: THREE.Scene): VfxRuntime {
     const removed = new Set<THREE.Object3D>();
     for (const effect of effects) {
       scene.remove(effect.object);
-      if (!removed.has(effect.object)) disposeEffectObject(effect.object);
+      if (effect.release) effect.release();
+      else if (!removed.has(effect.object)) disposeEffectObject(effect.object);
       removed.add(effect.object);
     }
     effects.length = 0;
@@ -810,11 +843,25 @@ export function createVfxRuntime(scene: THREE.Scene): VfxRuntime {
       // Blood pools are intentionally persistent for the current stage.
       if (!persistentPools.includes(effect.object as THREE.Mesh)) {
         scene.remove(effect.object);
-        disposeEffectObject(effect.object);
+        if (effect.release) effect.release();
+        else disposeEffectObject(effect.object);
       }
       effects.splice(i, 1);
     }
   }
 
-  return { spawnSlash, spawnCutContact, spawnKillImpact, seedBlood, clearStage, update };
+  function snapshot() {
+    return {
+      activeEffects: effects.length,
+      persistentDecals: persistentPools.length,
+      pools: poolRegistry.snapshot(),
+    };
+  }
+
+  function dispose() {
+    clearStage();
+    poolRegistry.dispose();
+  }
+
+  return { spawnSlash, spawnCutContact, spawnKillImpact, seedBlood, clearStage, update, snapshot, dispose };
 }

@@ -4,7 +4,7 @@ import { createCharacterProviderRegistry } from "./presentation/characters/provi
 import type { CharacterRuntime } from "./presentation/characters/types";
 
 type Actor = "hero" | "enemy" | "both";
-type View = "front" | "side" | "back" | "three-quarter";
+type View = "front" | "side" | "back" | "three-quarter" | "gameplay";
 type Mode = "idle" | "walk" | "dash" | "hit" | "threat";
 type ProviderMode = "procedural" | "gltf";
 
@@ -14,6 +14,8 @@ interface CharacterLabSnapshot {
   projection: "perspective" | "orthographic";
   mode: Mode;
   provider: ProviderMode;
+  playbackSpeed: number;
+  loop: boolean;
   frozenAtMs: number | null;
   canvas: { cssWidth: number; cssHeight: number; backingWidth: number; backingHeight: number; devicePixelRatio: number };
   camera: { type: string; position: number[]; target: number[]; orthographicHeight: number | null };
@@ -89,6 +91,8 @@ const selectedView = parseView(params.get("view"));
 const projection = params.get("projection") === "orthographic" ? "orthographic" : "perspective";
 const mode = parseMode(params.get("mode"));
 const providerMode = parseProviderMode(params.get("provider"));
+const playbackSpeed = parsePlaybackSpeed(params.get("speed"));
+const loop = params.get("loop") !== "0";
 const frozenAtMs = parseFreezeMs(params.get("freezeMs"));
 const autoTurn = params.get("turn") === "1";
 const cleanCapture = params.get("clean") === "1";
@@ -214,7 +218,7 @@ function parseActor(value: string | null): Actor {
 }
 
 function parseView(value: string | null): View | null {
-  return value === "front" || value === "side" || value === "back" || value === "three-quarter" ? value : null;
+  return value === "front" || value === "side" || value === "back" || value === "three-quarter" || value === "gameplay" ? value : null;
 }
 
 function parseMode(value: string | null): Mode {
@@ -223,6 +227,11 @@ function parseMode(value: string | null): Mode {
 
 function parseProviderMode(value: string | null): ProviderMode {
   return value === "gltf" ? "gltf" : "procedural";
+}
+
+function parsePlaybackSpeed(value: string | null): number {
+  const parsed = Number(value ?? 1);
+  return Number.isFinite(parsed) ? THREE.MathUtils.clamp(parsed, 0.1, 3) : 1;
 }
 
 function parseFreezeMs(value: string | null) {
@@ -238,6 +247,7 @@ function setEvidenceCamera(activeCamera: THREE.Camera, view: View, target: THREE
     side: [-9, 1.48, 0],
     back: [0, 1.48, -9],
     "three-quarter": [6.36, 1.48, 6.36],
+    gameplay: [6.5, 6.2, 8.8],
   };
   activeCamera.position.set(...positions[view]);
 }
@@ -263,7 +273,8 @@ function resize() {
 }
 
 function applyAnimation(frameTime: number, dt: number) {
-  const cycle = frameTime % 1.65;
+  const playbackTime = frameTime * playbackSpeed;
+  const cycle = loop ? playbackTime % 1.65 : Math.min(playbackTime, 1.649);
   const dashProgress = mode === "dash" && cycle < 0.34 ? cycle / 0.34 : null;
   const recoveryProgress = mode === "dash" && cycle >= 0.34 && cycle < 0.68 ? (cycle - 0.34) / 0.34 : null;
   const walking = mode === "walk";
@@ -281,9 +292,9 @@ function applyAnimation(frameTime: number, dt: number) {
             : "idle";
   hero?.animation.update({
     state: heroState,
-    timeSeconds: frameTime,
-    deltaSeconds: dt,
-    turn: mode === "threat" ? Math.sin(frameTime * 2.1) : 0,
+    timeSeconds: playbackTime,
+    deltaSeconds: dt * playbackSpeed,
+    turn: mode === "threat" ? Math.sin(playbackTime * 2.1) : 0,
     sourceProgress: hitAge === null
       ? dashProgress ?? recoveryProgress
       : Math.min(1, hitAge / 0.5),
@@ -294,11 +305,11 @@ function applyAnimation(frameTime: number, dt: number) {
       : walking || mode === "threat"
         ? "action"
         : "idle",
-    timeSeconds: frameTime,
-    deltaSeconds: dt,
+    timeSeconds: playbackTime,
+    deltaSeconds: dt * playbackSpeed,
     distanceMoved: walking ? dt * 2.8 : 0,
     speedNormalized: walking ? 0.9 : 0,
-    turn: mode === "threat" ? -Math.sin(frameTime * 1.7) : 0,
+    turn: mode === "threat" ? -Math.sin(playbackTime * 1.7) : 0,
     threat: mode === "threat" ? 1 : 0,
     hitAgeSeconds: hitAge !== null && hitAge < 0.19 ? hitAge : null,
     sourceProgress: hitAge === null ? null : Math.min(1, hitAge / 0.5),
@@ -312,8 +323,8 @@ function applyAnimation(frameTime: number, dt: number) {
     );
   }
   if (autoTurn) {
-    if (hero) hero.root.rotation.y = frameTime * 0.35;
-    if (enemy) enemy.root.rotation.y = frameTime * 0.35;
+    if (hero) hero.root.rotation.y = playbackTime * 0.35;
+    if (enemy) enemy.root.rotation.y = playbackTime * 0.35;
   }
 }
 
@@ -519,6 +530,8 @@ function snapshot(): CharacterLabSnapshot {
     projection,
     mode,
     provider: providerMode,
+    playbackSpeed,
+    loop,
     frozenAtMs,
     canvas: {
       cssWidth: rect.width,

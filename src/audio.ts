@@ -8,6 +8,7 @@ export interface AudioRuntime {
   playDash(killCount: number): void;
   playDeath(): void;
   setEnabled(enabled: boolean): void;
+  dispose(): Promise<void>;
 }
 
 export type AudioEvidenceScenario = "dash0" | "kill1" | "kill5" | "kill20" | "death" | "ambient";
@@ -283,6 +284,11 @@ export function createAudioRuntime(): AudioRuntime {
     setEnabled(nextEnabled) {
       enabled = nextEnabled;
       if (graph) graph.master.gain.setValueAtTime(enabled ? ENABLED_MASTER_GAIN : 0, graph.context.currentTime);
+    },
+    async dispose() {
+      graph = null;
+      if (context && context.state !== "closed") await context.close();
+      context = null;
     },
   };
 }

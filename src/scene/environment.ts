@@ -12,8 +12,19 @@ export interface EnvironmentRuntime {
   readonly arenaHitSurface: THREE.Object3D;
   readonly arenaBounds: ArenaBounds;
   reactToDash(start: THREE.Vector3, end: THREE.Vector3, intensity?: number): void;
+  setRainDensity(density: number): void;
+  setFogDensity(density: number): void;
+  snapshot(): { rainDensity: number; fogDensity: number; rainParticles: number; activeModules: readonly string[] };
   update(timeSeconds: number, dt: number): void;
   dispose(): void;
+}
+
+export interface EnvironmentOptions {
+  readonly background?: number;
+  readonly fogColor?: number;
+  readonly fogDensity?: number;
+  readonly rainDensity?: number;
+  readonly modules?: readonly string[];
 }
 
 type BoxPlacement = {
@@ -2159,29 +2170,65 @@ function addLighting(root: THREE.Group): void {
   root.add(warmEdge);
 }
 
-export function createEnvironment(scene: THREE.Scene): EnvironmentRuntime {
+export function createEnvironment(
+  scene: THREE.Scene,
+  options: EnvironmentOptions = {},
+): EnvironmentRuntime {
   const root = new THREE.Group();
   root.name = "slash-environment";
   scene.add(root);
+  const activeModules = options.modules ?? [
+    "transit-cathedral/arena",
+    "transit-cathedral/transit",
+    "transit-cathedral/city",
+    "transit-cathedral/weather",
+    "transit-cathedral/lighting",
+  ];
+  const moduleRoot = (id: string) => {
+    if (!activeModules.includes(id)) throw new Error(`Required environment module is disabled: ${id}`);
+    const module = new THREE.Group();
+    module.name = id;
+    root.add(module);
+    return module;
+  };
+  const arenaModule = moduleRoot("transit-cathedral/arena");
+  const transitModule = moduleRoot("transit-cathedral/transit");
+  const cityModule = moduleRoot("transit-cathedral/city");
+  const weatherModule = moduleRoot("transit-cathedral/weather");
+  const lightingModule = moduleRoot("transit-cathedral/lighting");
 
   const previousBackground = scene.background;
   const previousFog = scene.fog;
-  const background = new THREE.Color(0x0b1d28);
-  const fog = new THREE.FogExp2(0x183b49, 0.0078);
+  const background = new THREE.Color(options.background ?? 0x0b1d28);
+  const fog = new THREE.FogExp2(options.fogColor ?? 0x183b49, options.fogDensity ?? 0.0078);
   scene.background = background;
   scene.fog = fog;
 
   const groundTextures = createGroundTextures();
   const particleTexture = createRadialParticleTexture();
-  const platform = createPlatform(root, groundTextures);
-  const groundDashReactions = createGroundDashReactions(root);
-  const transit = createTransitArchitecture(root);
-  const windowMaterial = createCity(root);
-  const rain = createRain(root);
-  const steam = createSteam(root, particleTexture);
-  addLighting(root);
+  const platform = createPlatform(arenaModule, groundTextures);
+  const groundDashReactions = createGroundDashReactions(arenaModule);
+  const transit = createTransitArchitecture(transitModule);
+  const windowMaterial = createCity(cityModule);
+  const rain = createRain(weatherModule);
+  const steam = createSteam(weatherModule, particleTexture);
+  addLighting(lightingModule);
 
   let disposed = false;
+  let rainDensity = 1;
+
+  const setRainDensity = (density: number): void => {
+    rainDensity = THREE.MathUtils.clamp(Number.isFinite(density) ? density : 1, 0, 1);
+    rain.points.geometry.setDrawRange(0, Math.floor(rain.speeds.length * rainDensity));
+    const material = rain.points.material as THREE.ShaderMaterial;
+    material.uniforms.uOpacity.value = 0.34 * (0.35 + rainDensity * 0.65);
+  };
+
+  const setFogDensity = (density: number): void => {
+    fog.density = THREE.MathUtils.clamp(Number.isFinite(density) ? density : 0.0078, 0, 0.05);
+  };
+
+  setRainDensity(options.rainDensity ?? 1);
 
   const reactToDash = (
     start: THREE.Vector3,
@@ -2332,6 +2379,14 @@ export function createEnvironment(scene: THREE.Scene): EnvironmentRuntime {
     arenaHitSurface: platform.hitSurface,
     arenaBounds: ARENA_BOUNDS,
     reactToDash,
+    setRainDensity,
+    setFogDensity,
+    snapshot: () => ({
+      rainDensity,
+      fogDensity: fog.density,
+      rainParticles: rain.points.geometry.drawRange.count,
+      activeModules: [...activeModules],
+    }),
     update,
     dispose,
   };
