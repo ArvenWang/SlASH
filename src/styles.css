@@ -282,6 +282,18 @@ kbd {
   font-size: 13px;
 }
 
+.title-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.title-actions > .primary-action:only-child { grid-column: 1 / -1; }
+.continue-summary { display: block; margin-top: 10px; color: #8e9c9e; font-size: 9px; letter-spacing: 0.06em; }
+.save-error {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(220, 170, 140, 0.38);
+  color: #dbc0ae;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .primary-action,
 .secondary-action,
 .route-card,
@@ -606,6 +618,7 @@ kbd {
   .planning-confirmation .primary-action,
   .planning-confirmation .secondary-action { width: 100%; }
   .event-choice-grid { grid-template-columns: 1fr; }
+  .title-actions { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

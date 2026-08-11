@@ -126,12 +126,12 @@ P11 Visual Branch Integration Contract + Git Push
 
 - [x] Upgrade Definition 扩展：cost、prerequisites、module、tier、hook IDs。
 - [x] 28 个稳定 Skill ID 和完整文案。
-- [x] `preview / commit / refund-current-visit / forge-reroute` 规则引擎；Forge UI / Campaign Command 仍待接入。
+- [x] `preview / commit / refund-current-visit / forge-reroute` 规则引擎、Forge UI 与 Campaign Command。
 - [x] SP 奖励计划与 Elite 12 点封顶。
 - [x] 合法性检查：前置、后代级联、战斗锁定、存点。
 - [x] 完整 Skill Tree UI，不使用随机三选一。
 - [x] Threat Preview 与 Allocation 合并为 Planning Board。
-- [ ] Save / Replay 记录 Skill Commands。
+- [x] Safe Save 与 Replay v2 记录 Planning / Skill / Forge Commands。
 - [x] 28 个节点的 31 个声明 Hook 全部路由到实际 Gameplay Owner，并由 Hook Registry 防止 UI-only 节点混入完成状态。
 
 ### 测试
@@ -171,7 +171,7 @@ P11 Visual Branch Integration Contract + Git Push
 - [x] Ultimate Energy、Planning、Slow World、3 段执行、Cancel。
 - [x] 9 个 Charged Hook 与 6 个 Ultimate Hook 已完成；U-05 使用正式 Projectile 生命周期。
 - [x] Events：charge、armor-break、rear-execution、energy、planning、segment、ultimate-end。
-- [ ] Snapshot 已暴露 Charge / Energy / Armor / Ultimate / Scheduled Slash；Replay 已支持新目标命令深拷贝，完整 Campaign Schema 待升级。
+- [x] Snapshot 已暴露 Charge / Energy / Armor / Ultimate / Scheduled Slash；Replay v2 已支持完整 Campaign 与所有目标命令深拷贝。
 
 ### 测试
 
@@ -308,8 +308,8 @@ P11 Visual Branch Integration Contract + Git Push
 ### 任务
 
 - [ ] Profile Save Schema / Version。
-- [ ] Safe Node Run Save / Continue。
-- [ ] Save Migration / Refusal，不静默清空。
+- [x] Safe Node Run Save / Continue；战斗中只保留最后一个安全节点存档。
+- [x] 未知 Schema / Content Version 与损坏数据明确拒绝并保留原文；当前无历史生产 Schema，迁移器待首次兼容版本需求再增加。
 - [ ] Dossier、Practice、Victory Records。
 - [ ] Assist Protocol。
 - [ ] Threat Protocol 1–5。

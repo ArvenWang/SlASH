@@ -37,6 +37,7 @@ export interface GameRuntime {
   loadBasicPassiveScenario(): void;
   loadCampaignEventScenario(): void;
   loadCampaignForgeScenario(): void;
+  loadState(state: GameState): void;
   resetRun(): void;
 }
 
@@ -103,6 +104,9 @@ export function createGameRuntime(initialStageIndex = 0): GameRuntime {
     },
     loadCampaignForgeScenario() {
       replaceState(createCampaignForgeValidationGame(state.rules));
+    },
+    loadState(nextState) {
+      replaceState(structuredClone(nextState));
     },
     resetRun() {
       replaceState(createGame(0));
@@ -171,6 +175,9 @@ export function createFullGameRuntime(seed?: number): GameRuntime {
     },
     loadCampaignForgeScenario() {
       replaceState(createCampaignForgeValidationGame(state.rules));
+    },
+    loadState(nextState) {
+      replaceState(structuredClone(nextState));
     },
     resetRun() {
       replaceState(createFullGameGame(state.run.seed, state.rules));

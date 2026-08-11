@@ -4,7 +4,7 @@
 
 Phase 2A 是扩展基础与视觉生产管线改造，不是一次视觉签核。当前画面、角色造型、动作质感和整体氛围仍需继续设计迭代；本阶段的交付是让这些迭代通过可替换的 Profile、Provider 和独立 Lab 完成，而不再改动 Gameplay 规则。
 
-架构同时为后续敌人、攻击、技能、升级、Projectile、Obstacle、Hazard、Encounter 和关卡行为提供稳定入口。尚未存在的正式玩法不会用假内容填充：Projectile / Obstacle / Hazard 目前是可序列化的真实 Domain 和空 Registry，非完整成品系统。
+架构同时为后续敌人、攻击、技能、升级、Projectile、Obstacle、Hazard、Encounter 和关卡行为提供稳定入口。Projectile / Obstacle / Hazard、四种 Wave Activation、Campaign、Event、Forge、Safe Save 与 Replay v2 已有真实生命周期；完整 Enemy / Encounter / Boss 内容仍按生产计划推进，不用 Definition 数量冒充可玩内容数量。
 
 ## 运行数据流
 
@@ -20,6 +20,7 @@ flowchart LR
     Providers["Character Providers + Animation Controller"] --> Presentation
     Presentation --> Renderer["Three.js / Audio / VFX / Post FX"]
     State --> Replay["Seeded Replay + State Hash"]
+    State --> Save["Versioned Safe Save"]
 ```
 
 最重要的单向边界是：Gameplay 可以被无浏览器、无 Three.js 地运行；Presentation 可以读取 Gameplay 状态和事件，但 Gameplay 与 Content 不得反向导入 Presentation、Runtime、Scene、Characters 或 Three.js。`tests/architecture-boundaries.test.ts` 会自动阻止反向依赖和本地循环依赖。
@@ -52,8 +53,8 @@ flowchart LR
 
 ## 当前明确保留的限制
 
-- 三个现有关卡仍全部使用 Immediate Spawn；`timed`、`after-previous-killed`、`triggered` 已有数据类型，但 Encounter Scheduler 尚未实现。
-- Projectile / Obstacle / Hazard 已有 Definition、State、碰撞形状和快照入口，但没有虚构正式内容或完整生命周期系统。
+- 53 个 Encounter、10+4 Enemy 与 4 Boss 仍未全部接入；当前运行时主要复用首个两波模板，不能把机制架构视为内容完成。
+- Safe Save 尚未包含未实现的 Threat Protocol、Assist、Boss Boundary 与 Profile 字段；Replay 的完整 100 Seed × 4 Build 门也必须等待完整内容。
 - 两份生产 GLB 有骨骼但没有 AnimationClip；Controller 已支持 Clip，当前 GLB 走自制骨骼 Additive Driver。
 - 程序化环境和 VFX Runtime 仍较大；Profile 已先隔离配置。后续在加入第一个新环境模块或新特效家族时，按实际需求拆 Runtime，避免提前制造空框架。
 - 当前视觉 Profile 只是“现状迁移版”，不是通过审美验收的最终方案。
@@ -73,5 +74,6 @@ flowchart LR
 - [Animation Pipeline](ANIMATION_PIPELINE.md)
 - [Level Pipeline](LEVEL_PIPELINE.md)
 - [Replay 与确定性](REPLAY_AND_DETERMINISM.md)
+- [Safe Save 与 Continue](SAVE_AND_RESUME.md)
 - [Performance Budget](PERFORMANCE_BUDGET.md)
 - [Architecture Review](ARCHITECTURE_REVIEW.md)

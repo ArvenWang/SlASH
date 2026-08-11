@@ -1,6 +1,7 @@
 import { createSeededRandom } from "../../core/random/seeded-random";
 import {
   createGame,
+  createFullGameGame,
   dispatchGameCommand,
   getGameSnapshot,
   stepGame,
@@ -11,9 +12,11 @@ import type {
   GameRules,
   GameState,
 } from "../domain/types";
+import { stableHash } from "../serialization/stable";
 
-export const REPLAY_VERSION = 1 as const;
-export const REPLAY_CONTENT_VERSION = "phase2a-v1" as const;
+export const REPLAY_VERSION = 2 as const;
+export const REPLAY_CONTENT_VERSION = "full-game-v1" as const;
+export type ReplayMode = "legacy-stage" | "full-game";
 
 export interface ReplayEntry {
   readonly runTick: number;
@@ -24,6 +27,7 @@ export interface ReplayEntry {
 export interface ReplayLog {
   readonly version: typeof REPLAY_VERSION;
   readonly contentVersion: typeof REPLAY_CONTENT_VERSION;
+  readonly mode: ReplayMode;
   readonly initialStageIndex: number;
   readonly seed: number;
   readonly rules: GameRules;
@@ -50,15 +54,6 @@ function cloneCommand(command: GameCommand): GameCommand {
   }
 }
 
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
-  const record = value as Record<string, unknown>;
-  return `{${Object.keys(record).sort().map((key) => (
-    `${JSON.stringify(key)}:${stableStringify(record[key])}`
-  )).join(",")}}`;
-}
-
 export function gameplayStateHash(state: GameState): string {
   const serializable = {
     version: state.version,
@@ -78,13 +73,7 @@ export function gameplayStateHash(state: GameState): string {
     commandSequence: state.commandSequence,
     snapshot: getGameSnapshot(state),
   };
-  const text = stableStringify(serializable);
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0).toString(16).padStart(8, "0");
+  return stableHash(serializable);
 }
 
 export function createReplayRecorder(state: GameState): ReplayRecorder {
@@ -93,6 +82,7 @@ export function createReplayRecorder(state: GameState): ReplayRecorder {
   }
   const initialStageIndex = state.stage.index;
   const seed = state.run.seed;
+  const mode: ReplayMode = state.run.fullGame === null ? "legacy-stage" : "full-game";
   const rules = { ...state.rules };
   const entries: ReplayEntry[] = [];
   let finished = false;
@@ -113,6 +103,7 @@ export function createReplayRecorder(state: GameState): ReplayRecorder {
       return {
         version: REPLAY_VERSION,
         contentVersion: REPLAY_CONTENT_VERSION,
+        mode,
         initialStageIndex,
         seed,
         rules,
@@ -125,12 +116,14 @@ export function createReplayRecorder(state: GameState): ReplayRecorder {
 }
 
 export function playReplay(log: ReplayLog): { state: GameState; matched: boolean; actualStateHash: string } {
-  if (log.version !== REPLAY_VERSION || log.contentVersion !== REPLAY_CONTENT_VERSION) {
-    throw new Error(`Unsupported replay version: ${log.version}/${log.contentVersion}`);
+  validateReplayLog(log);
+  const state = log.mode === "full-game"
+    ? createFullGameGame(log.seed, log.rules)
+    : createGame(log.initialStageIndex, log.rules);
+  if (log.mode === "legacy-stage") {
+    state.run.seed = log.seed;
+    state.run.random = createSeededRandom(log.seed).snapshot();
   }
-  const state = createGame(log.initialStageIndex, log.rules);
-  state.run.seed = log.seed;
-  state.run.random = createSeededRandom(log.seed).snapshot();
   const entries = [...log.entries].sort((a, b) => a.runTick - b.runTick || a.sequence - b.sequence);
   let entryIndex = 0;
 
@@ -153,4 +146,37 @@ export function playReplay(log: ReplayLog): { state: GameState; matched: boolean
   if (entryIndex !== entries.length) throw new Error("Replay ended before all commands were dispatched.");
   const actualStateHash = gameplayStateHash(state);
   return { state, matched: actualStateHash === log.expectedStateHash, actualStateHash };
+}
+
+function validateReplayLog(log: ReplayLog): void {
+  if (log.version !== REPLAY_VERSION || log.contentVersion !== REPLAY_CONTENT_VERSION) {
+    throw new Error(`Unsupported replay version: ${String(log.version)}/${String(log.contentVersion)}`);
+  }
+  if (log.mode !== "legacy-stage" && log.mode !== "full-game") {
+    throw new Error(`Unsupported replay mode: ${String(log.mode)}`);
+  }
+  if (!Number.isSafeInteger(log.finalRunTick) || log.finalRunTick < 0 || log.finalRunTick > 10_000_000) {
+    throw new Error(`Invalid replay final tick: ${String(log.finalRunTick)}`);
+  }
+  if (!Number.isSafeInteger(log.seed) || !Number.isSafeInteger(log.initialStageIndex)) {
+    throw new Error("Replay seed and initial stage index must be safe integers.");
+  }
+  if (!Array.isArray(log.entries) || log.entries.length > 1_000_000) {
+    throw new Error("Replay entry collection is invalid or exceeds the safety limit.");
+  }
+  let previousRunTick = 0;
+  for (let index = 0; index < log.entries.length; index += 1) {
+    const entry = log.entries[index]!;
+    if (!Number.isSafeInteger(entry.runTick) || entry.runTick < 0 || entry.runTick > log.finalRunTick) {
+      throw new Error(`Invalid replay entry tick: ${String(entry.runTick)}`);
+    }
+    if (entry.runTick < previousRunTick) {
+      throw new Error(`Replay entries are not ordered at sequence ${String(entry.sequence)}.`);
+    }
+    if (!Number.isSafeInteger(entry.sequence) || entry.sequence !== index + 1) {
+      throw new Error(`Invalid replay command sequence: ${String(entry.sequence)}`);
+    }
+    previousRunTick = entry.runTick;
+  }
+  if (!/^[0-9a-f]{8}$/.test(log.expectedStateHash)) throw new Error("Replay expected state hash is invalid.");
 }

@@ -165,3 +165,16 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 真实浏览器：Event 2 个描述完整的选择、一次性结算；Forge 28/28 文案、2 点级联、第三点拦截、Token 扩为 3、三点重接并进入 Reward；390×844 无横向溢出、最小目标 44px、Console 0。
 - 真实浏览器发现 Forge 高面板被垂直居中后顶部处于负坐标，已将 Forge 与 Planning 一并改为顶部展开；该问题在修复前会让已实现技能真实不可点击，因此已记录为产品缺陷而非脚本问题。
 - 下一步：Campaign Safe Save / Resume 与 Full-game Replay，然后进入完整 Enemy Roster / Attack Strategy。
+
+## 2026-08-12 — Safe Save / Continue / Replay v2
+
+- 新增独立 Run Save v1：Schema Version、Content Version、Checksum 与 State Invariant 四层验证；只允许 Title / Planning / Event / Forge / Reward / Victory，不序列化战斗中间状态。
+- Safe Save 会移除瞬时 Dash、Charge、Ultimate Planning、敌人、Projectile、Obstacle、Hazard 与残留事件，但保留 Seed、完整 Route Graph、Act / Layer / Current Node、Skill Draft / Commit、Run Resource、Event History、Ultimate Energy 和命令序列。
+- 未知 Schema / Content、损坏 JSON、Checksum 不匹配、非法路线、未知技能、破坏前置或阶段不一致都会返回可理解错误；localStorage 原始字符串不删除、不自动替换。
+- Title 新增真实 Continue：显示 Act、Layer、已提交技能数和 Seed；Planning 的路线预选与技能草案会自动安全写入。进入 Combat 后不会覆盖安全存档，因此异常重载回到确认前 Planning，而不是恢复半场战斗。
+- Replay 升级到 v2 / full-game-v1，并显式区分 `legacy-stage` 与 `full-game`；Route、Skill、Event、Forge、Charged Hold / Release、Ultimate Planning 全部通过同一 Command Log 重建，不支持版本或模式直接拒绝。
+- 自动化全量：23 files / 124 tests；其中 1,000 个 Seed 的安全状态连续 Save → Restore → Save 字节稳定，代表性完整 Campaign 路径的 Event / Forge / Charged / Ultimate 最终 Hash 全部 Match。
+- Production Build、TypeScript、Design Manifest、whitespace 通过；仍只有既有 Three.js 605.52kB chunk 提示。
+- 真实浏览器通过：首次无 Continue、Planning 写入、整页重载恢复、Combat 不覆盖、战斗重载回安全 Planning、损坏存档显示明确错误且原始值保留；Console 0。
+- 当前边界：Threat Protocol、Assist、Boss Boundary 和 Profile 尚未实现，因此 FG-SV01–SV03 仍需在这些系统接入后扩展；100 Seed × 4 Build 完整 Replay Matrix 等完整内容后执行。
+- 下一步：P5 Enemy Roster / Attack Strategy，让正式敌人真实生产已完成的 Projectile / Obstacle / Hazard。

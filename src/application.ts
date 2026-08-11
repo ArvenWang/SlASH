@@ -13,6 +13,8 @@ import { createInputRuntime } from "./runtime/input-runtime";
 import { createPresentationRuntime } from "./runtime/presentation-runtime";
 import { createRendererRuntime } from "./runtime/renderer-runtime";
 import { createCampaignUiRuntime } from "./runtime/campaign-ui-runtime";
+import { isRunSaveSafe } from "./game/save/run-save";
+import { createRunSaveRuntime } from "./runtime/run-save-runtime";
 
 function requiredElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -56,6 +58,14 @@ export async function bootstrapSlashApplication(): Promise<void> {
   const useLegacyValidationFixture = validationMode && pageParameters.get("campaign") !== "1";
   const gameRuntime = useLegacyValidationFixture ? createGameRuntime(0) : createFullGameRuntime();
   const gameState = gameRuntime.state;
+  const runSaveRuntime = createRunSaveRuntime({
+    getItem(key) {
+      return window.localStorage.getItem(key);
+    },
+    setItem(key, value) {
+      window.localStorage.setItem(key, value);
+    },
+  });
   const initialLevel = levelByIndex(gameState.stage.index);
   const rendererRuntime = createRendererRuntime({
     canvas: shell.canvas,
@@ -93,6 +103,13 @@ export async function bootstrapSlashApplication(): Promise<void> {
     root: shell.campaignUi,
     gameState,
     dispatch: (command) => gameRuntime.dispatch(command),
+    getContinueStatus: () => runSaveRuntime.status(),
+    continueRun() {
+      const restored = runSaveRuntime.restore();
+      if (!restored.ok) return restored;
+      gameRuntime.loadState(restored.state);
+      return { ok: true };
+    },
     onStateTransition(result) {
       if (
         result === "planning-confirmed" ||
@@ -100,9 +117,14 @@ export async function bootstrapSlashApplication(): Promise<void> {
         result === "forge-confirmed" ||
         result === "reward-acknowledged" ||
         result === "restarted" ||
-        result === "run-started"
+        result === "run-started" ||
+        result === "run-continued"
       ) {
         presentationRuntime.resetStage();
+      }
+      if (result !== "ignored" && result !== "run-continued" && isRunSaveSafe(gameState)) {
+        const saved = runSaveRuntime.write(gameState);
+        if (!saved.ok) console.warn(saved.message);
       }
     },
   });

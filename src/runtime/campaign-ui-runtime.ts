@@ -13,12 +13,15 @@ import type {
 } from "../game/domain/types";
 import { availableRouteNodes, routeNodeById } from "../game/run/run-system";
 import { skillAllocationSnapshot } from "../game/upgrades/skill-system";
+import type { RunSaveStatus } from "./run-save-runtime";
 
 export interface CampaignUiRuntimeOptions {
   readonly root: HTMLDivElement;
   readonly gameState: GameState;
   readonly dispatch: (command: GameCommand) => GameCommandDispatchResult;
-  readonly onStateTransition: (result: GameCommandDispatchResult["result"]) => void;
+  readonly getContinueStatus: () => RunSaveStatus;
+  readonly continueRun: () => { readonly ok: true } | { readonly ok: false; readonly message: string };
+  readonly onStateTransition: (result: GameCommandDispatchResult["result"] | "run-continued") => void;
 }
 
 export interface CampaignUiRuntime {
@@ -56,13 +59,22 @@ const NODE_STATUS_TEXT = {
 export function createCampaignUiRuntime(options: CampaignUiRuntimeOptions): CampaignUiRuntime {
   const { root, gameState, dispatch, onStateTransition } = options;
   let renderedSignature = "";
+  let continueError = "";
 
   const onClick = (event: MouseEvent) => {
     const target = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-action]") : null;
     if (!target) return;
     const action = target.dataset.action;
     let result: GameCommandDispatchResult | null = null;
-    if (action === "start-run") {
+    if (action === "continue-run") {
+      const outcome = options.continueRun();
+      continueError = outcome.ok ? "" : outcome.message;
+      renderedSignature = "";
+      if (outcome.ok) onStateTransition("run-continued");
+      update();
+      return;
+    } else if (action === "start-run") {
+      continueError = "";
       result = dispatch({ type: "start-full-game-run" });
     } else if (action === "select-route" && target.dataset.nodeId) {
       result = dispatch({ type: "preview-route-node", nodeId: target.dataset.nodeId });
@@ -98,6 +110,7 @@ export function createCampaignUiRuntime(options: CampaignUiRuntimeOptions): Camp
 
   function update(): void {
     const campaign = gameState.run.fullGame;
+    const continueStatus = options.getContinueStatus();
     const signature = campaign === null ? "legacy" : JSON.stringify({
       phase: campaign.phase,
       act: campaign.routeProgress.actIndex,
@@ -110,6 +123,8 @@ export function createCampaignUiRuntime(options: CampaignUiRuntimeOptions): Camp
       eventHistory: campaign.eventHistory.length,
       resources: gameState.run.acquiredResources,
       forgeTokensSpent: campaign.forgeTokensSpentThisVisit,
+      continueStatus,
+      continueError,
     });
     if (signature === renderedSignature) return;
     renderedSignature = signature;
@@ -121,7 +136,7 @@ export function createCampaignUiRuntime(options: CampaignUiRuntimeOptions): Camp
       return;
     }
     if (campaign.phase === "title") {
-      root.innerHTML = renderTitle();
+      root.innerHTML = renderTitle(continueStatus, continueError);
     } else if (campaign.phase === "planning") {
       root.innerHTML = renderPlanning(gameState);
     } else if (campaign.phase === "event") {
@@ -146,7 +161,12 @@ export function createCampaignUiRuntime(options: CampaignUiRuntimeOptions): Camp
   };
 }
 
-function renderTitle(): string {
+function renderTitle(continueStatus: RunSaveStatus, continueError: string): string {
+  const statusMessage = continueError || (continueStatus.kind === "error" ? continueStatus.message : "");
+  const continueButton = continueStatus.kind === "empty" ? "" : `
+    <button class="secondary-action" type="button" data-action="continue-run">CONTINUE / 继续上次 RUN</button>`;
+  const continueSummary = continueStatus.kind === "ready" ? `
+    <small class="continue-summary">ACT ${continueStatus.summary.actNumber} · LAYER ${continueStatus.summary.layerNumber} · ${continueStatus.summary.committedSkillCount} SKILLS · SEED ${continueStatus.summary.seed}</small>` : "";
   return `
     <section class="campaign-panel title-panel" aria-labelledby="campaign-title">
       <p class="panel-kicker">PROJECT SLASH / FULL GAME</p>
@@ -157,7 +177,12 @@ function renderTitle(): string {
         <span>Charged：撞甲卸甲，撞裸露区击杀</span>
         <span>Ultimate：满能量后规划多段路径</span>
       </div>
-      <button class="primary-action" type="button" data-action="start-run">NEW RUN / 开始新局</button>
+      <div class="title-actions">
+        ${continueButton}
+        <button class="primary-action" type="button" data-action="start-run">NEW RUN / 开始新局</button>
+      </div>
+      ${continueSummary}
+      ${statusMessage ? `<p class="save-error" role="alert">${escapeHtml(statusMessage)}</p>` : ""}
     </section>`;
 }
 
