@@ -9,6 +9,8 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - Phase 2A 已在 `codex/phase2a-foundation` 分支启动。本阶段只建立可扩展 Gameplay 与视觉生产架构，不把当前画面描述为视觉合格，也不合入 Vector Focus、镜头或关卡改动。
 - Phase 2A-0 基线层已完成：新增 Vitest 独立测试，锁定三关定义、初始状态、代表性 Dash 与事件顺序；生产镜头参数已有单一事实源，输入延迟脚本不再复制旧镜头，也不会因截图失败丢失测量报告。
 - Phase 2A-0 小规模验证已通过：3 个基线测试、TypeScript 检查和 100 次真实输入均通过；本轮 P95 输入到逻辑 1.1ms、输入到可见结果 16.7ms，浏览器问题 0。该项除非相关输入/镜头代码再次变化，不重复运行。
+- Phase 2A Gameplay V2 已完成第一轮迁移：三关内容改由 `LevelDefinition + EncounterDefinition + SpawnDefinition` 驱动；Enemy 使用 Definition ID 与 `DirectChaseBehavior`；`GameState` 升级为 V2，并建立 Projectile / Obstacle / Hazard 正式 Domain 入口。
+- 新增稳定 Definition Registry、稳定敌人 ID 工厂，以及 Circle / Segment / AABB / OBB / Convex Polygon 的真实碰撞与扫掠计算。现有 Dash 已复用新碰撞模块，三关定义、初始快照、代表性 Dash 和事件顺序指纹保持不变。
 - 已有可运行的 TypeScript + Vite + Three.js Web 游戏：三关（8 / 12 / 18 敌人）、点击地面无限距离直线 Dash、路径多杀、玩家 1HP、Dash 无敌、Recovery/Input Buffer、死亡点击重开、自动过关/通关、HUD、声音、后处理、鼠标与触控输入。
 - 环境方向为 Transit Cathedral：深湿金属竞技台、交叉轨道与巨拱、五节列车、近中远城市、雨雾与蒸汽。
 - 角色美术已进入 V5：新三视图位于 `art/characters/concepts/hero-turnaround-v5.png` 与 `art/characters/concepts/enemy-turnaround-v5.png`；当前实现重点是连续人体大形、关节衔接、低位蓄势和冲跑动势，不再用旧 V4 数值叠加代替主观视觉判断。
@@ -56,9 +58,9 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 
 ## 下一步计划
 
-1. 迁移 Gameplay V2、类型化 Content、Level / Encounter / Spawn、Enemy Behavior 与碰撞系统，同时保持三关和 Dash 结果不变。
-2. 接入 Ability、Modifier、Event 2.0、Seed 与 Replay，再拆分 Presentation Runtime。
-3. 建立程序化 / GLTF Character Provider、Animation Controller 和可持续的 VFX、Audio、材质、灯光与环境 Profile；最后只执行一次整体验证。
+1. 接入 Ability、Modifier、Event 2.0、Seed 与 Replay，同时保持 Dash 手感和公开快照兼容。
+2. 拆分 Presentation Runtime，建立程序化 / GLTF Character Provider 与 Animation Controller。
+3. 建立可持续的 VFX、Audio、材质、灯光与环境 Profile；最后只执行一次整体验证。
 
 ## 遇到的问题
 
@@ -89,6 +91,8 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - Phase 2A-0：`npm run test:baseline` 通过，1 个测试文件 / 3 个测试全部通过。
 - Phase 2A-0：`npm run check` 通过。
 - Phase 2A-0：100 次真实 Canvas 输入通过；逻辑 P95 1.1ms、首个可见结果 P95 16.7ms、截图与浏览器清洁门通过。证据保存在本次临时目录，不进入仓库。
+- Phase 2A Gameplay V2：3 个测试文件 / 11 个测试通过；包含 Phase 1 指纹、Content/Domain、DirectChase 与五种碰撞形状。
+- Phase 2A Gameplay V2：`npm run check`、`npm run build` 通过；运行时烟雾检查为 Idle / Post Dash 均保持 `playing`，浏览器问题 0。未重复浏览器矩阵或性能测试。
 - `npm run check`：通过。
 - `npm run build`：通过；仅有 Three.js 核心 chunk 体积提示。
 - `git diff --check`：通过。

@@ -438,10 +438,10 @@ function updateHud() {
       if (enemy.alive) alive += 1;
     }
   }
-  if (renderedStageIndex !== gameState.stageIndex || renderedStageName !== gameState.stageName) {
-    stageLabel.textContent = `STAGE ${String(gameState.stageIndex + 1).padStart(2, "0")} / ${gameState.stageName}`;
-    renderedStageIndex = gameState.stageIndex;
-    renderedStageName = gameState.stageName;
+  if (renderedStageIndex !== gameState.stage.index || renderedStageName !== gameState.stage.name) {
+    stageLabel.textContent = `STAGE ${String(gameState.stage.index + 1).padStart(2, "0")} / ${gameState.stage.name}`;
+    renderedStageIndex = gameState.stage.index;
+    renderedStageName = gameState.stage.name;
   }
   if (renderedAliveCount !== alive) {
     enemyLabel.textContent = `${String(alive).padStart(2, "0")} HOSTILES`;
@@ -452,21 +452,21 @@ function updateHud() {
 function updatePhaseBanner() {
   let visible = false;
   let tone = "clear";
-  let eyebrow = `STAGE ${String(gameState.stageIndex + 1).padStart(2, "0")}`;
-  let title = gameState.stageName;
-  let subtitle = `ELIMINATE ${String(gameState.totalEnemies).padStart(2, "0")} HOSTILES`;
+  let eyebrow = `STAGE ${String(gameState.stage.index + 1).padStart(2, "0")}`;
+  let title = gameState.stage.name;
+  let subtitle = `ELIMINATE ${String(gameState.combat.totalEnemies).padStart(2, "0")} HOSTILES`;
 
-  if (gameState.phase === "playing") {
+  if (gameState.stage.phase === "playing") {
     visible = stageIntroAge < 0.86;
-  } else if (gameState.phase === "dead") {
+  } else if (gameState.stage.phase === "dead") {
     visible = true;
     tone = "danger";
     eyebrow = "COMBAT LINK";
     title = "SIGNAL LOST";
-    subtitle = `REBOOTING // ATTEMPT ${String(gameState.attempt + 1).padStart(2, "0")}`;
-  } else if (gameState.phase === "stage-cleared") {
+    subtitle = `REBOOTING // ATTEMPT ${String(gameState.stage.attempt + 1).padStart(2, "0")}`;
+  } else if (gameState.stage.phase === "stage-cleared") {
     visible = true;
-    eyebrow = `STAGE ${String(gameState.stageIndex + 1).padStart(2, "0")}`;
+    eyebrow = `STAGE ${String(gameState.stage.index + 1).padStart(2, "0")}`;
     title = "SECTOR CLEARED";
     subtitle = "NEXT STAGE INBOUND";
   } else {
@@ -499,7 +499,7 @@ function updatePhaseBanner() {
 }
 
 function updatePreview() {
-  previewLine.visible = pointerSeen && hoverValid && tuning.dashPreview && gameState.phase === "playing" && worldTime >= previewSuppressedUntil;
+  previewLine.visible = pointerSeen && hoverValid && tuning.dashPreview && gameState.stage.phase === "playing" && worldTime >= previewSuppressedUntil;
   if (!previewLine.visible) return;
   const positions = previewGeometry.getAttribute("position") as THREE.BufferAttribute;
   positions.setXYZ(0, gameState.player.position.x, 0.08, gameState.player.position.z);
@@ -523,7 +523,7 @@ function updatePointer(clientX: number, clientY: number) {
 }
 
 function requestDashAtPointer() {
-  if (!hoverValid || gameState.phase !== "playing") return;
+  if (!hoverValid || gameState.stage.phase !== "playing") return;
   const inputId = diagnostics.markInput();
   const result = queueDash(gameState, { x: pointerWorld.x, z: pointerWorld.z });
   if (result !== "ignored") pendingDashInputId = inputId;
@@ -580,7 +580,7 @@ function updateEnemyVisual(enemy: EnemyState, visual: EnemyVisualRuntime, dt: nu
         root,
         visual.actor.deathModules,
         visual.slashDirection,
-        visual.phase * 101 + gameState.stageIndex * 17,
+        visual.phase * 101 + gameState.stage.index * 17,
       );
       visual.separated = true;
     }
@@ -644,7 +644,7 @@ function updateSimulation(dt: number) {
   hostileRim.intensity = THREE.MathUtils.damp(hostileRim.intensity, 52, 5, dt);
   heroAnchorLight.intensity = THREE.MathUtils.damp(heroAnchorLight.intensity, 2.6, 11, dt);
 
-  if (simulationEnabled && gameState.phase === "playing") {
+  if (simulationEnabled && gameState.stage.phase === "playing") {
     if (tuning.enemyMotion) {
       advanceGame(gameState, dt * 1000);
     } else {
@@ -700,7 +700,7 @@ function updateSimulation(dt: number) {
     turn: THREE.MathUtils.clamp(playerTurnDelta / 0.65, -1, 1),
     dashProgress,
     recoveryProgress,
-    deathProgress: gameState.phase === "dead" ? THREE.MathUtils.clamp(phaseAge / 0.78, 0, 1) : null,
+    deathProgress: gameState.stage.phase === "dead" ? THREE.MathUtils.clamp(phaseAge / 0.78, 0, 1) : null,
   });
 
   for (const enemy of gameState.enemies) {
@@ -714,17 +714,17 @@ function updateSimulation(dt: number) {
   // one-frame overlap that turns the first trail image into a bright clump.
   vfx.update(dt);
 
-  if (gameState.phase !== "playing") {
+  if (gameState.stage.phase !== "playing") {
     phaseAge += dt;
-    if (gameState.phase === "dead" && phaseAge > 0.78) {
+    if (gameState.stage.phase === "dead" && phaseAge > 0.78) {
       restartStage(gameState);
       resetVisualStage();
       simulationEnabled = true;
-    } else if (gameState.phase === "stage-cleared" && phaseAge > 1.05) {
+    } else if (gameState.stage.phase === "stage-cleared" && phaseAge > 1.05) {
       advanceStage(gameState);
       resetVisualStage();
       simulationEnabled = true;
-    } else if (gameState.phase === "game-complete" && phaseAge > 1.8) {
+    } else if (gameState.stage.phase === "game-complete" && phaseAge > 1.8) {
       gameState = createGame(0);
       resetVisualStage();
       simulationEnabled = true;
@@ -787,7 +787,7 @@ canvas.addEventListener("pointerdown", (event) => {
   void audio.resume().catch(() => {
     // Audio is optional for input continuity. A later gesture may retry.
   });
-  if (gameState.phase === "dead") {
+  if (gameState.stage.phase === "dead") {
     restartStage(gameState);
     resetVisualStage();
     simulationEnabled = true;
@@ -814,7 +814,7 @@ canvas.addEventListener("webglcontextrestored", () => {
   resize();
   renderScene();
   graphicsContextState = "ready";
-  simulationEnabled = gameState.phase === "playing";
+  simulationEnabled = gameState.stage.phase === "playing";
   setLoadingPhase(1, "COMBAT SPACE RESTORED");
   requestAnimationFrame(() => loading.classList.add("ready"));
 });
@@ -881,7 +881,7 @@ if (validationMode) {
       tuning.enemyMotion = false;
     },
     dashTo(x, z) {
-      if (gameState.phase !== "playing") return "ignored";
+      if (gameState.stage.phase !== "playing") return "ignored";
       const inputId = diagnostics.markInput();
       const result = queueDash(gameState, { x, z });
       if (result !== "ignored") pendingDashInputId = inputId;
