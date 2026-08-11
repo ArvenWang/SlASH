@@ -75,6 +75,22 @@ body.campaign-ui-active { cursor: default; }
   box-shadow: 0 0 10px rgba(165, 240, 255, 0.7);
 }
 
+#combat-modules {
+  position: absolute;
+  right: max(32px, env(safe-area-inset-right));
+  bottom: max(28px, env(safe-area-inset-bottom));
+  display: grid;
+  justify-items: end;
+  gap: 7px;
+  color: rgba(219, 243, 246, 0.72);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+}
+
+.charge-readout { display: grid; grid-template-columns: auto 90px; align-items: center; gap: 9px; }
+.charge-readout b { display: block; width: 90px; height: 3px; overflow: hidden; background: rgba(219, 243, 246, 0.14); }
+.charge-readout i { display: block; width: 100%; height: 100%; transform: scaleX(0); transform-origin: left; background: #dffcff; }
+
 .hint {
   position: absolute;
   bottom: max(25px, env(safe-area-inset-bottom));
@@ -506,6 +522,7 @@ kbd {
   .brand { left: 18px; top: 18px; }
   .status { right: 18px; top: 22px; }
   .hint { display: none; }
+  #combat-modules { right: 18px; bottom: 18px; }
   .campaign-ui { padding: 0; place-items: start stretch; }
   .campaign-panel { border-inline: 0; }
   .planning-header { align-items: flex-start; padding: 18px; }

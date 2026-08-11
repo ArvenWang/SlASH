@@ -134,7 +134,7 @@
 
 - 基础满蓄阈值 650ms，误差不超过一个 Fixed Tick。
 - Charging 期间玩家坐标不变、Invulnerable=false。
-- 未达阈值 Release 不产生 Dash、不卸甲、不消耗能量。
+- 0–180ms 快速点按产生 Basic；超过 180ms 后未达阈值 Release 不产生 Dash、不卸甲、不消耗能量。
 - 释放后 Transit Invulnerable=true。
 - 命中前 / 侧 Armor Coverage：只卸对应甲，不同时击杀。
 - 命中无甲背部：击杀。

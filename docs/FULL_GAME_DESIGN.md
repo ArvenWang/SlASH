@@ -170,7 +170,7 @@ Elite 额外奖励：最多 +2 点 / Run
 
 - 按住目标点进入 Charging；基础满蓄力阈值 650ms。
 - Charging 期间原地锁定、无无敌、可被致命攻击打断。
-- 未达阈值松开即取消，不偷偷变成 Basic Dash。
+- 0–180ms 的快速点按按 Basic Dash 处理；超过 180ms 即视为明确蓄力意图，此后未达满蓄阈值松开只取消，不偷偷回退成 Basic Dash。
 - 达到阈值松开后进入 Dash Transit 无敌。
 
 #### Armor Coverage 结算

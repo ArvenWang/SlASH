@@ -31,6 +31,7 @@ import {
   previewSkillRefund,
 } from "../upgrades/skill-system";
 import type { FullGameCampaignState } from "./types";
+import { createArmorPartStates } from "../combat/armor";
 
 export type CampaignCommandResult =
   | "run-started"
@@ -72,6 +73,7 @@ export function initializeFullGameCampaign(state: GameState, seed: number): void
   state.player.facing = vec2(0, -1);
   state.player.hp = 1;
   state.player.dash = null;
+  state.player.charge = null;
   state.player.recoveryRemainingMs = 0;
   state.player.bufferedAbility = null;
   state.enemies = [];
@@ -322,6 +324,7 @@ function prepareEncounterState(
   state.player.facing = vec2(0, -1);
   state.player.hp = 1;
   state.player.dash = null;
+  state.player.charge = null;
   state.player.recoveryRemainingMs = 0;
   state.player.bufferedAbility = null;
   state.enemies = [];
@@ -361,6 +364,8 @@ function spawnEncounterWave(
       state: "active",
       spawnedAtMs: state.elapsedMs,
       killedAtMs: null,
+      armorParts: createArmorPartStates(definition.armorProfileId),
+      staggerRemainingMs: 0,
     });
     ids.push(id);
   }

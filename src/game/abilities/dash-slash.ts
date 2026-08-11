@@ -50,7 +50,12 @@ export function executeDashSlash(state: GameState, target: Vec2): void {
     durationMs: modified.durationMs,
     elapsedMs: 0,
     hitRadius: modified.hitRadius,
+    baseHitRadius: modified.hitRadius,
     recoveryMs: modified.recoveryMs,
+    resolvedEnemyIds: [],
+    armorBreakCount: 0,
+    exposedKillCount: 0,
+    rearExecutionCount: 0,
   };
   state.player.recoveryRemainingMs = 0;
   state.player.bufferedAbility = null;

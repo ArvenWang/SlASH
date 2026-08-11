@@ -8,8 +8,11 @@ export const DEBUG_STATIONARY_ENEMY: EnemyDefinition = {
   archetype: "debug-target",
   radius: 0.55,
   baseMoveSpeed: 0,
+  turnSpeedRadiansPerSecond: 0,
   movementProfile: "debug-stationary",
   attackProfile: "contact-lethal",
+  armorProfileId: null,
+  energyReward: 0,
   tags: ["debug", "enemy", "stationary"],
 };
 

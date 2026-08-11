@@ -40,12 +40,18 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - [x] 首个正式两波 Encounter 与 Striker 已接入真实浏览器；稳定 Spawn ID 可在死亡重试后复现。
 - [x] 当前全量验证：16 个测试文件 / 57 项通过；TypeScript、Production Build、设计清单和 whitespace 通过。
 - [x] 浏览器 Planning 验收：28 / 28 完整文案、4 个 Module、2 个真实路线选项、2 点 Draft、进入 Combat 后 3 个第一波敌人、Console 0；390×844 无横向溢出，最小点击目标 44px。
+- [x] Charged Hold / Release 已真实实现：0–180ms Tap 为 Basic；明确长按但未蓄满只取消；650ms 满蓄后松开执行 Breach Drive；Charging 原地、无无敌、可被击杀。
+- [x] Armor Coverage 已真实实现：基于首次接触点计算前 / 侧 / 后角度；任意角度撞到现存甲片只卸该甲并贯穿，命中裸露区击杀；同一敌人每次 Charged 只结算一次。
+- [x] Charged 9 个被动 Hook 已接入：Adaptive Aim、Quick Ignition、Overdrive、Breach Momentum、Chain Breach、Armor Shrapnel、Execution Tempo、Predator Drive、Backline Battery。
+- [x] Vanguard 前甲、Armor Runtime、Stagger / 轻推、能量和独立甲片 Presentation Hook 已接入；敌人转向改为有上限，背袭不会被瞬时 180° 转身无效化。
+- [x] Charged / Armor 自动化：13 项覆盖 Tap、Undercharge、蓄力受伤、前 / 侧 / 后 / 后甲、多敌人、后续 Basic、9 个 Charged 被动正负条件。
+- [x] Charged / Armor 真实浏览器：真实鼠标长按进入 650ms 满蓄，正面只卸甲且玩家穿过目标、敌人存活、Energy +4；随后真实快速点击穿过暴露区击杀；Console 0。
 
 ## Full Game 下一步计划
 
 1. 完成 P1 Replay Route / Wave Command 与非战斗节点生命周期，不让 24 节点 Run 在 Event / Forge 处断路。
 2. 完成 P2 Forge Campaign UI 与 Save / Replay 记录，并逐项接入 28 个 Gameplay Hook。
-3. 进入 P3：实现真实 Hold / Release Charged、Armor Coverage、任意角度破甲 / 裸露区击杀和 Ultimate。
+3. 继续 P3：Charged / Armor 已完成第一轮生产实现；下一项是 Vector Focus 的 3 点 Planning、0.12 世界时间、顺序执行、取消与 6 个 Ultimate Hook。
 4. 每个有意义变更继续执行自动化、截图、`render_game_to_text` 和 Console 检查，再依 P4–P11 推进。
 
 ## Full Game 当前问题与边界

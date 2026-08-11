@@ -108,3 +108,14 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 浏览器：桌面 28/28 技能卡完整、普通点击完成路线 + 2 技能 Draft + Combat；第一波 3 敌人真实生成，Console 0。390×844 无横向溢出，最小触控目标 44px。
 - 发现并修复：超长 Planning 面板被垂直居中导致顶部路线卡不可达；现改为顶部自然展开。
 - 待完成：通用 Web Game Client 的虚拟时间点击稳定性兼容、Event / Forge 生命周期、Replay、26 个机制型 Skill Hook、Charged / Armor / Ultimate 生产实现。
+
+## 2026-08-12 — Charged Dash / Armor Coverage
+
+- 实现真实 Pointer Hold 生命周期：Tap ≤180ms 走 Basic；明确长按后未满蓄取消；650ms Fixed Tick 满蓄后 Release 执行 Charged；Escape / Pointer Cancel 可取消。
+- 实现 Armor Profile / Part Runtime 与首次圆形接触点角度判定；修复“最近点”会把轻微偏心正面撞击误判成侧面的问题。
+- 基础 Breach Drive 现为：敌体贯穿、任意角度命中现存甲片只卸甲、裸露区击杀、同敌单次只结算一次、卸甲 Stagger / 轻推 / +4 Energy。
+- Vanguard 使用 140° 前甲和受限转向；独立甲片 Presentation Hook 会在甲片脱落后消失，非仅依靠 HUD 文字。
+- 9 个 Charged 被动 Hook 全部接入，13 项定向测试通过；完整测试当前为 17 文件 / 71 项（待本里程碑全量复核）。
+- 真实浏览器报告：`validation/charged-armor/browser-final/report.json` 机制通过；最终甲片视觉证据在 `validation/charged-armor/browser-armor-visual/`，Console 0。
+- Web Game Client 快速点击冒烟通过：状态为 `dash-slash`、`dashing`、`invulnerable=true`，无错误文件。
+- 下一步：Vector Focus、Obstacle / Refraction 组合、Replay Schema；当前不宣称 P3 完成。

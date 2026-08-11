@@ -8,15 +8,27 @@
 import { createEnemyEntityId } from "../core/ids";
 import { copyVec2, squaredDistance, vec2 } from "../core/math/vec2";
 import { createSeededRandom } from "../core/random/seeded-random";
-import { DASH_SLASH_ABILITY_ID } from "../content/abilities/definitions";
-import { enemyDefinitions } from "../content/enemies/definitions";
+import {
+  CHARGED_DASH_ABILITY_ID,
+  DASH_SLASH_ABILITY_ID,
+  VECTOR_FOCUS_ABILITY_ID,
+} from "../content/abilities/definitions";
+import { VANGUARD_ENEMY_ID, enemyDefinitions } from "../content/enemies/definitions";
 import {
   LEVEL_DEFINITIONS,
   levelByIndex,
   type LevelDefinition,
 } from "../content/levels/definitions";
 import { activateAbility } from "./abilities/ability-system";
+import {
+  advanceChargedDashHold,
+  beginChargedDash,
+  cancelChargedDash,
+  releaseChargedDash,
+  updateChargedDashTarget,
+} from "./abilities/charged-dash";
 import { segmentIntersectsCircle } from "./collision/shapes";
+import { clampPointToArena } from "./collision/arena";
 import type {
   ArenaBounds,
   DashRequestResult,
@@ -36,7 +48,6 @@ import type {
 } from "./domain/types";
 import { drainGameEvents, emitGameEvent } from "./events/event-buffer";
 import {
-  DASH_HIT_RADIUS,
   DASH_RECOVERY_MS,
   DEFAULT_RUN_SEED,
   ENEMY_RADIUS,
@@ -49,6 +60,11 @@ import {
   PLAYER_RADIUS,
 } from "./rules/constants";
 import { moveEnemiesWithBehaviors } from "./simulation/enemy-behavior";
+import {
+  createArmorPartStates,
+  hasIntactArmor,
+  resolveArmorContact,
+} from "./combat/armor";
 import {
   acknowledgeCampaignReward,
   advanceCampaignEncounterScheduler,
@@ -223,14 +239,17 @@ export function createGame(stageIndex = 0, rules: Partial<GameRules> = {}): Game
       radius: PLAYER_RADIUS,
       hp: 1,
       dash: null,
+      charge: null,
       recoveryRemainingMs: 0,
       bufferedAbility: null,
       abilities: {
         primary: { abilityId: DASH_SLASH_ABILITY_ID, cooldownRemainingMs: 0 },
-        secondary: null,
+        secondary: { abilityId: CHARGED_DASH_ABILITY_ID, cooldownRemainingMs: 0 },
         special: null,
-        ultimate: null,
+        ultimate: { abilityId: VECTOR_FOCUS_ABILITY_ID, cooldownRemainingMs: 0 },
       },
+      ultimateEnergy: 0,
+      predatorDriveExpiresAtMs: null,
     },
     enemies: spawns.map((spawn, index) => {
       const definition = enemyDefinitions.get(spawn.enemyDefinitionId);
@@ -245,6 +264,8 @@ export function createGame(stageIndex = 0, rules: Partial<GameRules> = {}): Game
         state: "active" as const,
         spawnedAtMs: 0,
         killedAtMs: null,
+        armorParts: createArmorPartStates(definition.armorProfileId),
+        staggerRemainingMs: 0,
       };
     }),
     projectiles: [],
@@ -300,9 +321,40 @@ export function createStressGame(enemyCount = 20, rules: Partial<GameRules> = {}
     state: "active",
     spawnedAtMs: 0,
     killedAtMs: null,
+    armorParts: [],
+    staggerRemainingMs: 0,
   }));
   state.combat.totalEnemies = safeCount;
   state.combat.kills = 0;
+  return state;
+}
+
+/** Deterministic browser acceptance scenario for Charged/Armor geometry. */
+export function createArmorValidationGame(rules: Partial<GameRules> = {}): GameState {
+  const state = createGame(0, rules);
+  const definition = enemyDefinitions.get(VANGUARD_ENEMY_ID);
+  state.stage.levelId = "validation-armor-coverage";
+  state.stage.name = "ARMOR COVERAGE";
+  state.stage.encounterId = "validation-armor-coverage-v1";
+  state.player.position = point(-8, 0);
+  state.player.facing = point(1, 0);
+  state.enemies = [{
+    id: "validation-vanguard-01",
+    definitionId: definition.id,
+    position: point(0, 0),
+    facing: point(-1, 0),
+    radius: definition.radius,
+    speed: 0,
+    alive: true,
+    state: "active",
+    spawnedAtMs: 0,
+    killedAtMs: null,
+    armorParts: createArmorPartStates(definition.armorProfileId),
+    staggerRemainingMs: 0,
+  }];
+  state.combat.kills = 0;
+  state.combat.totalEnemies = 1;
+  drainGameEvents(state);
   return state;
 }
 
@@ -392,46 +444,187 @@ export function getPlayerAction(state: GameState): PlayerAction {
   if (state.player.dash !== null) {
     return "dashing";
   }
+  if (state.player.charge !== null) {
+    return "charging";
+  }
   if (state.player.recoveryRemainingMs > EPSILON) {
     return "recovering";
   }
   return "ready";
 }
 
-function killEnemiesAlongSegment(
+function resolveEnemiesAlongSegment(
   state: GameState,
   segmentStart: Vec2,
   segmentEnd: Vec2,
 ): void {
   const dash = state.player.dash;
-  const hitRadius = dash?.hitRadius ?? DASH_HIT_RADIUS;
-  const attackId = dash?.abilityId ?? DASH_SLASH_ABILITY_ID;
-  for (const enemy of state.enemies) {
+  if (!dash) return;
+  const segmentX = segmentEnd.x - segmentStart.x;
+  const segmentZ = segmentEnd.z - segmentStart.z;
+  const segmentLengthSquared = Math.max(EPSILON, segmentX * segmentX + segmentZ * segmentZ);
+  const candidates = state.enemies
+    .filter((enemy) => enemy.alive && !dash.resolvedEnemyIds.includes(enemy.id))
+    .sort((first, second) => (
+      segmentProjection(first.position, segmentStart, segmentX, segmentZ, segmentLengthSquared) -
+      segmentProjection(second.position, segmentStart, segmentX, segmentZ, segmentLengthSquared)
+    ));
+  for (const enemy of candidates) {
     if (
       !enemy.alive ||
       !segmentIntersectsCircle(
         segmentStart,
         segmentEnd,
         enemy.position,
-        hitRadius + enemy.radius,
+        dash.hitRadius + enemy.radius,
       )
     ) {
       continue;
     }
-
-    enemy.alive = false;
-    enemy.state = "dead";
-    enemy.killedAtMs = state.elapsedMs;
-    state.combat.kills += 1;
-    emitGameEvent(state, {
-      type: "enemy-killed",
-      enemyId: enemy.id,
-      sourceId: "player",
-      attackId,
-      position: copyPoint(enemy.position),
-      direction: copyPoint(state.player.facing),
-    });
+    dash.resolvedEnemyIds.push(enemy.id);
+    const contact = resolveArmorContact(
+      enemy,
+      dash.from,
+      dash.to,
+      undefined,
+      enemy.radius + dash.hitRadius,
+    );
+    if (contact.armorPart !== null) {
+      if (dash.abilityId === CHARGED_DASH_ABILITY_ID) {
+        breakEnemyArmor(state, enemy, contact.armorPart, contact.contactRegion);
+      } else {
+        emitGameEvent(state, {
+          type: "armor-blocked",
+          enemyId: enemy.id,
+          armorPartId: contact.armorPart.id,
+          attackId: dash.abilityId,
+          position: copyPoint(enemy.position),
+        });
+      }
+      continue;
+    }
+    killEnemy(state, enemy, dash.abilityId, contact.isRearContact);
   }
+}
+
+function breakEnemyArmor(
+  state: GameState,
+  enemy: GameState["enemies"][number],
+  armorPart: GameState["enemies"][number]["armorParts"][number],
+  contactRegion: "front" | "left" | "right" | "rear",
+): void {
+  const dash = state.player.dash;
+  if (!dash || !armorPart.intact) return;
+  armorPart.intact = false;
+  armorPart.brokenAtMs = state.elapsedMs;
+  dash.armorBreakCount += 1;
+  enemy.staggerRemainingMs = Math.max(enemy.staggerRemainingMs, 450);
+  enemy.position = clampPointToArena({
+    x: enemy.position.x + state.player.facing.x * 0.8,
+    z: enemy.position.z + state.player.facing.z * 0.8,
+  }, state.stage.arena, enemy.radius);
+  if (dash.armorBreakCount <= 3) {
+    changeUltimateEnergy(state, 4, `armor-break:${enemy.id}`);
+  }
+  if (state.run.selectedUpgrades.includes("skill-breach-momentum-v1")) {
+    dash.recoveryMs = Math.max(state.rules.recoveryMs, dash.recoveryMs - 80);
+  }
+  if (state.run.selectedUpgrades.includes("skill-chain-breach-v1")) {
+    dash.hitRadius = dash.baseHitRadius * (1 + Math.min(3, dash.armorBreakCount) * 0.15);
+  }
+    emitGameEvent(state, {
+      type: "armor-broken",
+      enemyId: enemy.id,
+      armorPartId: armorPart.id,
+      attackId: dash.abilityId,
+      position: copyPoint(enemy.position),
+      contactRegion,
+    });
+  if (state.run.selectedUpgrades.includes("skill-armor-shrapnel-v1")) {
+    resolveArmorShrapnel(state, enemy);
+  }
+}
+
+function killEnemy(
+  state: GameState,
+  enemy: GameState["enemies"][number],
+  attackId: string,
+  rearExecution: boolean,
+): void {
+  if (!enemy.alive) return;
+  enemy.alive = false;
+  enemy.state = "dead";
+  enemy.killedAtMs = state.elapsedMs;
+  state.combat.kills += 1;
+  const dash = state.player.dash;
+  if (dash?.abilityId === CHARGED_DASH_ABILITY_ID && attackId === CHARGED_DASH_ABILITY_ID) {
+    dash.exposedKillCount += 1;
+    if (state.run.selectedUpgrades.includes("skill-execution-tempo-v1")) {
+      dash.recoveryMs = state.rules.recoveryMs;
+    }
+    if (rearExecution) {
+      dash.rearExecutionCount += 1;
+      if (state.run.selectedUpgrades.includes("skill-predator-drive-v1")) {
+        state.player.predatorDriveExpiresAtMs = state.elapsedMs + 4_000;
+      }
+      if (
+        dash.rearExecutionCount === 1 &&
+        state.run.selectedUpgrades.includes("skill-backline-battery-v1")
+      ) {
+        changeUltimateEnergy(state, 15, `backline-battery:${enemy.id}`);
+      }
+    }
+  }
+  if (state.run.fullGame !== null || attackId === CHARGED_DASH_ABILITY_ID || attackId === "skill-armor-shrapnel-v1") {
+    changeUltimateEnergy(state, enemyDefinitions.get(enemy.definitionId).energyReward, `enemy-kill:${enemy.id}`);
+  }
+  emitGameEvent(state, {
+    type: "enemy-killed",
+    enemyId: enemy.id,
+    sourceId: "player",
+    attackId,
+    position: copyPoint(enemy.position),
+    direction: copyPoint(state.player.facing),
+  });
+}
+
+function resolveArmorShrapnel(
+  state: GameState,
+  sourceEnemy: GameState["enemies"][number],
+): void {
+  const dash = state.player.dash;
+  if (!dash || dash.armorBreakCount > 6) return;
+  const target = state.enemies
+    .filter((candidate) => {
+      if (!candidate.alive || candidate.id === sourceEnemy.id || hasIntactArmor(candidate)) return false;
+      const definition = enemyDefinitions.get(candidate.definitionId);
+      return definition.tags.includes("standard") && !definition.tags.includes("boss");
+    })
+    .map((candidate) => ({
+      enemy: candidate,
+      distanceSquared: squaredDistance(sourceEnemy.position, candidate.position),
+    }))
+    .filter((candidate) => candidate.distanceSquared <= 36)
+    .sort((first, second) => first.distanceSquared - second.distanceSquared)[0]?.enemy;
+  if (target) killEnemy(state, target, "skill-armor-shrapnel-v1", false);
+}
+
+function changeUltimateEnergy(state: GameState, delta: number, source: string): void {
+  const before = state.player.ultimateEnergy;
+  const after = Math.min(100, Math.max(0, before + delta));
+  if (after === before) return;
+  state.player.ultimateEnergy = after;
+  emitGameEvent(state, { type: "ultimate-energy-changed", before, after, source });
+}
+
+function segmentProjection(
+  pointValue: Vec2,
+  start: Vec2,
+  segmentX: number,
+  segmentZ: number,
+  segmentLengthSquared: number,
+): number {
+  return ((pointValue.x - start.x) * segmentX + (pointValue.z - start.z) * segmentZ) / segmentLengthSquared;
 }
 
 function completeDash(state: GameState): void {
@@ -451,6 +644,10 @@ function completeDash(state: GameState): void {
 }
 
 function advancePlayerAction(state: GameState, deltaMs: number): void {
+  if (state.player.charge !== null) {
+    advanceChargedDashHold(state, deltaMs);
+    return;
+  }
   let remainingMs = deltaMs;
 
   while (remainingMs > EPSILON) {
@@ -466,7 +663,7 @@ function advancePlayerAction(state: GameState, deltaMs: number): void {
         x: dash.from.x + (dash.to.x - dash.from.x) * progress,
         z: dash.from.z + (dash.to.z - dash.from.z) * progress,
       };
-      killEnemiesAlongSegment(state, segmentStart, state.player.position);
+      resolveEnemiesAlongSegment(state, segmentStart, state.player.position);
       remainingMs -= sliceMs;
 
       if (dash.elapsedMs + EPSILON >= dash.durationMs) {
@@ -518,7 +715,7 @@ function aliveEnemyCount(state: GameState): number {
 }
 
 function resolveStageCompletion(state: GameState): boolean {
-  if (aliveEnemyCount(state) !== 0 || state.player.dash !== null) {
+  if (aliveEnemyCount(state) !== 0 || state.player.dash !== null || state.player.charge !== null) {
     return false;
   }
 
@@ -558,6 +755,7 @@ function resolvePlayerContact(state: GameState): void {
 
     state.player.hp = 0;
     state.player.dash = null;
+    state.player.charge = null;
     state.player.recoveryRemainingMs = 0;
     state.player.bufferedAbility = null;
     state.stage.phase = "dead";
@@ -623,6 +821,14 @@ export function dispatchGameCommand(
     result = confirmCampaignPlanning(state);
   } else if (command.type === "acknowledge-reward") {
     result = acknowledgeCampaignReward(state);
+  } else if (command.type === "begin-charge") {
+    result = beginChargedDash(state, command.target);
+  } else if (command.type === "update-charge-target") {
+    result = updateChargedDashTarget(state, command.target);
+  } else if (command.type === "release-charge") {
+    result = releaseChargedDash(state, command.target);
+  } else if (command.type === "cancel-charge") {
+    result = cancelChargedDash(state);
   }
   return { sequence: state.commandSequence, result };
 }
@@ -807,6 +1013,33 @@ export function getGameSnapshot(state: GameState): GameSnapshot {
       x: roundForSnapshot(hazard.position.x),
       z: roundForSnapshot(hazard.position.z),
     })),
+    modules: {
+      activeDashAbilityId: state.player.dash?.abilityId ?? null,
+      charge: state.player.charge === null ? null : {
+        heldMs: roundForSnapshot(state.player.charge.heldMs),
+        thresholdMs: roundForSnapshot(state.player.charge.thresholdMs),
+        progress: roundForSnapshot(Math.min(1, state.player.charge.heldMs / state.player.charge.thresholdMs)),
+        overholdProgress: roundForSnapshot(state.player.charge.overholdLimitMs <= 0
+          ? 0
+          : Math.max(0, Math.min(1, (
+            state.player.charge.heldMs - state.player.charge.thresholdMs
+          ) / state.player.charge.overholdLimitMs))),
+        directionX: roundForSnapshot(state.player.charge.direction.x),
+        directionZ: roundForSnapshot(state.player.charge.direction.z),
+      },
+      ultimateEnergy: roundForSnapshot(state.player.ultimateEnergy),
+      predatorDriveRemainingMs: roundForSnapshot(Math.max(
+        0,
+        (state.player.predatorDriveExpiresAtMs ?? state.elapsedMs) - state.elapsedMs,
+      )),
+      armoredEnemies: state.enemies
+        .filter((enemy) => enemy.armorParts.length > 0)
+        .map((enemy) => ({
+          id: enemy.id,
+          armorParts: enemy.armorParts.map((part) => ({ id: part.id, intact: part.intact })),
+          staggerMs: roundForSnapshot(enemy.staggerRemainingMs),
+        })),
+    },
     campaign: campaign === null || allocation === null ? null : {
       phase: campaign.phase,
       actIndex: campaign.routeProgress.actIndex,
@@ -979,6 +1212,8 @@ function configureLineKillScenario(enemyCount: number): GameState {
     state: "active" as const,
     spawnedAtMs: 0,
     killedAtMs: null,
+    armorParts: [],
+    staggerRemainingMs: 0,
   }));
   state.combat.kills = 0;
   state.combat.totalEnemies = enemyCount;

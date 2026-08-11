@@ -53,7 +53,27 @@ export interface DashState {
   durationMs: number;
   elapsedMs: number;
   hitRadius: number;
+  baseHitRadius: number;
   recoveryMs: number;
+  resolvedEnemyIds: EntityId[];
+  armorBreakCount: number;
+  exposedKillCount: number;
+  rearExecutionCount: number;
+}
+
+export interface ChargeState {
+  abilityId: AbilityId;
+  startedAtTick: number;
+  heldMs: number;
+  thresholdMs: number;
+  overholdLimitMs: number;
+  initialTarget: Vec2;
+  currentTarget: Vec2;
+  direction: Vec2;
+  totalAimAdjustmentRadians: number;
+  lastAimUpdateTick: number;
+  consumedPredatorDrive: boolean;
+  readyEventEmitted: boolean;
 }
 
 export interface BufferedAbilityCommand {
@@ -67,9 +87,18 @@ export interface PlayerState {
   radius: number;
   hp: 0 | 1;
   dash: DashState | null;
+  charge: ChargeState | null;
   recoveryRemainingMs: number;
   bufferedAbility: BufferedAbilityCommand | null;
   abilities: Record<AbilitySlot, AbilityRuntimeState | null>;
+  ultimateEnergy: number;
+  predatorDriveExpiresAtMs: number | null;
+}
+
+export interface ArmorPartState {
+  readonly id: string;
+  intact: boolean;
+  brokenAtMs: number | null;
 }
 
 export interface EnemyState {
@@ -83,6 +112,8 @@ export interface EnemyState {
   state: EnemyRuntimeMode;
   spawnedAtMs: number;
   killedAtMs: number | null;
+  armorParts: ArmorPartState[];
+  staggerRemainingMs: number;
 }
 
 export interface ProjectileState {
@@ -157,6 +188,12 @@ export type GameEventPayload =
     }
   | { type: "enemy-killed"; enemyId: EntityId; sourceId: EntityId; attackId: AbilityId; position: Vec2; direction: Vec2 }
   | { type: "dash-ended"; abilityId: AbilityId; sourceId: EntityId; position: Vec2 }
+  | { type: "charge-started"; abilityId: AbilityId; sourceId: EntityId; thresholdMs: number; target: Vec2 }
+  | { type: "charge-ready"; abilityId: AbilityId; sourceId: EntityId; heldMs: number }
+  | { type: "charge-cancelled"; abilityId: AbilityId; sourceId: EntityId; heldMs: number; reason: string }
+  | { type: "armor-broken"; enemyId: EntityId; armorPartId: string; attackId: AbilityId; position: Vec2; contactRegion: string }
+  | { type: "armor-blocked"; enemyId: EntityId; armorPartId: string; attackId: AbilityId; position: Vec2 }
+  | { type: "ultimate-energy-changed"; before: number; after: number; source: string }
   | { type: "player-died"; enemyId: EntityId; position: Vec2 }
   | { type: "campaign-started"; seed: number }
   | { type: "route-node-started"; nodeId: string; encounterId: EncounterId }
@@ -210,7 +247,11 @@ export type GameCommand =
   | { type: "preview-skill-refund"; skillId: UpgradeId }
   | { type: "discard-skill-draft" }
   | { type: "confirm-planning" }
-  | { type: "acknowledge-reward" };
+  | { type: "acknowledge-reward" }
+  | { type: "begin-charge"; target: Vec2 }
+  | { type: "update-charge-target"; target: Vec2 }
+  | { type: "release-charge"; target: Vec2 }
+  | { type: "cancel-charge" };
 
 export type GameCommandResult =
   | DashRequestResult
@@ -223,6 +264,10 @@ export type GameCommandResult =
   | "draft-discarded"
   | "planning-confirmed"
   | "reward-acknowledged"
+  | "charge-started"
+  | "charge-updated"
+  | "charge-cancelled"
+  | "charged-released"
   | "ignored";
 
 export interface GameCommandDispatchResult {
@@ -231,7 +276,7 @@ export interface GameCommandDispatchResult {
 }
 
 export type DashRequestResult = "started" | "buffered" | "ignored";
-export type PlayerAction = "ready" | "dashing" | "recovering" | "dead";
+export type PlayerAction = "ready" | "charging" | "dashing" | "recovering" | "dead";
 
 export interface GameSnapshot {
   stage: { index: number; number: number; count: number; id: string; name: string };
@@ -269,6 +314,24 @@ export interface GameSnapshot {
   projectiles: Array<{ id: EntityId; definitionId: ProjectileDefinitionId; x: number; z: number }>;
   obstacles: Array<{ id: EntityId; definitionId: ObstacleDefinitionId; x: number; z: number }>;
   hazards: Array<{ id: EntityId; definitionId: HazardDefinitionId; x: number; z: number }>;
+  modules: {
+    activeDashAbilityId: AbilityId | null;
+    charge: null | {
+      heldMs: number;
+      thresholdMs: number;
+      progress: number;
+      overholdProgress: number;
+      directionX: number;
+      directionZ: number;
+    };
+    ultimateEnergy: number;
+    predatorDriveRemainingMs: number;
+    armoredEnemies: Array<{
+      id: EntityId;
+      armorParts: Array<{ id: string; intact: boolean }>;
+      staggerMs: number;
+    }>;
+  };
   campaign: null | {
     phase: string;
     actIndex: number;

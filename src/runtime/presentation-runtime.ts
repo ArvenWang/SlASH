@@ -5,6 +5,8 @@ import {
 } from "../characters/animation";
 import type { Vec2 } from "../core/math/vec2";
 import type { EnemyState, GameEvent, GameState } from "../game/domain/types";
+import { enemyDefinitions } from "../content/enemies/definitions";
+import { armorProfileDefinitions } from "../content/enemies/armor-definitions";
 import {
   PLAYER_CHARACTER_PRESENTATION_ID,
   abilityPresentationRegistry,
@@ -32,6 +34,8 @@ interface EnemyVisualRuntime {
   separated: boolean;
   corpseAttempted: boolean;
   corpse: CorpsePresentationRuntime | null;
+  armorRoot: THREE.Group;
+  armorMeshes: Map<string, THREE.Mesh>;
 }
 
 export interface PresentationShell {
@@ -39,6 +43,9 @@ export interface PresentationShell {
   readonly reticle: HTMLDivElement;
   readonly stageLabel: HTMLSpanElement;
   readonly enemyLabel: HTMLSpanElement;
+  readonly chargeLabel: HTMLSpanElement;
+  readonly chargeFill: HTMLElement;
+  readonly energyLabel: HTMLSpanElement;
   readonly phaseBanner: HTMLDivElement;
   readonly phaseEyebrow: HTMLSpanElement;
   readonly phaseTitle: HTMLElement;
@@ -175,10 +182,21 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   scene.add(enemyContactShadows);
 
   const enemyContactShadowTransform = new THREE.Object3D();
+  const armorPlateGeometry = new THREE.BoxGeometry(1.14, 0.82, 0.2);
+  const armorPlateMaterial = new THREE.MeshStandardMaterial({
+    color: 0xd7eef0,
+    emissive: 0x6f9da4,
+    emissiveIntensity: 1.8,
+    metalness: 0.86,
+    roughness: 0.24,
+  });
   const enemyVisuals = new Map<string, EnemyVisualRuntime>();
   let renderedStageIndex = -1;
   let renderedStageName = "";
   let renderedAliveCount = -1;
+  let renderedChargeProgress = -1;
+  let renderedChargeLabel = "";
+  let renderedEnergy = -1;
   let renderedBannerVisible: boolean | null = null;
   let renderedBannerTone = "";
   let renderedBannerEyebrow = "";
@@ -206,7 +224,11 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     actor.root.rotation.y = heading;
     actor.deathPresentation?.setCutVisible(false);
     actor.deathPresentation?.setCutHeat(0);
+    const armorRoot = new THREE.Group();
+    armorRoot.name = `armor-presentation/${enemy.id}`;
+    const armorMeshes = createArmorMeshes(enemy, armorRoot);
     scene.add(actor.root);
+    scene.add(armorRoot);
     enemyVisuals.set(enemy.id, {
       actor,
       deathAge: null,
@@ -219,12 +241,44 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       separated: false,
       corpseAttempted: false,
       corpse: null,
+      armorRoot,
+      armorMeshes,
     });
+  }
+
+  function createArmorMeshes(enemy: EnemyState, actorRoot: THREE.Object3D): Map<string, THREE.Mesh> {
+    const meshes = new Map<string, THREE.Mesh>();
+    const definition = enemyDefinitions.get(enemy.definitionId);
+    if (!definition.armorProfileId) return meshes;
+    const profile = armorProfileDefinitions.get(definition.armorProfileId);
+    for (const part of profile.parts) {
+      const mesh = new THREE.Mesh(armorPlateGeometry, armorPlateMaterial);
+      mesh.name = `armor-part/${enemy.id}/${part.id}`;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      if (part.presentationSlot === "front") {
+        mesh.position.set(0, 1.68, 0.4);
+      } else if (part.presentationSlot === "rear") {
+        mesh.position.set(0, 1.68, -0.4);
+      } else if (part.presentationSlot === "left") {
+        mesh.position.set(-0.43, 1.58, 0);
+        mesh.rotation.y = Math.PI / 2;
+        mesh.scale.set(0.74, 1, 1);
+      } else {
+        mesh.position.set(0.43, 1.58, 0);
+        mesh.rotation.y = Math.PI / 2;
+        mesh.scale.set(0.74, 1, 1);
+      }
+      actorRoot.add(mesh);
+      meshes.set(part.id, mesh);
+    }
+    return meshes;
   }
 
   function rebuildEnemyVisuals(): void {
     for (const visual of enemyVisuals.values()) {
       visual.corpse?.dispose();
+      visual.armorRoot.removeFromParent();
       visual.actor.dispose();
     }
     enemyVisuals.clear();
@@ -257,6 +311,25 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     if (renderedAliveCount !== alive) {
       shell.enemyLabel.textContent = `${String(alive).padStart(2, "0")} HOSTILES`;
       renderedAliveCount = alive;
+    }
+    const charge = gameState.player.charge;
+    const chargeProgress = charge === null ? 0 : Math.min(1, charge.heldMs / charge.thresholdMs);
+    const roundedCharge = Math.round(chargeProgress * 100);
+    if (renderedChargeProgress !== roundedCharge) {
+      shell.chargeFill.style.transform = `scaleX(${chargeProgress})`;
+      renderedChargeProgress = roundedCharge;
+    }
+    const chargeLabel = charge === null
+      ? "CHARGED READY"
+      : chargeProgress >= 1 ? "CHARGED RELEASE" : `CHARGING ${String(roundedCharge).padStart(3, "0")}%`;
+    if (renderedChargeLabel !== chargeLabel) {
+      shell.chargeLabel.textContent = chargeLabel;
+      renderedChargeLabel = chargeLabel;
+    }
+    const energy = Math.round(gameState.player.ultimateEnergy);
+    if (renderedEnergy !== energy) {
+      shell.energyLabel.textContent = `ENERGY ${String(energy).padStart(3, "0")} / 100`;
+      renderedEnergy = energy;
     }
   }
 
@@ -326,7 +399,21 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     if (!previewLine.visible) return;
     const positions = previewGeometry.getAttribute("position") as THREE.BufferAttribute;
     positions.setXYZ(0, gameState.player.position.x, 0.08, gameState.player.position.z);
-    positions.setXYZ(1, pointerWorld.x, 0.08, pointerWorld.z);
+    const charge = gameState.player.charge;
+    if (charge) {
+      const distance = Math.hypot(
+        charge.currentTarget.x - gameState.player.position.x,
+        charge.currentTarget.z - gameState.player.position.z,
+      );
+      positions.setXYZ(
+        1,
+        gameState.player.position.x + charge.direction.x * distance,
+        0.08,
+        gameState.player.position.z + charge.direction.z * distance,
+      );
+    } else {
+      positions.setXYZ(1, pointerWorld.x, 0.08, pointerWorld.z);
+    }
     positions.needsUpdate = true;
     previewGeometry.computeBoundingSphere();
   }
@@ -376,6 +463,13 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
 
   function updateEnemyVisual(enemy: EnemyState, visual: EnemyVisualRuntime, dt: number): void {
     const root = visual.actor.root;
+    visual.armorRoot.position.copy(root.position);
+    visual.armorRoot.rotation.copy(root.rotation);
+    visual.armorRoot.scale.copy(root.scale);
+    for (const armorPart of enemy.armorParts) {
+      const mesh = visual.armorMeshes.get(armorPart.id);
+      if (mesh) mesh.visible = armorPart.intact && enemy.alive;
+    }
     if (visual.deathAge !== null) {
       visual.deathAge += dt;
       const t = visual.deathAge;
@@ -517,6 +611,15 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
         postFx.triggerImpact("death-impact-current-v1");
         hostileRim.intensity = 180;
         audio.playDeath("player-death-current-v1");
+      } else if (event.type === "armor-broken") {
+        const visual = enemyVisuals.get(event.enemyId);
+        const mesh = visual?.armorMeshes.get(event.armorPartId);
+        if (mesh) mesh.visible = false;
+        vfx.spawnCutContact("enemy-cut-contact-v1", {
+          position: new THREE.Vector3(event.position.x, 1.4, event.position.z),
+          direction: new THREE.Vector3(gameState.player.facing.x, 0, gameState.player.facing.z),
+          intensity: 1.2,
+        });
       } else if (event.type === "stage-cleared" || event.type === "game-complete") {
         phaseAge = 0;
       } else if (event.type === "encounter-wave-warning") {
@@ -568,11 +671,16 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     const dashProgress = player.dash
       ? THREE.MathUtils.clamp(player.dash.elapsedMs / player.dash.durationMs, 0, 1)
       : null;
+    const chargeProgress = player.charge
+      ? THREE.MathUtils.clamp(player.charge.heldMs / player.charge.thresholdMs, 0, 1)
+      : null;
     const recoveryProgress = !player.dash && player.recoveryRemainingMs > 0
       ? 1 - THREE.MathUtils.clamp(player.recoveryRemainingMs / gameState.rules.recoveryMs, 0, 1)
       : null;
     const playerAnimationState = gameState.stage.phase === "dead"
       ? "death"
+      : chargeProgress !== null
+        ? "anticipation"
       : dashProgress !== null && dashProgress < 0.18
         ? "anticipation"
         : dashProgress !== null && dashProgress < 0.72
@@ -589,7 +697,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       turn: THREE.MathUtils.clamp(playerTurnDelta / 0.65, -1, 1),
       sourceProgress: gameState.stage.phase === "dead"
         ? THREE.MathUtils.clamp(phaseAge / 0.78, 0, 1)
-        : dashProgress ?? recoveryProgress,
+        : chargeProgress ?? dashProgress ?? recoveryProgress,
     });
     for (const enemy of gameState.enemies) {
       const visual = enemyVisuals.get(enemy.id);
@@ -659,6 +767,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     dispose() {
       for (const visual of enemyVisuals.values()) {
         visual.corpse?.dispose();
+        visual.armorRoot.removeFromParent();
         visual.actor.dispose();
       }
       enemyVisuals.clear();
@@ -669,6 +778,8 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       enemyContactShadowGeometry.dispose();
       enemyContactShadowMaterial.dispose();
       enemyContactShadowTexture.dispose();
+      armorPlateGeometry.dispose();
+      armorPlateMaterial.dispose();
     },
   };
 }

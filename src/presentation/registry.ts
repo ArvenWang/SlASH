@@ -9,10 +9,16 @@ import type {
   EnemyDefinitionId,
   VfxProfileId,
 } from "../core/ids";
-import { DASH_SLASH_ABILITY_ID, abilityDefinitions } from "../content/abilities/definitions";
+import {
+  CHARGED_DASH_ABILITY_ID,
+  DASH_SLASH_ABILITY_ID,
+  VECTOR_FOCUS_ABILITY_ID,
+  abilityDefinitions,
+} from "../content/abilities/definitions";
 import {
   PHASE_ONE_GRUNT_ID,
   STRIKER_ENEMY_ID,
+  VANGUARD_ENEMY_ID,
   enemyDefinitions,
 } from "../content/enemies/definitions";
 import { LEVEL_DEFINITIONS } from "../content/levels/definitions";
@@ -187,11 +193,31 @@ export const enemyPresentationRegistry = new DefinitionRegistry<EnemyPresentatio
     audioProfileId: "enemy-cyber-grunt-v1",
     deathProfileId: "humanoid-soft-v1",
   },
+  {
+    id: VANGUARD_ENEMY_ID,
+    characterId: "enemy-procedural-v5",
+    animationSetId: "enemy-procedural-v5",
+    vfxProfileId: "enemy-cut-humanoid-v1",
+    audioProfileId: "enemy-cyber-grunt-v1",
+    deathProfileId: "humanoid-soft-v1",
+  },
 ]);
 
 export const abilityPresentationRegistry = new DefinitionRegistry<AbilityPresentationDefinition>([
   {
     id: DASH_SLASH_ABILITY_ID,
+    vfxProfileId: "dash-slash-current-v1",
+    audioProfileId: "dash-slash-current-v1",
+    cameraProfileId: "dash-impact-current-v1",
+  },
+  {
+    id: CHARGED_DASH_ABILITY_ID,
+    vfxProfileId: "dash-slash-current-v1",
+    audioProfileId: "dash-slash-current-v1",
+    cameraProfileId: "dash-impact-current-v1",
+  },
+  {
+    id: VECTOR_FOCUS_ABILITY_ID,
     vfxProfileId: "dash-slash-current-v1",
     audioProfileId: "dash-slash-current-v1",
     cameraProfileId: "dash-impact-current-v1",

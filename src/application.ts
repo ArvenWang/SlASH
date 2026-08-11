@@ -27,6 +27,9 @@ export async function bootstrapSlashApplication(): Promise<void> {
     loading: requiredElement<HTMLDivElement>("#loading"),
     stageLabel: requiredElement<HTMLSpanElement>("#stage-label"),
     enemyLabel: requiredElement<HTMLSpanElement>("#enemy-label"),
+    chargeLabel: requiredElement<HTMLSpanElement>("#charge-label"),
+    chargeFill: requiredElement<HTMLElement>("#charge-fill"),
+    energyLabel: requiredElement<HTMLSpanElement>("#energy-label"),
     phaseBanner: requiredElement<HTMLDivElement>("#phase-banner"),
     phaseEyebrow: requiredElement<HTMLSpanElement>("#phase-eyebrow"),
     phaseTitle: requiredElement<HTMLElement>("#phase-title"),
@@ -106,6 +109,8 @@ export async function bootstrapSlashApplication(): Promise<void> {
   let simulationEnabled = true;
   let graphicsContextState: "ready" | "lost" | "restoring" = "ready";
   let audioEnabled = true;
+  let chargedPointerActive = false;
+  let chargedPointerInputId: number | null = null;
 
   function dispatchPrimaryAbility(target: { x: number; z: number }): string {
     if (gameState.stage.phase !== "playing") return "ignored";
@@ -241,7 +246,23 @@ export async function bootstrapSlashApplication(): Promise<void> {
         tuning.enemyMotion = false;
         resetPresentationStage();
       },
+      setArmorScenario() {
+        gameRuntime.loadArmorScenario();
+        tuning.enemyMotion = false;
+        resetPresentationStage();
+      },
       dashTo: (x, z) => dispatchPrimaryAbility({ x, z }),
+      beginChargeTo(x, z) {
+        return gameRuntime.dispatch({ type: "begin-charge", target: { x, z } }).result;
+      },
+      updateChargeTo(x, z) {
+        return gameRuntime.dispatch({ type: "update-charge-target", target: { x, z } }).result;
+      },
+      releaseChargeTo(x, z) {
+        const result = gameRuntime.dispatch({ type: "release-charge", target: { x, z } }).result;
+        presentationRuntime.consumeEvents(gameRuntime.drainEvents());
+        return result;
+      },
       setEnemyMotion(enabled) {
         tuning.enemyMotion = Boolean(enabled);
       },
@@ -262,8 +283,13 @@ export async function bootstrapSlashApplication(): Promise<void> {
 
   createInputRuntime({
     canvas: shell.canvas,
-    onPointerMove: ({ clientX, clientY }) => presentationRuntime.updatePointer(clientX, clientY),
-    onPrimaryPointer: ({ clientX, clientY }) => {
+    onPointerMove: ({ clientX, clientY }) => {
+      presentationRuntime.updatePointer(clientX, clientY);
+      if (!chargedPointerActive) return;
+      const target = presentationRuntime.getPrimaryTarget();
+      if (target) gameRuntime.dispatch({ type: "update-charge-target", target });
+    },
+    onPrimaryPointerDown: ({ clientX, clientY }) => {
       void rendererRuntime.audio.resume().catch(() => {
         // A later trusted gesture may retry audio without interrupting gameplay.
       });
@@ -275,7 +301,42 @@ export async function bootstrapSlashApplication(): Promise<void> {
       }
       presentationRuntime.updatePointer(clientX, clientY);
       const target = presentationRuntime.getPrimaryTarget();
-      if (target) dispatchPrimaryAbility(target);
+      if (!target) return;
+      const inputId = rendererRuntime.diagnostics.markInput();
+      const { result } = gameRuntime.dispatch({ type: "begin-charge", target });
+      chargedPointerActive = result === "charge-started";
+      chargedPointerInputId = chargedPointerActive ? inputId : null;
+      if (chargedPointerActive) presentationRuntime.consumeEvents(gameRuntime.drainEvents());
+    },
+    onPrimaryPointerUp: ({ clientX, clientY }) => {
+      presentationRuntime.updatePointer(clientX, clientY);
+      const target = presentationRuntime.getPrimaryTarget();
+      if (!target) {
+        if (chargedPointerActive) gameRuntime.dispatch({ type: "cancel-charge" });
+        chargedPointerActive = false;
+        chargedPointerInputId = null;
+        return;
+      }
+      if (!chargedPointerActive) {
+        dispatchPrimaryAbility(target);
+        return;
+      }
+      gameRuntime.dispatch({ type: "update-charge-target", target });
+      const { result } = gameRuntime.dispatch({ type: "release-charge", target });
+      if ((result === "started" || result === "charged-released") && chargedPointerInputId !== null) {
+        presentationRuntime.markPendingAbilityInput(chargedPointerInputId);
+      }
+      presentationRuntime.consumeEvents(gameRuntime.drainEvents());
+      chargedPointerActive = false;
+      chargedPointerInputId = null;
+    },
+    onPrimaryPointerCancel: () => {
+      if (chargedPointerActive) {
+        gameRuntime.dispatch({ type: "cancel-charge" });
+        presentationRuntime.consumeEvents(gameRuntime.drainEvents());
+      }
+      chargedPointerActive = false;
+      chargedPointerInputId = null;
     },
     onPointerLeave: presentationRuntime.clearPointer,
     onRestart: () => {

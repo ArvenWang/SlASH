@@ -14,7 +14,11 @@ export interface RuntimeTuning {
 export interface SlashValidationApi {
   setStage(stageIndex: number): void;
   setStressScenario(enemyCount?: number): void;
+  setArmorScenario(): void;
   dashTo(x: number, z: number): string;
+  beginChargeTo(x: number, z: number): string;
+  updateChargeTo(x: number, z: number): string;
+  releaseChargeTo(x: number, z: number): string;
   setEnemyMotion(enabled: boolean): void;
   loseGraphicsContext(): void;
   restoreGraphicsContext(): void;

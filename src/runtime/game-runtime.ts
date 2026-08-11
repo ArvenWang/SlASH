@@ -3,6 +3,7 @@ import {
   advanceStage,
   createGame,
   createFullGameGame,
+  createArmorValidationGame,
   createStressGame,
   dispatchGameCommand,
   drainGameEvents,
@@ -25,6 +26,7 @@ export interface GameRuntime {
   advanceStage(): void;
   loadStage(stageIndex: number, rules?: Partial<GameRules>): void;
   loadStressScenario(enemyCount?: number): void;
+  loadArmorScenario(): void;
   resetRun(): void;
 }
 
@@ -73,6 +75,9 @@ export function createGameRuntime(initialStageIndex = 0): GameRuntime {
     },
     loadStressScenario(enemyCount = 20) {
       replaceState(createStressGame(enemyCount, state.rules));
+    },
+    loadArmorScenario() {
+      replaceState(createArmorValidationGame(state.rules));
     },
     resetRun() {
       replaceState(createGame(0));
@@ -123,6 +128,9 @@ export function createFullGameRuntime(seed?: number): GameRuntime {
     },
     loadStressScenario(enemyCount = 20) {
       replaceState(createStressGame(enemyCount, state.rules));
+    },
+    loadArmorScenario() {
+      replaceState(createArmorValidationGame(state.rules));
     },
     resetRun() {
       replaceState(createFullGameGame(state.run.seed, state.rules));
