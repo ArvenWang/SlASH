@@ -1,0 +1,260 @@
+import { getGameSnapshot } from "./game/game";
+import { levelByIndex } from "./content/levels/definitions";
+import { createDebugRuntime, type RuntimeTuning } from "./runtime/debug-runtime";
+import { createGameRuntime } from "./runtime/game-runtime";
+import { createInputRuntime } from "./runtime/input-runtime";
+import { createPresentationRuntime } from "./runtime/presentation-runtime";
+import { createRendererRuntime } from "./runtime/renderer-runtime";
+
+function requiredElement<T extends Element>(selector: string): T {
+  const element = document.querySelector<T>(selector);
+  if (!element) throw new Error(`Project Slash shell is missing ${selector}.`);
+  return element;
+}
+
+export async function bootstrapSlashApplication(): Promise<void> {
+  const shell = {
+    canvas: requiredElement<HTMLCanvasElement>("#game-canvas"),
+    reticle: requiredElement<HTMLDivElement>("#reticle"),
+    loading: requiredElement<HTMLDivElement>("#loading"),
+    stageLabel: requiredElement<HTMLSpanElement>("#stage-label"),
+    enemyLabel: requiredElement<HTMLSpanElement>("#enemy-label"),
+    phaseBanner: requiredElement<HTMLDivElement>("#phase-banner"),
+    phaseEyebrow: requiredElement<HTMLSpanElement>("#phase-eyebrow"),
+    phaseTitle: requiredElement<HTMLElement>("#phase-title"),
+    phaseSubtitle: requiredElement<HTMLElement>("#phase-subtitle"),
+    loadingLabel: requiredElement<HTMLParagraphElement>("#loading-label"),
+    loadingProgress: requiredElement<HTMLSpanElement>("#loading-progress"),
+  };
+  const pageParameters = new URLSearchParams(window.location.search);
+  const qualityMode = pageParameters.get("quality") === "compatibility"
+    ? "compatibility"
+    : "high";
+  const deterministicCapture = pageParameters.get("deterministic") === "1";
+  const validationMode = pageParameters.get("validation") === "1";
+
+  function setLoadingPhase(progress: number, label: string): void {
+    const scale = Math.min(1, Math.max(0.05, progress));
+    shell.loadingProgress.style.transform = `scaleX(${scale})`;
+    shell.loadingLabel.textContent = label;
+  }
+
+  setLoadingPhase(0.12, "INITIALIZING RENDERER");
+  const gameRuntime = createGameRuntime(0);
+  const gameState = gameRuntime.state;
+  const initialLevel = levelByIndex(gameState.stage.index);
+  const rendererRuntime = createRendererRuntime({
+    canvas: shell.canvas,
+    qualityMode,
+    environmentId: initialLevel.environmentId,
+    lightingProfileId: initialLevel.lightingProfileId,
+  });
+  setLoadingPhase(0.62, "ASSEMBLING COMBAT SPACE");
+  const tuning: RuntimeTuning = {
+    exposure: 0.98,
+    bloom: 0.34,
+    cameraFov: 28.5,
+    enemyMotion: true,
+    dashPreview: true,
+  };
+  const presentationRuntime = createPresentationRuntime({
+    shell,
+    rendererRuntime,
+    gameState,
+    tuning,
+  });
+  setLoadingPhase(0.78, "LINKING COMBATANTS");
+
+  let lastTime = performance.now();
+  let simulationEnabled = true;
+  let graphicsContextState: "ready" | "lost" | "restoring" = "ready";
+  let audioEnabled = true;
+
+  function dispatchPrimaryAbility(target: { x: number; z: number }): string {
+    if (gameState.stage.phase !== "playing") return "ignored";
+    const inputId = rendererRuntime.diagnostics.markInput();
+    const { result } = gameRuntime.dispatch({
+      type: "activate-ability",
+      slot: "primary",
+      target,
+    });
+    if (result !== "ignored") presentationRuntime.markPendingAbilityInput(inputId);
+    if (result === "started") presentationRuntime.consumeEvents(gameRuntime.drainEvents());
+    return result;
+  }
+
+  function resetPresentationStage(): void {
+    presentationRuntime.resetStage();
+    simulationEnabled = true;
+  }
+
+  function updateFrame(dt: number): void {
+    if (simulationEnabled && gameState.stage.phase === "playing") {
+      presentationRuntime.consumeEvents(gameRuntime.advance(dt * 1000, tuning.enemyMotion));
+    }
+    const lifecycleAction = presentationRuntime.update(dt);
+    if (lifecycleAction === "restart-stage") {
+      gameRuntime.restartStage();
+      resetPresentationStage();
+    } else if (lifecycleAction === "advance-stage") {
+      gameRuntime.advanceStage();
+      resetPresentationStage();
+    } else if (lifecycleAction === "reset-run") {
+      gameRuntime.resetRun();
+      resetPresentationStage();
+    }
+  }
+
+  function renderScene(): void {
+    rendererRuntime.render();
+  }
+
+  function resize(): void {
+    rendererRuntime.resize();
+  }
+
+  const debugRuntime = await createDebugRuntime({
+    enabled: validationMode || import.meta.env.DEV,
+    validationMode,
+    tuning,
+    controls: {
+      setExposure(value) {
+        rendererRuntime.renderer.toneMappingExposure = value;
+      },
+      setBloom(value) {
+        rendererRuntime.postFx.bloom.strength = value;
+      },
+      setCameraFov(value) {
+        rendererRuntime.camera.fov = value;
+        rendererRuntime.camera.updateProjectionMatrix();
+      },
+    },
+    renderGameToText: () => JSON.stringify({
+      coordinateSystem: "World ground plane. Origin at arena center; +x is screen-right-ish, +z is toward the near camera edge.",
+      qualityMode,
+      graphicsContextState,
+      camera: {
+        fov: rendererRuntime.camera.fov,
+        near: rendererRuntime.camera.near,
+        far: rendererRuntime.camera.far,
+        position: {
+          x: rendererRuntime.camera.position.x,
+          y: rendererRuntime.camera.position.y,
+          z: rendererRuntime.camera.position.z,
+        },
+        target: {
+          x: rendererRuntime.cameraTarget.x,
+          y: rendererRuntime.cameraTarget.y,
+          z: rendererRuntime.cameraTarget.z,
+        },
+      },
+      ...getGameSnapshot(gameState),
+      diagnostics: rendererRuntime.diagnostics.snapshot(),
+    }),
+    diagnostics: rendererRuntime.diagnostics,
+    validation: {
+      setStage(stageIndex) {
+        gameRuntime.loadStage(Math.min(2, Math.max(0, Math.round(stageIndex))));
+        resetPresentationStage();
+      },
+      setStressScenario(enemyCount = 20) {
+        gameRuntime.loadStressScenario(enemyCount);
+        tuning.enemyMotion = false;
+        resetPresentationStage();
+      },
+      dashTo: (x, z) => dispatchPrimaryAbility({ x, z }),
+      setEnemyMotion(enabled) {
+        tuning.enemyMotion = Boolean(enabled);
+      },
+      loseGraphicsContext() {
+        rendererRuntime.renderer.forceContextLoss();
+      },
+      restoreGraphicsContext() {
+        graphicsContextState = "restoring";
+        rendererRuntime.renderer.forceContextRestore();
+      },
+    },
+    advanceTime(milliseconds) {
+      const steps = Math.max(1, Math.round(Math.max(0, milliseconds) / (1000 / 60)));
+      for (let step = 0; step < steps; step += 1) updateFrame(1 / 60);
+      renderScene();
+    },
+  });
+
+  createInputRuntime({
+    canvas: shell.canvas,
+    onPointerMove: ({ clientX, clientY }) => presentationRuntime.updatePointer(clientX, clientY),
+    onPrimaryPointer: ({ clientX, clientY }) => {
+      void rendererRuntime.audio.resume().catch(() => {
+        // A later trusted gesture may retry audio without interrupting gameplay.
+      });
+      if (gameState.stage.phase === "dead") {
+        gameRuntime.dispatch({ type: "restart-stage" });
+        resetPresentationStage();
+        return;
+      }
+      presentationRuntime.updatePointer(clientX, clientY);
+      const target = presentationRuntime.getPrimaryTarget();
+      if (target) dispatchPrimaryAbility(target);
+    },
+    onPointerLeave: presentationRuntime.clearPointer,
+    onRestart: () => {
+      gameRuntime.dispatch({ type: "restart-stage" });
+      resetPresentationStage();
+    },
+    onToggleAudio: () => {
+      audioEnabled = !audioEnabled;
+      rendererRuntime.audio.setEnabled(audioEnabled);
+    },
+    onToggleDebug: debugRuntime.togglePanel,
+    onResize: resize,
+  });
+
+  shell.canvas.addEventListener("webglcontextlost", (event) => {
+    event.preventDefault();
+    graphicsContextState = "lost";
+    simulationEnabled = false;
+    shell.loading.classList.remove("ready");
+    setLoadingPhase(0.45, "RESTORING GRAPHICS CONTEXT");
+  });
+  shell.canvas.addEventListener("webglcontextrestored", () => {
+    graphicsContextState = "restoring";
+    lastTime = performance.now();
+    resize();
+    renderScene();
+    graphicsContextState = "ready";
+    simulationEnabled = gameState.stage.phase === "playing";
+    setLoadingPhase(1, "COMBAT SPACE RESTORED");
+    requestAnimationFrame(() => shell.loading.classList.add("ready"));
+  });
+  window.addEventListener("resize", resize);
+  document.addEventListener("fullscreenchange", resize);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) lastTime = performance.now();
+  });
+
+  function animate(now: number): void {
+    if (graphicsContextState !== "ready") {
+      lastTime = now;
+      requestAnimationFrame(animate);
+      return;
+    }
+    const rawDt = Math.max(0.001, (now - lastTime) / 1000);
+    const dt = Math.min(0.05, rawDt);
+    lastTime = now;
+    rendererRuntime.diagnostics.recordFrame(rawDt * 1000);
+    updateFrame(dt);
+    renderScene();
+    requestAnimationFrame(animate);
+  }
+
+  presentationRuntime.resetStage();
+  resize();
+  renderScene();
+  setLoadingPhase(0.96, "FINALIZING FIRST FRAME");
+  requestAnimationFrame(() => {
+    setLoadingPhase(1, "COMBAT SPACE READY");
+    requestAnimationFrame(() => shell.loading.classList.add("ready"));
+  });
+  if (!deterministicCapture) requestAnimationFrame(animate);
+}
