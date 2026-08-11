@@ -14,9 +14,19 @@ import {
   skillAllocationSnapshot,
   unspentSkillPoints,
 } from "../src/game/upgrades/skill-system";
+import { gameplayHookImplementationRegistry } from "../src/game/upgrades/gameplay-hook-registry";
 import { createGame, queueDash } from "../src/game/game";
 
 describe("full-game skill definitions", () => {
+  test("routes every declared hook to an implemented owner and focused verification suite", () => {
+    const declared = new Set(FULL_GAME_SKILL_DEFINITIONS.flatMap((skill) => skill.hookIds));
+    const implemented = new Set(gameplayHookImplementationRegistry.list().map((hook) => hook.id));
+    expect([...implemented].sort()).toEqual([...declared].sort());
+    for (const hook of gameplayHookImplementationRegistry.list()) {
+      expect(hook.owner.length).toBeGreaterThan(5);
+      expect(hook.verification.length).toBeGreaterThan(3);
+    }
+  });
   test("contains 28 fully described one-point passive nodes", () => {
     expect(FULL_GAME_SKILL_DEFINITIONS).toHaveLength(28);
     expect(new Set(FULL_GAME_SKILL_DEFINITIONS.map((skill) => skill.id)).size).toBe(28);

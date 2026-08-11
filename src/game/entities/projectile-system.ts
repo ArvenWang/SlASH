@@ -2,7 +2,7 @@ import {
   projectileDefinitions,
   type ProjectileDefinition,
 } from "../../content/entities/definitions";
-import { copyVec2, type Vec2 } from "../../core/math/vec2";
+import { copyVec2, squaredDistance, type Vec2 } from "../../core/math/vec2";
 import { segmentIntersectsCircle } from "../collision/shapes";
 import type {
   AbilityId,
@@ -163,6 +163,44 @@ export function advanceProjectiles(state: GameState, deltaMs: number): Projectil
   }
   state.projectiles = survivors;
   return { playerHitBy, returnedImpacts };
+}
+
+export function purgeProjectilesInRadius(
+  state: GameState,
+  center: Vec2,
+  radius: number,
+  attackId: AbilityId,
+): number {
+  let purged = 0;
+  const safeRadius = Math.max(0, radius);
+  for (const projectile of state.projectiles) {
+    if (!projectile.alive || projectile.faction !== "enemy") continue;
+    const definition = projectileDefinitions.get(projectile.definitionId);
+    if (definition.tags.includes("boss")) continue;
+    const combined = safeRadius + projectile.radius;
+    if (squaredDistance(projectile.position, center) > combined * combined + EPSILON) continue;
+    destroyProjectile(state, projectile, attackId);
+    purged += 1;
+  }
+  return purged;
+}
+
+export function destroyProjectilesAlongSlash(
+  state: GameState,
+  from: Vec2,
+  to: Vec2,
+  hitRadius: number,
+  attackId: AbilityId,
+): number {
+  let destroyed = 0;
+  for (const projectile of state.projectiles) {
+    if (!projectile.alive || projectile.faction !== "enemy") continue;
+    if (!projectileDefinitions.get(projectile.definitionId).tags.includes("slashable")) continue;
+    if (!segmentIntersectsCircle(from, to, projectile.position, hitRadius + projectile.radius)) continue;
+    destroyProjectile(state, projectile, attackId);
+    destroyed += 1;
+  }
+  return destroyed;
 }
 
 function reflectProjectileTowardSource(

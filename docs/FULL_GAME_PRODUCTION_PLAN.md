@@ -132,7 +132,7 @@ P11 Visual Branch Integration Contract + Git Push
 - [x] 完整 Skill Tree UI，不使用随机三选一。
 - [x] Threat Preview 与 Allocation 合并为 Planning Board。
 - [ ] Save / Replay 记录 Skill Commands。
-- [ ] 先接入可由现有 Modifier 表达的节点，再为机制节点增加 typed Hooks（B-01 / B-12 已接入，26 个机制 Hook 待后续工作包）。
+- [x] 28 个节点的 31 个声明 Hook 全部路由到实际 Gameplay Owner，并由 Hook Registry 防止 UI-only 节点混入完成状态。
 
 ### 测试
 

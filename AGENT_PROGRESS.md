@@ -55,12 +55,19 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - [x] Hazard：Mine 1s 武装 + 550ms 爆炸，Arc Rail 1.4s Telegraph + 0.6s Active；Dash Transit 安全，非 Dash 接触致命，到期从 State / Snapshot / Presentation 移除。
 - [x] Entity Presentation / Lab：正式 Presentation Registry、Projectile/Obstacle/Hazard Budget、简单可读的实体外观，以及 Content Lab 的真实 Spawn 控件均已接入。
 - [x] P4 自动化：全量 19 文件 / 100 项通过；60/144Hz Entity Hash、JSON Roundtrip、Content Lab、真实两次 Canvas 点击切弹回返与折射、Console 0。
+- [x] 28 Skill Gameplay Hook 已全部接入：Basic 12 / Charged 9 / Ultimate 6 / Shared 1；31 个声明 Hook 均有实际 Owner 与定向验证路由，不存在只改 UI 的技能节点。
+- [x] Curve Dash 使用不增加主动按钮的快速拖拽手势：按下点为终点、拖动位置为曲率控制，≤180ms 释放执行 Basic 曲线；继续按住仍进入 Charged，曲率硬上限 65°。
+- [x] 真实路径统一：直线、Curve 与 Refraction 都写入同一 Path Segment；Cross、Echo、Double Echo、Stored Path、Ultimate Cross 都读取实际完成路径。
+- [x] Cross 可用性纠偏：连续直线在无普通移动游戏中无法产生内部交点，因此新增“反向重叠旧线至少 1.5m”作为有效交叉；共享起点不触发，非交叉新线仍替换唯一旧线。
+- [x] Gravity 重新定义为致死走廊之外额外 30% 的 Near-Miss 牵引带，0.35s 最多拉 0.6m，为 Echo 创造二次命中，不再出现“已经命中的敌人又被拉”的自相矛盾。
+- [x] Basic / Shared 自动化：Wide、Rapid、Curve、Gravity、Prism、Cross / Purge、Echo / Double、Impact Burst、Kill Momentum 共 10 项场景；全量现为 20 文件 / 111 项通过。
+- [x] Basic 真实浏览器：真实拖拽产生 10 段 Curve Stored Path；非交叉直线替换旧线；真实反向点击触发 Cross，击杀偏离刀线目标、清除 Projectile、仅打断装甲敌人且不卸甲；Console 0。
 
 ## Full Game 下一步计划
 
-1. 完成剩余 Basic / Shared Skill Hook：Wide、Gravity、Curve、Cross、Cross Purge、Echo、Double Echo、Impact Burst、Rapid Dash、Kill Momentum。
-2. 完成 P1/P2 剩余的 Event / Forge 生命周期、Campaign Save / Replay，让 24 节点 Run 不在非战斗节点断路。
-3. 进入 P5 Enemy Roster / Attack Strategy，让 Gunner、Constructor、Mine Layer、Sniper 等真实生成 P4 实体。
+1. 完成 P1/P2 剩余的 Event / Forge 生命周期、Forge Allocation UI、Campaign Save / Replay，让 24 节点 Run 不在非战斗节点断路。
+2. 进入 P5 Enemy Roster / Attack Strategy，让 Gunner、Constructor、Mine Layer、Sniper 等真实生成 P4 实体。
+3. 之后按 P6–P8 完成 53 个 Encounter、4 Boss 与全 Run 内容，不把机制齐全误报成内容齐全。
 4. 每个有意义变更继续执行自动化、截图、`render_game_to_text` 和 Console 检查，再依 P4–P11 推进。
 
 ## Full Game 当前问题与边界

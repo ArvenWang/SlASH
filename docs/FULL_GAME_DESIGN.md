@@ -211,11 +211,11 @@ Elite 额外奖励：最多 +2 点 / Run
 | ID | 节点 | 前置 | 效果 |
 | --- | --- | --- | --- |
 | B-01 | Wide Slash / 宽刃 | Basic Root | Basic Corridor 宽度 +30%。 |
-| B-02 | Gravity Slash / 磁轨 | B-01 | 路径外圈敌人被轻吸向刀线 0.35 秒；不直接伤害。 |
+| B-02 | Gravity Slash / 磁轨 | B-01 | 未被本刀命中、但进入加宽走廊之外额外 30% 牵引带的敌人，在 0.35 秒内被拉向刀线；最多 0.6m，不移动 Boss。 |
 | B-03 | Curve Dash / 弧线冲刺 | Basic Root | 目标点输入生成可控弧线；碰撞、Cross、Echo 使用真实弧线。 |
 | B-04 | Refraction / 折射 | Basic Root | 每次 Dash 第一次撞可折射 Obstacle 时按法线反射并继续。 |
 | B-05 | Prism Momentum / 折光续势 | B-04 | 折射第二段宽度 +25%；第二段每击杀 1 人减少本次 Recovery 40ms，最多 3 人。 |
-| B-06 | Cross Execution / 交叉处决 | Basic Root | 保存最近实际路径 2.5 秒；下一条不交叉则替换，交叉则在首个交点触发空间冲击并清空两线。 |
+| B-06 | Cross Execution / 交叉处决 | Basic Root | 保存最近实际路径 2.5 秒；下一条不交叉则替换，内部交叉则在首个交点触发空间冲击并清空两线。由于玩家没有普通移动，反向重叠旧线至少 1.5m 也视为有效交叉；共享起点本身不触发。 |
 | B-07 | Cross Purge / 交点净空 | B-06 | Cross 冲击同时抵消 3m 内普通 Projectile，并打断非 Boss 装甲敌人 0.45 秒；不卸甲。 |
 | B-08 | Echo Slash / 残响斩 | Basic Root | 0.4 秒后回放实际路径一次；玩家不移动，不新建 Stored Line。 |
 | B-09 | Double Echo / 双重残响 | B-08 | 0.8 秒时再回放一次相同路径；第二次不变宽、不写 Stored Line。 |

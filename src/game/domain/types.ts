@@ -63,6 +63,16 @@ export interface DashState {
   pathSegmentIndex: number;
   reflectionsUsed: number;
   projectilesReturnedThisDash: number;
+  killCount: number;
+  refractionSecondLegKills: number;
+  pendingCross: PendingCrossState | null;
+  killMomentumConsumedStacks: number;
+}
+
+export interface PendingCrossState {
+  readonly position: Vec2;
+  readonly pathSegmentIndex: number;
+  triggered: boolean;
 }
 
 export interface DashObstacleContactState {
@@ -136,6 +146,7 @@ export interface PlayerState {
   abilities: Record<AbilitySlot, AbilityRuntimeState | null>;
   ultimateEnergy: number;
   predatorDriveExpiresAtMs: number | null;
+  killMomentumStacks: number;
   ultimatePlanning: UltimatePlanningState | null;
   ultimateExecution: UltimateExecutionState | null;
 }
@@ -231,6 +242,23 @@ export interface CombatRuntimeState {
   kills: number;
   totalEnemies: number;
   scheduledSlashes: ScheduledSlashState[];
+  storedPath: StoredPathState | null;
+  gravityPulls: GravityPullState[];
+}
+
+export interface StoredPathState {
+  readonly id: string;
+  readonly abilityId: AbilityId;
+  readonly segments: UltimatePathSegment[];
+  remainingMs: number;
+}
+
+export interface GravityPullState {
+  readonly enemyId: EntityId;
+  readonly from: Vec2;
+  readonly to: Vec2;
+  readonly durationMs: number;
+  elapsedMs: number;
 }
 
 export interface ScheduledSlashState {
@@ -240,6 +268,7 @@ export interface ScheduledSlashState {
   readonly to: Vec2;
   readonly hitRadius: number;
   readonly attackId: AbilityId;
+  remainingMs: number;
 }
 
 export interface BaseGameEvent {
@@ -278,6 +307,9 @@ export type GameEventPayload =
   | { type: "ultimate-cross-triggered"; abilityId: AbilityId; position: Vec2 }
   | { type: "ultimate-ended"; abilityId: AbilityId; segmentCount: number; killCount: number; energyRemaining: number }
   | { type: "scheduled-slash-triggered"; attackId: AbilityId; from: Vec2; to: Vec2 }
+  | { type: "cross-execution-triggered"; position: Vec2; killedCount: number; purgedProjectileCount: number; interruptedEnemyCount: number }
+  | { type: "impact-burst-triggered"; position: Vec2; killedCount: number }
+  | { type: "gravity-pull-started"; enemyId: EntityId; from: Vec2; to: Vec2; durationMs: number }
   | { type: "projectile-spawned"; projectileId: EntityId; definitionId: ProjectileDefinitionId; sourceId: EntityId; position: Vec2 }
   | { type: "projectile-destroyed"; projectileId: EntityId; attackId: AbilityId; sourceId: EntityId; position: Vec2; direction: Vec2 }
   | { type: "projectile-reflected"; projectileId: EntityId; attackId: AbilityId; sourceId: EntityId; position: Vec2; velocity: Vec2 }
@@ -287,6 +319,7 @@ export type GameEventPayload =
   | { type: "obstacle-expired"; obstacleId: EntityId; position: Vec2 }
   | { type: "dash-obstacle-impact"; abilityId: AbilityId; obstacleId: EntityId; position: Vec2; normal: Vec2 }
   | { type: "dash-reflected"; abilityId: AbilityId; obstacleId: EntityId; position: Vec2; normal: Vec2; from: Vec2; to: Vec2 }
+  | { type: "dash-path-segment-started"; abilityId: AbilityId; segmentIndex: number; from: Vec2; to: Vec2 }
   | { type: "hazard-spawned"; hazardId: EntityId; definitionId: HazardDefinitionId; position: Vec2 }
   | { type: "hazard-phase-changed"; hazardId: EntityId; phase: HazardRuntimePhase; position: Vec2 }
   | { type: "hazard-triggered"; hazardId: EntityId; position: Vec2; activatesAtMs: number }
@@ -429,6 +462,7 @@ export interface GameSnapshot {
     };
     ultimateEnergy: number;
     predatorDriveRemainingMs: number;
+    killMomentumStacks: number;
     armoredEnemies: Array<{
       id: EntityId;
       armorParts: Array<{ id: string; intact: boolean }>;
@@ -444,6 +478,8 @@ export interface GameSnapshot {
       killCount: number;
     };
     scheduledSlashes: Array<{ id: string; executeAtMs: number; attackId: AbilityId }>;
+    storedPath: null | { id: string; abilityId: AbilityId; remainingMs: number; segmentCount: number };
+    gravityPulls: Array<{ enemyId: EntityId; remainingMs: number }>;
   };
   campaign: null | {
     phase: string;

@@ -77,6 +77,7 @@ export function initializeFullGameCampaign(state: GameState, seed: number): void
   state.player.ultimatePlanning = null;
   state.player.ultimateExecution = null;
   state.player.recoveryRemainingMs = 0;
+  state.player.killMomentumStacks = 0;
   state.player.bufferedAbility = null;
   state.enemies = [];
   state.projectiles = [];
@@ -85,6 +86,8 @@ export function initializeFullGameCampaign(state: GameState, seed: number): void
   state.combat.kills = 0;
   state.combat.totalEnemies = 0;
   state.combat.scheduledSlashes = [];
+  state.combat.storedPath = null;
+  state.combat.gravityPulls = [];
   state.lastEvents = [];
 }
 
@@ -331,6 +334,7 @@ function prepareEncounterState(
   state.player.ultimatePlanning = null;
   state.player.ultimateExecution = null;
   state.player.recoveryRemainingMs = 0;
+  state.player.killMomentumStacks = 0;
   state.player.bufferedAbility = null;
   state.enemies = [];
   state.projectiles = [];
@@ -339,6 +343,8 @@ function prepareEncounterState(
   state.combat.kills = 0;
   state.combat.totalEnemies = 0;
   state.combat.scheduledSlashes = [];
+  state.combat.storedPath = null;
+  state.combat.gravityPulls = [];
   if (!preserveClock) state.accumulatorMs = 0;
 }
 

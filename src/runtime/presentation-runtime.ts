@@ -32,6 +32,11 @@ import type {
 } from "../presentation/characters/types";
 import type { RuntimeTuning } from "./debug-runtime";
 import type { RendererRuntime } from "./renderer-runtime";
+import {
+  CURVE_DRAG_MIN_DISTANCE,
+  curveDashPathPoints,
+} from "../game/abilities/dash-slash";
+import { STORED_PATH_DURATION_MS } from "../game/abilities/path-passives";
 
 const EPSILON_PRESENTATION = 1e-6;
 
@@ -130,8 +135,9 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   const previewGeometry = new THREE.BufferGeometry();
   previewGeometry.setAttribute(
     "position",
-    new THREE.Float32BufferAttribute([0, 0.06, 0, 0, 0.06, 0], 3),
+    new THREE.Float32BufferAttribute(new Float32Array(17 * 3), 3),
   );
+  previewGeometry.setDrawRange(0, 2);
   const previewMaterial = new THREE.LineBasicMaterial({
     color: 0x7199a0,
     transparent: true,
@@ -142,6 +148,23 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   previewLine.visible = false;
   previewLine.renderOrder = 4;
   scene.add(previewLine);
+
+  const storedPathGeometry = new THREE.BufferGeometry();
+  storedPathGeometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(new Float32Array(18 * 3), 3),
+  );
+  storedPathGeometry.setDrawRange(0, 0);
+  const storedPathMaterial = new THREE.LineBasicMaterial({
+    color: 0xff8e6f,
+    transparent: true,
+    opacity: 0.5,
+    depthWrite: false,
+  });
+  const storedPathLine = new THREE.Line(storedPathGeometry, storedPathMaterial);
+  storedPathLine.visible = false;
+  storedPathLine.renderOrder = 4;
+  scene.add(storedPathLine);
 
   const ultimatePlanGeometry = new THREE.BufferGeometry();
   ultimatePlanGeometry.setAttribute(
@@ -598,9 +621,20 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       && worldTime >= previewSuppressedUntil;
     if (!previewLine.visible) return;
     const positions = previewGeometry.getAttribute("position") as THREE.BufferAttribute;
-    positions.setXYZ(0, gameState.player.position.x, 0.08, gameState.player.position.z);
     const charge = gameState.player.charge;
-    if (charge) {
+    const curveGesture = charge &&
+      charge.heldMs <= 180 &&
+      gameState.run.selectedUpgrades.includes("skill-curve-dash-v1") &&
+      Math.hypot(
+        charge.currentTarget.x - charge.initialTarget.x,
+        charge.currentTarget.z - charge.initialTarget.z,
+      ) >= CURVE_DRAG_MIN_DISTANCE;
+    if (charge && curveGesture) {
+      const points = curveDashPathPoints(gameState.player.position, charge.initialTarget, charge.currentTarget);
+      points.slice(0, 17).forEach((point, index) => positions.setXYZ(index, point.x, 0.08, point.z));
+      previewGeometry.setDrawRange(0, Math.min(17, points.length));
+    } else if (charge) {
+      positions.setXYZ(0, gameState.player.position.x, 0.08, gameState.player.position.z);
       const distance = Math.hypot(
         charge.currentTarget.x - gameState.player.position.x,
         charge.currentTarget.z - gameState.player.position.z,
@@ -611,11 +645,32 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
         0.08,
         gameState.player.position.z + charge.direction.z * distance,
       );
+      previewGeometry.setDrawRange(0, 2);
     } else {
+      positions.setXYZ(0, gameState.player.position.x, 0.08, gameState.player.position.z);
       positions.setXYZ(1, pointerWorld.x, 0.08, pointerWorld.z);
+      previewGeometry.setDrawRange(0, 2);
     }
     positions.needsUpdate = true;
     previewGeometry.computeBoundingSphere();
+  }
+
+  function updateStoredPath(): void {
+    const stored = gameState.combat.storedPath;
+    storedPathLine.visible = stored !== null;
+    if (!stored) {
+      storedPathGeometry.setDrawRange(0, 0);
+      return;
+    }
+    const points = stored.segments.length === 0
+      ? []
+      : [stored.segments[0]!.from, ...stored.segments.map((segment) => segment.to)];
+    const positions = storedPathGeometry.getAttribute("position") as THREE.BufferAttribute;
+    points.slice(0, 18).forEach((point, index) => positions.setXYZ(index, point.x, 0.075, point.z));
+    positions.needsUpdate = true;
+    storedPathGeometry.setDrawRange(0, Math.min(18, points.length));
+    storedPathGeometry.computeBoundingSphere();
+    storedPathMaterial.opacity = 0.16 + 0.42 * Math.min(1, stored.remainingMs / STORED_PATH_DURATION_MS);
   }
 
   function updateUltimatePlan(): void {
@@ -636,7 +691,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     ultimatePlanGeometry.computeBoundingSphere();
   }
 
-  function triggerDashVisual(event: Extract<GameEvent, { type: "dash-started" | "dash-reflected" }>): void {
+  function triggerDashVisual(event: Extract<GameEvent, { type: "dash-started" | "dash-reflected" | "dash-path-segment-started" }>): void {
     const presentation = abilityPresentationRegistry.get(event.abilityId);
     const cameraProfile = cameraProfileRegistry.get(presentation.cameraProfileId);
     if (cameraProfile.runtimeId !== "gameplay-camera-impulse-v1") {
@@ -646,6 +701,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     const end = new THREE.Vector3(event.to.x, 0, event.to.z);
     const direction = end.clone().sub(start).setY(0).normalize();
     const anticipatedHits = "anticipatedHits" in event ? event.anticipatedHits : [];
+    const curveContinuation = event.type === "dash-path-segment-started";
     const kills = anticipatedHits.map(({ position }) => (
       new THREE.Vector3(position.x, 0, position.z)
     ));
@@ -659,7 +715,8 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       turn: 0,
       sourceProgress: 0.43,
     });
-    if (pendingAbilityInputId !== null) {
+    if (curveContinuation && event.segmentIndex % 2 !== 0) return;
+    if (!curveContinuation && pendingAbilityInputId !== null) {
       diagnostics.markDashLogic(pendingAbilityInputId);
       pendingAbilityInputId = null;
     }
@@ -667,17 +724,19 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       presentation.vfxProfileId,
       { start, end, killPositions: kills, actor: playerActor.afterimageSource },
     );
-    audio.playDash(presentation.audioProfileId, kills.length);
-    postFx.triggerImpact(presentation.cameraProfileId, kills.length * 0.055);
-    heroAnchorLight.intensity = Math.min(34, 18 + kills.length * 2.6);
-    cameraImpulse.add(new THREE.Vector3(
-      direction.x * 0.16,
-      0.065 + kills.length * 0.009,
-      direction.z * 0.13,
-    ));
-    previewSuppressedUntil = worldTime + 0.42;
-    shell.reticle.classList.add("active");
-    window.setTimeout(() => shell.reticle.classList.remove("active"), 100);
+    if (!curveContinuation) {
+      audio.playDash(presentation.audioProfileId, kills.length);
+      postFx.triggerImpact(presentation.cameraProfileId, kills.length * 0.055);
+      heroAnchorLight.intensity = Math.min(34, 18 + kills.length * 2.6);
+      cameraImpulse.add(new THREE.Vector3(
+        direction.x * 0.16,
+        0.065 + kills.length * 0.009,
+        direction.z * 0.13,
+      ));
+      previewSuppressedUntil = worldTime + 0.42;
+      shell.reticle.classList.add("active");
+      window.setTimeout(() => shell.reticle.classList.remove("active"), 100);
+    }
   }
 
   function updateEnemyVisual(enemy: EnemyState, visual: EnemyVisualRuntime, dt: number): void {
@@ -813,7 +872,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
 
   function consumeEvents(events: readonly GameEvent[]): void {
     for (const event of events) {
-      if (event.type === "dash-started" || event.type === "dash-reflected") {
+      if (event.type === "dash-started" || event.type === "dash-reflected" || event.type === "dash-path-segment-started") {
         triggerDashVisual(event);
       } else if (event.type === "enemy-killed") {
         const visual = enemyVisuals.get(event.enemyId);
@@ -848,6 +907,27 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
           intensity: 0.95,
         });
         postFx.triggerImpact(abilityPresentationRegistry.get(event.abilityId).cameraProfileId);
+      } else if (event.type === "scheduled-slash-triggered") {
+        const presentation = abilityPresentationRegistry.get("dash-slash");
+        vfx.spawnSlash(presentation.vfxProfileId, {
+          start: new THREE.Vector3(event.from.x, 0, event.from.z),
+          end: new THREE.Vector3(event.to.x, 0, event.to.z),
+          killPositions: [],
+          actor: playerActor.afterimageSource,
+        });
+      } else if (event.type === "cross-execution-triggered" || event.type === "impact-burst-triggered") {
+        vfx.spawnCutContact("enemy-cut-contact-v1", {
+          position: new THREE.Vector3(event.position.x, 0.3, event.position.z),
+          direction: new THREE.Vector3(0, 1, 0),
+          intensity: event.type === "cross-execution-triggered" ? 1.45 : 1.1,
+        });
+        postFx.triggerImpact("dash-impact-current-v1", event.type === "cross-execution-triggered" ? 0.28 : 0.18);
+      } else if (event.type === "gravity-pull-started") {
+        vfx.spawnCutContact("enemy-cut-contact-v1", {
+          position: new THREE.Vector3(event.to.x, 0.15, event.to.z),
+          direction: new THREE.Vector3(event.to.x - event.from.x, 0, event.to.z - event.from.z).normalize(),
+          intensity: 0.42,
+        });
       } else if (event.type === "stage-cleared" || event.type === "game-complete") {
         phaseAge = 0;
       } else if (event.type === "encounter-wave-warning") {
@@ -953,6 +1033,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     camera.position.y += Math.sin(worldTime * 0.21) * 0.07;
     camera.lookAt(cameraTarget);
     updatePreview();
+    updateStoredPath();
     updateUltimatePlan();
     updateHud();
     updatePhaseBanner();
@@ -1008,9 +1089,11 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       enemyVisuals.clear();
       clearWorldEntityVisuals();
       playerActor.dispose();
-      scene.remove(previewLine, ultimatePlanLine, enemyContactShadows);
+      scene.remove(previewLine, storedPathLine, ultimatePlanLine, enemyContactShadows);
       previewGeometry.dispose();
       previewMaterial.dispose();
+      storedPathGeometry.dispose();
+      storedPathMaterial.dispose();
       ultimatePlanGeometry.dispose();
       ultimatePlanMaterial.dispose();
       enemyContactShadowGeometry.dispose();

@@ -153,6 +153,7 @@ export function completeVectorFocusSegment(state: GameState, completedDash: Dash
         to: copyVec2(finalSegment.to),
         hitRadius: DASH_HIT_RADIUS,
         attackId: "skill-vector-echo-v1",
+        remainingMs: VECTOR_ECHO_DELAY_MS,
       });
     }
   }
@@ -206,6 +207,10 @@ function beginVectorFocusSegment(state: GameState): void {
     pathSegmentIndex: 0,
     reflectionsUsed: 0,
     projectilesReturnedThisDash: 0,
+    killCount: 0,
+    refractionSecondLegKills: 0,
+    pendingCross: null,
+    killMomentumConsumedStacks: 0,
   };
   emitGameEvent(state, {
     type: "ultimate-segment-started",

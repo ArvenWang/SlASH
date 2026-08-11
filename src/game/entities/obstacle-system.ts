@@ -104,17 +104,54 @@ export function planDashGeometry(
   from: Vec2,
   requestedTo: Vec2,
 ): PlannedDashGeometrySegment[] {
-  const first = firstBlockingObstacle(state, from, requestedTo, state.player.radius);
-  if (!first) return [plainSegment(from, requestedTo)];
+  return planDashPolylineGeometry(state, [from, requestedTo]);
+}
 
-  const incoming = normalizedDirection(from, requestedTo, state.player.facing);
+export function planDashPolylineGeometry(
+  state: GameState,
+  points: readonly Vec2[],
+): PlannedDashGeometrySegment[] {
+  if (points.length < 2) return [];
+  const requestedSegments = points.slice(0, -1).map((from, index) => ({
+    from,
+    to: points[index + 1] ?? from,
+  }));
+  const totalDistance = requestedSegments.reduce((total, segment) => (
+    total + Math.hypot(segment.to.x - segment.from.x, segment.to.z - segment.from.z)
+  ), 0);
+  const planned: PlannedDashGeometrySegment[] = [];
+  let completedDistance = 0;
+  let collision: ObstacleSweepResult | null = null;
+  let collisionSegment: { from: Vec2; to: Vec2 } | null = null;
+  for (const segment of requestedSegments) {
+    const segmentDistance = Math.hypot(segment.to.x - segment.from.x, segment.to.z - segment.from.z);
+    const hit = firstBlockingObstacle(state, segment.from, segment.to, state.player.radius);
+    if (!hit) {
+      planned.push(plainSegment(segment.from, segment.to));
+      completedDistance += segmentDistance;
+      continue;
+    }
+    collision = hit;
+    collisionSegment = segment;
+    completedDistance += segmentDistance * hit.hit.t;
+    break;
+  }
+  if (!collision || !collisionSegment) return planned;
+
+  const incoming = normalizedDirection(collisionSegment.from, collisionSegment.to, state.player.facing);
+  const first = collision;
   const firstContact = contactState(first, incoming);
   const canReflect = state.run.selectedUpgrades.includes("skill-refraction-v1") &&
     obstacleDefinitions.get(first.obstacle.definitionId).tags.includes("reflectable");
-  const totalDistance = Math.hypot(requestedTo.x - from.x, requestedTo.z - from.z);
-  const remainingDistance = totalDistance * Math.max(0, 1 - first.hit.t);
+  const remainingDistance = Math.max(0, totalDistance - completedDistance);
   if (!canReflect || remainingDistance <= 0.05) {
-    return [{ from: copyVec2(from), to: copyVec2(first.hit.point), reflectionAtEnd: null, terminalImpact: firstContact }];
+    planned.push({
+      from: copyVec2(collisionSegment.from),
+      to: copyVec2(first.hit.point),
+      reflectionAtEnd: null,
+      terminalImpact: firstContact,
+    });
+    return planned;
   }
 
   const dot = incoming.x * first.hit.normal.x + incoming.z * first.hit.normal.z;
@@ -145,15 +182,14 @@ export function planDashGeometry(
         terminalImpact: contactState(second, reflected),
       }
     : plainSegment(first.hit.point, reflectedTarget);
-  return [
-    {
-      from: copyVec2(from),
-      to: copyVec2(first.hit.point),
-      reflectionAtEnd: firstContact,
-      terminalImpact: null,
-    },
-    reflectedSegment,
-  ];
+  planned.push({
+    from: copyVec2(collisionSegment.from),
+    to: copyVec2(first.hit.point),
+    reflectionAtEnd: firstContact,
+    terminalImpact: null,
+  });
+  planned.push(reflectedSegment);
+  return planned;
 }
 
 function firstBlockingObstacle(

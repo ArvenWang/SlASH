@@ -17,6 +17,7 @@ export interface SlashValidationApi {
   setArmorScenario(): void;
   setUltimateScenario(): void;
   setEntityScenario(): void;
+  setBasicPassiveScenario(): void;
   dashTo(x: number, z: number): string;
   beginChargeTo(x: number, z: number): string;
   updateChargeTo(x: number, z: number): string;

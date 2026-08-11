@@ -38,6 +38,11 @@ import {
   completeVectorFocusSegment,
   startVectorFocus,
 } from "./abilities/vector-focus";
+import {
+  advancePathPassiveTimers,
+  consumePendingCrossAlongSegment,
+  finalizeRegularDashPathEffects,
+} from "./abilities/path-passives";
 import { segmentIntersectsCircle } from "./collision/shapes";
 import { clampPointToArena } from "./collision/arena";
 import type {
@@ -77,6 +82,8 @@ import {
   advanceProjectiles,
   resolveProjectilesAlongDashSegment,
   spawnProjectile,
+  purgeProjectilesInRadius,
+  destroyProjectilesAlongSlash,
   type ReturnedProjectileImpact,
 } from "./entities/projectile-system";
 import {
@@ -276,6 +283,7 @@ export function createGame(stageIndex = 0, rules: Partial<GameRules> = {}): Game
       },
       ultimateEnergy: 0,
       predatorDriveExpiresAtMs: null,
+      killMomentumStacks: 0,
       ultimatePlanning: null,
       ultimateExecution: null,
     },
@@ -303,6 +311,8 @@ export function createGame(stageIndex = 0, rules: Partial<GameRules> = {}): Game
       kills: 0,
       totalEnemies: spawns.length,
       scheduledSlashes: [],
+      storedPath: null,
+      gravityPulls: [],
     },
     eventSequence: 0,
     commandSequence: 0,
@@ -500,6 +510,87 @@ export function createEntityValidationGame(rules: Partial<GameRules> = {}): Game
   return state;
 }
 
+/** Deterministic browser acceptance scenario for Curve / Stored Path / Cross. */
+export function createBasicPassiveValidationGame(rules: Partial<GameRules> = {}): GameState {
+  const state = createGame(0, rules);
+  const strikerDefinition = enemyDefinitions.get(STRIKER_ENEMY_ID);
+  const vanguardDefinition = enemyDefinitions.get(VANGUARD_ENEMY_ID);
+  state.stage.levelId = "validation-basic-passives";
+  state.stage.name = "PATH MEMORY";
+  state.stage.encounterId = "validation-basic-passives-v1";
+  state.player.position = point(-10, -4);
+  state.player.facing = point(1, 0);
+  state.run.selectedUpgrades = [
+    "skill-curve-dash-v1",
+    "skill-cross-execution-v1",
+    "skill-cross-purge-v1",
+    "skill-echo-slash-v1",
+    "skill-double-echo-v1",
+  ];
+  state.enemies = [
+    {
+      id: "validation-cross-victim",
+      definitionId: strikerDefinition.id,
+      position: point(6.2, 4.5),
+      facing: point(-1, 0),
+      radius: strikerDefinition.radius,
+      speed: 0,
+      alive: true,
+      state: "active" as const,
+      spawnedAtMs: 0,
+      killedAtMs: null,
+      armorParts: [],
+      staggerRemainingMs: 0,
+    },
+    {
+      id: "validation-cross-armored",
+      definitionId: vanguardDefinition.id,
+      position: point(6, 5.8),
+      facing: point(1, 0),
+      radius: vanguardDefinition.radius,
+      speed: 0,
+      alive: true,
+      state: "active" as const,
+      spawnedAtMs: 0,
+      killedAtMs: null,
+      armorParts: createArmorPartStates(vanguardDefinition.armorProfileId),
+      staggerRemainingMs: 0,
+    },
+    {
+      id: "validation-path-anchor",
+      definitionId: strikerDefinition.id,
+      position: point(18, 10),
+      facing: point(-1, 0),
+      radius: strikerDefinition.radius,
+      speed: 0,
+      alive: true,
+      state: "active" as const,
+      spawnedAtMs: 0,
+      killedAtMs: null,
+      armorParts: [],
+      staggerRemainingMs: 0,
+    },
+  ];
+  state.projectiles = [];
+  state.obstacles = [];
+  state.hazards = [];
+  state.combat.kills = 0;
+  state.combat.totalEnemies = state.enemies.length;
+  state.combat.scheduledSlashes = [];
+  state.combat.storedPath = null;
+  state.combat.gravityPulls = [];
+  const projectile = spawnProjectile(state, {
+    id: "validation-cross-round",
+    definitionId: STANDARD_ROUND_PROJECTILE_ID,
+    position: point(6, 3.8),
+    direction: point(1, 0),
+    sourceId: "validation-path-anchor",
+  });
+  if (projectile) projectile.velocity = point(0, 0);
+  drainGameEvents(state);
+  return state;
+}
+
 /** Mutates the supplied state in place, preserving references held by a renderer. */
 export function restartStage(state: GameState): GameState {
   if (state.run.fullGame !== null) {
@@ -672,7 +763,11 @@ function breakEnemyArmor(
     changeUltimateEnergy(state, 4, `armor-break:${enemy.id}`);
   }
   if (state.run.selectedUpgrades.includes("skill-breach-momentum-v1")) {
-    dash.recoveryMs = Math.max(state.rules.recoveryMs, dash.recoveryMs - 80);
+    dash.recoveryMs = Math.max(
+      MIN_DASH_RECOVERY_MS,
+      state.rules.recoveryMs - dash.killMomentumConsumedStacks * 35,
+      dash.recoveryMs - 80,
+    );
   }
   if (state.run.selectedUpgrades.includes("skill-chain-breach-v1")) {
     dash.hitRadius = dash.baseHitRadius * (1 + Math.min(3, dash.armorBreakCount) * 0.15);
@@ -702,6 +797,21 @@ function killEnemy(
   enemy.killedAtMs = state.elapsedMs;
   state.combat.kills += 1;
   const dash = state.player.dash;
+  if (
+    dash &&
+    attackId === dash.abilityId &&
+    (dash.abilityId === DASH_SLASH_ABILITY_ID || dash.abilityId === CHARGED_DASH_ABILITY_ID)
+  ) {
+    dash.killCount += 1;
+    if (
+      dash.reflectionsUsed > 0 &&
+      dash.refractionSecondLegKills < 3 &&
+      state.run.selectedUpgrades.includes("skill-prism-momentum-v1")
+    ) {
+      dash.refractionSecondLegKills += 1;
+      dash.recoveryMs = Math.max(MIN_DASH_RECOVERY_MS, dash.recoveryMs - 40);
+    }
+  }
   if (dash?.abilityId === CHARGED_DASH_ABILITY_ID && attackId === CHARGED_DASH_ABILITY_ID) {
     dash.exposedKillCount += 1;
     if (state.run.selectedUpgrades.includes("skill-execution-tempo-v1")) {
@@ -791,14 +901,16 @@ function segmentProjection(
   return ((pointValue.x - start.x) * segmentX + (pointValue.z - start.z) * segmentZ) / segmentLengthSquared;
 }
 
-function resolveScheduledSlashes(state: GameState): void {
+function resolveScheduledSlashes(state: GameState, deltaMs: number): void {
   if (state.combat.scheduledSlashes.length === 0) return;
   const pending = [];
   for (const slash of state.combat.scheduledSlashes) {
-    if (slash.executeAtMs > state.elapsedMs + EPSILON) {
+    slash.remainingMs = Math.max(0, slash.remainingMs - Math.max(0, deltaMs));
+    if (slash.remainingMs > EPSILON) {
       pending.push(slash);
       continue;
     }
+    destroyProjectilesAlongSlash(state, slash.from, slash.to, slash.hitRadius, slash.attackId);
     for (const enemy of state.enemies) {
       if (!enemy.alive || !segmentIntersectsCircle(
         slash.from,
@@ -835,6 +947,69 @@ function resolveScheduledSlashes(state: GameState): void {
   state.combat.scheduledSlashes = pending;
 }
 
+function resolveCrossExecution(state: GameState, position: Vec2): void {
+  let killedCount = 0;
+  let interruptedEnemyCount = 0;
+  const purgeEnabled = state.run.selectedUpgrades.includes("skill-cross-purge-v1");
+  for (const enemy of state.enemies) {
+    if (!enemy.alive || squaredDistance(enemy.position, position) > (2.5 + enemy.radius) ** 2) continue;
+    if (hasIntactArmor(enemy)) {
+      const definition = enemyDefinitions.get(enemy.definitionId);
+      if (purgeEnabled && !definition.tags.includes("boss")) {
+        enemy.staggerRemainingMs = Math.max(enemy.staggerRemainingMs, 450);
+        interruptedEnemyCount += 1;
+      }
+      continue;
+    }
+    killEnemy(state, enemy, "skill-cross-execution-v1", false);
+    killedCount += 1;
+  }
+  const purgedProjectileCount = purgeEnabled
+    ? purgeProjectilesInRadius(state, position, 3, "skill-cross-purge-v1")
+    : 0;
+  emitGameEvent(state, {
+    type: "cross-execution-triggered",
+    position: copyPoint(position),
+    killedCount,
+    purgedProjectileCount,
+    interruptedEnemyCount,
+  });
+}
+
+function resolveImpactBurst(state: GameState, dash: NonNullable<GameState["player"]["dash"]>): void {
+  if (
+    dash.abilityId !== DASH_SLASH_ABILITY_ID ||
+    !state.run.selectedUpgrades.includes("skill-impact-burst-v1")
+  ) return;
+  const endpoint = dash.pathSegments.at(-1)?.to ?? dash.to;
+  const hasEndpointContact = state.enemies.some((enemy) => (
+    squaredDistance(enemy.position, endpoint) <= (1.2 + enemy.radius) ** 2
+  ));
+  if (!hasEndpointContact) return;
+  let killedCount = 0;
+  for (const enemy of state.enemies) {
+    if (!enemy.alive || squaredDistance(enemy.position, endpoint) > (2.2 + enemy.radius) ** 2) continue;
+    const armor = enemy.armorParts.find((part) => part.intact);
+    if (armor) {
+      emitGameEvent(state, {
+        type: "armor-blocked",
+        enemyId: enemy.id,
+        armorPartId: armor.id,
+        attackId: "skill-impact-burst-v1",
+        position: copyPoint(enemy.position),
+      });
+      continue;
+    }
+    killEnemy(state, enemy, "skill-impact-burst-v1", false);
+    killedCount += 1;
+  }
+  emitGameEvent(state, {
+    type: "impact-burst-triggered",
+    position: copyPoint(endpoint),
+    killedCount,
+  });
+}
+
 function resolveReturnedProjectileImpact(state: GameState, impact: ReturnedProjectileImpact): void {
   const enemy = state.enemies.find((candidate) => candidate.id === impact.enemyId && candidate.alive);
   if (!enemy) return;
@@ -860,9 +1035,8 @@ function completeDash(state: GameState): void {
   state.player.position = copyPoint(dash.to);
   const completedPathSegment = dash.pathSegments[dash.pathSegmentIndex];
   const nextPathSegment = dash.pathSegments[dash.pathSegmentIndex + 1];
-  if (completedPathSegment?.reflectionAtEnd && nextPathSegment) {
+  if (nextPathSegment) {
     dash.pathSegmentIndex += 1;
-    dash.reflectionsUsed += 1;
     dash.from = copyPoint(nextPathSegment.from);
     dash.to = copyPoint(nextPathSegment.to);
     dash.durationMs = nextPathSegment.durationMs;
@@ -875,15 +1049,29 @@ function completeDash(state: GameState): void {
     if (nextLength > EPSILON) {
       state.player.facing = { x: nextDirection.x / nextLength, z: nextDirection.z / nextLength };
     }
-    emitGameEvent(state, {
-      type: "dash-reflected",
-      abilityId: dash.abilityId,
-      obstacleId: completedPathSegment.reflectionAtEnd.obstacleId,
-      position: copyPoint(completedPathSegment.reflectionAtEnd.position),
-      normal: copyPoint(completedPathSegment.reflectionAtEnd.normal),
-      from: copyPoint(nextPathSegment.from),
-      to: copyPoint(nextPathSegment.to),
-    });
+    if (completedPathSegment?.reflectionAtEnd) {
+      dash.reflectionsUsed += 1;
+      if (state.run.selectedUpgrades.includes("skill-prism-momentum-v1")) {
+        dash.hitRadius = dash.baseHitRadius * 1.25;
+      }
+      emitGameEvent(state, {
+        type: "dash-reflected",
+        abilityId: dash.abilityId,
+        obstacleId: completedPathSegment.reflectionAtEnd.obstacleId,
+        position: copyPoint(completedPathSegment.reflectionAtEnd.position),
+        normal: copyPoint(completedPathSegment.reflectionAtEnd.normal),
+        from: copyPoint(nextPathSegment.from),
+        to: copyPoint(nextPathSegment.to),
+      });
+    } else {
+      emitGameEvent(state, {
+        type: "dash-path-segment-started",
+        abilityId: dash.abilityId,
+        segmentIndex: dash.pathSegmentIndex,
+        from: copyPoint(nextPathSegment.from),
+        to: copyPoint(nextPathSegment.to),
+      });
+    }
     return;
   }
   if (completedPathSegment?.terminalImpact) {
@@ -899,6 +1087,14 @@ function completeDash(state: GameState): void {
       position: copyPoint(impact.position),
       normal: copyPoint(impact.normal),
     });
+  }
+  resolveImpactBurst(state, dash);
+  finalizeRegularDashPathEffects(state, dash);
+  if (
+    state.run.selectedUpgrades.includes("skill-kill-momentum-v1") &&
+    (dash.abilityId === DASH_SLASH_ABILITY_ID || dash.abilityId === CHARGED_DASH_ABILITY_ID)
+  ) {
+    state.player.killMomentumStacks = Math.min(5, dash.killCount);
   }
   state.player.dash = null;
   emitGameEvent(state, {
@@ -941,6 +1137,8 @@ function advancePlayerAction(state: GameState, deltaMs: number): void {
       };
       resolveEnemiesAlongSegment(state, segmentStart, state.player.position);
       resolveProjectilesAlongDashSegment(state, segmentStart, state.player.position);
+      const crossPosition = consumePendingCrossAlongSegment(dash, segmentStart, state.player.position);
+      if (crossPosition) resolveCrossExecution(state, crossPosition);
       remainingMs -= sliceMs;
 
       if (dash.elapsedMs + EPSILON >= dash.durationMs) {
@@ -1068,10 +1266,11 @@ function simulateFixedStep(state: GameState): void {
   state.run.tick += 1;
   state.elapsedMs += FIXED_STEP_MS;
   const worldTimeScale = state.player.ultimatePlanning?.worldTimeScale ?? 1;
+  const worldDeltaMs = FIXED_STEP_MS * worldTimeScale;
   advanceCampaignEncounterScheduler(state);
   advancePlayerAction(state, FIXED_STEP_MS);
-  resolveScheduledSlashes(state);
-  const worldDeltaMs = FIXED_STEP_MS * worldTimeScale;
+  resolveScheduledSlashes(state, worldDeltaMs);
+  advancePathPassiveTimers(state, worldDeltaMs);
   advanceObstacles(state, worldDeltaMs);
   const projectileResult = advanceProjectiles(state, worldDeltaMs);
   for (const impact of projectileResult.returnedImpacts) resolveReturnedProjectileImpact(state, impact);
@@ -1344,6 +1543,7 @@ export function getGameSnapshot(state: GameState): GameSnapshot {
         0,
         (state.player.predatorDriveExpiresAtMs ?? state.elapsedMs) - state.elapsedMs,
       )),
+      killMomentumStacks: state.player.killMomentumStacks,
       armoredEnemies: state.enemies
         .filter((enemy) => enemy.armorParts.length > 0)
         .map((enemy) => ({
@@ -1372,6 +1572,16 @@ export function getGameSnapshot(state: GameState): GameSnapshot {
         id: slash.id,
         executeAtMs: roundForSnapshot(slash.executeAtMs),
         attackId: slash.attackId,
+      })),
+      storedPath: state.combat.storedPath === null ? null : {
+        id: state.combat.storedPath.id,
+        abilityId: state.combat.storedPath.abilityId,
+        remainingMs: roundForSnapshot(state.combat.storedPath.remainingMs),
+        segmentCount: state.combat.storedPath.segments.length,
+      },
+      gravityPulls: state.combat.gravityPulls.map((pull) => ({
+        enemyId: pull.enemyId,
+        remainingMs: roundForSnapshot(Math.max(0, pull.durationMs - pull.elapsedMs)),
       })),
     },
     campaign: campaign === null || allocation === null ? null : {

@@ -18,8 +18,25 @@ export function buildDashPathSegments(
   from: Vec2,
   to: Vec2,
 ): DashPathSegmentState[] {
-  return planDashGeometry(state, from, to).map((segment) => ({
+  return buildTimedSegments(planDashGeometry(state, from, to));
+}
+
+export function buildTimedSegments(
+  segments: readonly Omit<DashPathSegmentState, "durationMs">[],
+): DashPathSegmentState[] {
+  const distances = segments.map((segment) => Math.hypot(
+    segment.to.x - segment.from.x,
+    segment.to.z - segment.from.z,
+  ));
+  const totalDistance = distances.reduce((sum, distance) => sum + distance, 0);
+  const totalDuration = Math.min(
+    MAX_DASH_DURATION_MS,
+    Math.max(MIN_DASH_DURATION_MS, totalDistance / DASH_SPEED_UNITS_PER_SECOND * 1000),
+  );
+  return segments.map((segment, index) => ({
     ...segment,
-    durationMs: getDashDurationMs(segment.from, segment.to),
+    durationMs: totalDistance <= 1e-8
+      ? totalDuration / Math.max(1, segments.length)
+      : totalDuration * (distances[index] ?? 0) / totalDistance,
   }));
 }

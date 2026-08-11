@@ -64,7 +64,7 @@ export const FULL_GAME_SKILL_DEFINITIONS: readonly SkillDefinition[] = [
   skill({
     id: "skill-gravity-slash-v1", module: "basic", tier: 2, branchId: "basic-corridor", prerequisites: ["skill-wide-slash-v1"],
     hookIds: ["basic-corridor-edge-pull"],
-    presentation: { code: "B-02", nameZh: "磁轨", nameEn: "GRAVITY SLASH", effect: "路径外缘的敌人在 0.35 秒内被拉向刀线。", trigger: "敌人进入加宽走廊的外侧 30%。", limit: "最多拉动 0.6m；不造成伤害、不移动 Boss。", prerequisite: "B-01 宽刃。" },
+    presentation: { code: "B-02", nameZh: "磁轨", nameEn: "GRAVITY SLASH", effect: "斩击走廊之外的近失目标在 0.35 秒内被拉向刀线，为 Echo 创造二次命中。", trigger: "敌人未被本刀命中，但进入加宽走廊之外额外 30% 的牵引带。", limit: "最多拉动 0.6m；不造成伤害、不移动 Boss。", prerequisite: "B-01 宽刃。" },
   }),
   skill({
     id: "skill-curve-dash-v1", module: "basic", tier: 1, branchId: "basic-geometry", prerequisites: [],
@@ -84,7 +84,7 @@ export const FULL_GAME_SKILL_DEFINITIONS: readonly SkillDefinition[] = [
   skill({
     id: "skill-cross-execution-v1", module: "basic", tier: 1, branchId: "basic-path-memory", prerequisites: [],
     hookIds: ["stored-path-cross-execution"],
-    presentation: { code: "B-06", nameZh: "交叉处决", nameEn: "CROSS EXECUTION", effect: "保存最近实际路径 2.5 秒；下一条路径交叉时在首个交点触发空间冲击。", trigger: "新路径与唯一 Stored Line 相交。", limit: "不交叉则新线替换旧线；触发后两线立即清空。", prerequisite: "普通突进根节点。" },
+    presentation: { code: "B-06", nameZh: "交叉处决", nameEn: "CROSS EXECUTION", effect: "保存最近实际路径 2.5 秒；下一条路径交叉时在首个交点触发空间冲击。", trigger: "新路径与唯一 Stored Line 内部相交，或反向重叠至少 1.5m。", limit: "共享起点不触发；不交叉则新线替换旧线；触发后两线立即清空。", prerequisite: "普通突进根节点。" },
   }),
   skill({
     id: "skill-cross-purge-v1", module: "basic", tier: 2, branchId: "basic-path-memory", prerequisites: ["skill-cross-execution-v1"],

@@ -141,3 +141,15 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 自动化全量：19 files / 100 tests；TypeScript 与 Production Build 通过。Entity 测试覆盖三类弹体寿命、压力上限、60/144Hz Hash、切弹回返、Ultimate Return、障碍碰撞、折射、移动门、Mine / Rail 和 0.12 世界速率。
 - 真实浏览器：初始 1 Projectile / 2 Obstacle / 2 Hazard 可见；第一次真实 Canvas 点击完成切弹与回返击杀，第二次真实点击触发法线折射并继续移动；Console 0。Presentation Labs 五项通过。
 - 下一步：补齐剩余 Basic / Shared Hook，再让完整 Enemy Roster 通过 Attack Strategy 生产这些实体。
+
+## 2026-08-12 — Complete Passive Hook Matrix
+
+- 28 个技能节点的 31 个 Hook 已全部绑定到真实 Gameplay Owner；新增 `gameplay-hook-registry`，测试会逐项比对 Skill Definition，任何只有文案、没有 Owner 的节点都会失败。
+- Curve Dash 采用同一 Basic 输入的快速拖拽：按下位置保留为终点、拖动位置控制弧度，≤180ms 释放执行；继续长按仍是 Charged。二次曲线转角硬限制 65°，实际曲线拆成 10 段参与碰撞、Cross 与 Echo。
+- 统一 Actual Path：直线、曲线和折射都使用相同 Segment State；Stored Path 仅保留一条并按世界时间存在 2.5s，非交叉替换，Cross 后立即清空。
+- 修正 Cross 的独立可用性：无普通移动时连续直线只能共享起点，无法内部交叉；因此真实内部交叉之外，反向重叠旧线至少 1.5m 也触发，起点自身不触发。该规则已同步 Skill 文案和 GDD。
+- Gravity 改成致死走廊之外额外 30% 的 Near-Miss 牵引带，0.35s 最多拉动 0.6m；Echo 0.4s、Double Echo 0.8s 回放实际路径，第二次使用基础宽度且不移动玩家。
+- Prism Momentum、Impact Burst、Cross Purge、Kill Momentum 均完成正负条件：折射第二段 +25% 且最多 3 杀减 Recovery；落点仅有接触条件才爆发；Cross Purge 不卸甲；Kill Momentum 最多 5 层并只由下一次 Basic / Charged 消耗。
+- 自动化全量：20 files / 111 tests；TypeScript、Build、Design Manifest、whitespace 通过。Hook Registry 覆盖全部声明 Hook。
+- 真实浏览器：真实 Drag → 10 段 Curve Stored Path；真实 Click → 非交叉替换；真实 Reverse Click → Cross 击杀偏线目标、清弹、装甲打断且甲片完好；Console 0。Stored Path 在场景内以简单橙线显示。
+- 下一步：Forge / Event / Save / Replay，随后完整 Enemy Roster 与 Attack Strategy。

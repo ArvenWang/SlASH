@@ -9,6 +9,8 @@ import { emitGameEvent } from "../events/event-buffer";
 import { DASH_HIT_RADIUS, FIXED_STEP_MS } from "../rules/constants";
 import { buildDashPathSegments } from "./dash-motion";
 import { activateAbility } from "./ability-system";
+import { CURVE_DRAG_MIN_DISTANCE, executeCurveDashSlash } from "./dash-slash";
+import { consumeKillMomentumRecovery, prepareRegularDashPathEffects } from "./path-passives";
 
 export const CHARGED_DASH_THRESHOLD_MS = 650;
 export const QUICK_IGNITION_THRESHOLD_MS = 500;
@@ -112,6 +114,16 @@ export function releaseChargedDash(state: GameState, target: Vec2): GameCommandR
   const heldMs = charge.heldMs;
   if (heldMs <= CHARGE_TAP_MAX_MS + EPSILON) {
     state.player.charge = null;
+    if (
+      hasSkill(state, "skill-curve-dash-v1") &&
+      Math.hypot(
+        charge.currentTarget.x - charge.initialTarget.x,
+        charge.currentTarget.z - charge.initialTarget.z,
+      ) >= CURVE_DRAG_MIN_DISTANCE
+    ) {
+      executeCurveDashSlash(state, charge.initialTarget, charge.currentTarget);
+      return "started";
+    }
     return activateAbility(state, "primary", target);
   }
   if (heldMs + EPSILON < charge.thresholdMs) {
@@ -161,6 +173,9 @@ function executeChargedDash(state: GameState, charge: ChargeState): void {
   const pathSegments = buildDashPathSegments(state, from, requestedTo);
   const firstSegment = pathSegments[0];
   if (!firstSegment) return;
+  const killMomentumConsumedStacks = hasSkill(state, "skill-kill-momentum-v1")
+    ? Math.min(5, state.player.killMomentumStacks)
+    : 0;
   state.player.facing = copyVec2(charge.direction);
   state.player.dash = {
     abilityId: CHARGED_DASH_ABILITY_ID,
@@ -170,7 +185,7 @@ function executeChargedDash(state: GameState, charge: ChargeState): void {
     elapsedMs: 0,
     hitRadius,
     baseHitRadius: hitRadius,
-    recoveryMs: state.rules.recoveryMs + CHARGED_DASH_EXTRA_RECOVERY_MS,
+    recoveryMs: consumeKillMomentumRecovery(state, state.rules.recoveryMs + CHARGED_DASH_EXTRA_RECOVERY_MS),
     resolvedEnemyIds: [],
     armorBreakCount: 0,
     exposedKillCount: 0,
@@ -179,7 +194,12 @@ function executeChargedDash(state: GameState, charge: ChargeState): void {
     pathSegmentIndex: 0,
     reflectionsUsed: 0,
     projectilesReturnedThisDash: 0,
+    killCount: 0,
+    refractionSecondLegKills: 0,
+    pendingCross: null,
+    killMomentumConsumedStacks,
   };
+  prepareRegularDashPathEffects(state, state.player.dash);
   state.player.recoveryRemainingMs = 0;
   state.player.bufferedAbility = null;
   const anticipatedHits = state.enemies
