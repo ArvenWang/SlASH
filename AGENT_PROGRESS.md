@@ -11,6 +11,8 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - Phase 2A-0 小规模验证已通过：3 个基线测试、TypeScript 检查和 100 次真实输入均通过；本轮 P95 输入到逻辑 1.1ms、输入到可见结果 16.7ms，浏览器问题 0。该项除非相关输入/镜头代码再次变化，不重复运行。
 - Phase 2A Gameplay V2 已完成第一轮迁移：三关内容改由 `LevelDefinition + EncounterDefinition + SpawnDefinition` 驱动；Enemy 使用 Definition ID 与 `DirectChaseBehavior`；`GameState` 升级为 V2，并建立 Projectile / Obstacle / Hazard 正式 Domain 入口。
 - 新增稳定 Definition Registry、稳定敌人 ID 工厂，以及 Circle / Segment / AABB / OBB / Convex Polygon 的真实碰撞与扫掠计算。现有 Dash 已复用新碰撞模块，三关定义、初始快照、代表性 Dash 和事件顺序指纹保持不变。
+- Phase 2A Ability / Event / Replay 已完成：现有 Dash Slash 已成为正式 Primary Ability；Ability Slot、受控 Modifier、确定性 Seed、Command Dispatch、Event 2.0 和完整关卡 Replay 已接入。调试技能与测试升级仅存在于 `src/debug/content/`，不会伪装为生产内容。
+- `render_game_to_text` 现已暴露 Encounter、Run Seed / Tick、Ability Slot 以及 Projectile / Obstacle / Hazard 状态；现有表现层直接消费事件携带的命中位置与方向，不再从后续可变状态反推视觉事实。
 - 已有可运行的 TypeScript + Vite + Three.js Web 游戏：三关（8 / 12 / 18 敌人）、点击地面无限距离直线 Dash、路径多杀、玩家 1HP、Dash 无敌、Recovery/Input Buffer、死亡点击重开、自动过关/通关、HUD、声音、后处理、鼠标与触控输入。
 - 环境方向为 Transit Cathedral：深湿金属竞技台、交叉轨道与巨拱、五节列车、近中远城市、雨雾与蒸汽。
 - 角色美术已进入 V5：新三视图位于 `art/characters/concepts/hero-turnaround-v5.png` 与 `art/characters/concepts/enemy-turnaround-v5.png`；当前实现重点是连续人体大形、关节衔接、低位蓄势和冲跑动势，不再用旧 V4 数值叠加代替主观视觉判断。
@@ -58,9 +60,9 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 
 ## 下一步计划
 
-1. 接入 Ability、Modifier、Event 2.0、Seed 与 Replay，同时保持 Dash 手感和公开快照兼容。
-2. 拆分 Presentation Runtime，建立程序化 / GLTF Character Provider 与 Animation Controller。
-3. 建立可持续的 VFX、Audio、材质、灯光与环境 Profile；最后只执行一次整体验证。
+1. 拆分 Bootstrap、Game、Input、Presentation 与 Debug Runtime，并建立类型化 Presentation Registry。
+2. 建立程序化 / GLTF Character Provider 与 Animation Controller；只选择性引入已确认的 Tripo GLB 和加载工具，不合入 Vector Focus 的玩法、镜头或环境改动。
+3. 建立可持续的 VFX、Audio、材质、灯光与环境 Profile 及真实调试 Labs；完成架构文档后只执行一次整体验证。
 
 ## 遇到的问题
 
@@ -77,6 +79,8 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 修复 WebGL Context Loss 后无法恢复、全屏拒绝产生未处理异常、后台恢复长时间步、验证脚本等待隐藏 Loading 层的问题。
 - 修复每帧临时 Input/Event/EnemySpeed/HUD 分配和重复 DOM 写入；玩法回归测试保持通过。
 - 修复完整三关验收脚本仍使用旧相机与 1600×900 投影的问题；现在与生产相机及 1920×1080 一致，待最终重跑。
+- 修复旧事件缺少稳定 ID、Run Tick 和完整表现事实的问题；表现层不再根据已经变化的敌人或玩家状态重建击杀位置、攻击方向。
+- 将 Dash 的硬编码入口改为可注册 Ability 与通用缓冲命令；Recovery 与 Hit Radius 只能通过白名单 Modifier 字段改变，调试扩展不会污染生产内容注册表。
 - 完成公开仓库清理、初始提交与 `main` 首次推送；本地大型验证证据未删除，也未进入 Git。
 
 ## 未解决问题
@@ -93,6 +97,8 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - Phase 2A-0：100 次真实 Canvas 输入通过；逻辑 P95 1.1ms、首个可见结果 P95 16.7ms、截图与浏览器清洁门通过。证据保存在本次临时目录，不进入仓库。
 - Phase 2A Gameplay V2：3 个测试文件 / 11 个测试通过；包含 Phase 1 指纹、Content/Domain、DirectChase 与五种碰撞形状。
 - Phase 2A Gameplay V2：`npm run check`、`npm run build` 通过；运行时烟雾检查为 Idle / Post Dash 均保持 `playing`，浏览器问题 0。未重复浏览器矩阵或性能测试。
+- Phase 2A Ability / Event / Replay：4 个测试文件 / 16 个测试通过；包含 Dash Ability、白名单 Modifier、独立调试 Ability、Event 2.0 元数据、Seed 恢复，以及 Stage 1 完整录制与确定性回放。
+- Phase 2A Ability / Event / Replay：`npm run check`、`npm run build` 通过；一次真实运行冒烟中 Idle / Post Dash 均为 `playing`，Primary Ability 为 `dash-slash`，浏览器问题 0。未重复输入延迟、性能或浏览器矩阵。
 - `npm run check`：通过。
 - `npm run build`：通过；仅有 Three.js 核心 chunk 体积提示。
 - `git diff --check`：通过。

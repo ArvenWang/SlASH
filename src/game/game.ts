@@ -7,18 +7,22 @@
  */
 import { createEnemyEntityId } from "../core/ids";
 import { copyVec2, squaredDistance, vec2 } from "../core/math/vec2";
+import { createSeededRandom } from "../core/random/seeded-random";
+import { DASH_SLASH_ABILITY_ID } from "../content/abilities/definitions";
 import { enemyDefinitions } from "../content/enemies/definitions";
 import {
   LEVEL_DEFINITIONS,
   levelByIndex,
   type LevelDefinition,
 } from "../content/levels/definitions";
-import {
-  segmentIntersectsCircle,
-} from "./collision/shapes";
+import { activateAbility } from "./abilities/ability-system";
+import { segmentIntersectsCircle } from "./collision/shapes";
 import type {
   ArenaBounds,
   DashRequestResult,
+  GameCommand,
+  GameCommandDispatchResult,
+  GameCommandResult,
   GameInput,
   GameRules,
   GameSnapshot,
@@ -30,6 +34,20 @@ import type {
   StageDefinition,
   Vec2,
 } from "./domain/types";
+import { drainGameEvents, emitGameEvent } from "./events/event-buffer";
+import {
+  DASH_HIT_RADIUS,
+  DASH_RECOVERY_MS,
+  DEFAULT_RUN_SEED,
+  ENEMY_RADIUS,
+  FIXED_STEP_MS,
+  MAX_DASH_DURATION_MS,
+  MAX_DASH_RECOVERY_MS,
+  MAX_FRAME_DELTA_MS,
+  MIN_DASH_DURATION_MS,
+  MIN_DASH_RECOVERY_MS,
+  PLAYER_RADIUS,
+} from "./rules/constants";
 import { moveEnemiesWithBehaviors } from "./simulation/enemy-behavior";
 
 export type {
@@ -37,6 +55,9 @@ export type {
   DashRequestResult,
   EnemyState,
   GameEvent,
+  GameCommand,
+  GameCommandDispatchResult,
+  GameCommandResult,
   GameInput,
   GamePhase,
   GameRules,
@@ -49,25 +70,29 @@ export type {
   StageDefinition,
   Vec2,
 } from "./domain/types";
+export { getDashDurationMs } from "./abilities/dash-slash";
+export { clampPointToArena } from "./collision/arena";
 export { distanceSquaredPointToSegment, segmentIntersectsCircle } from "./collision/shapes";
+export { drainGameEvents } from "./events/event-buffer";
+export {
+  DASH_HIT_RADIUS,
+  DASH_RECOVERY_MS,
+  DEFAULT_RUN_SEED,
+  ENEMY_RADIUS,
+  FIXED_STEP_MS,
+  MAX_DASH_DURATION_MS,
+  MAX_DASH_RECOVERY_MS,
+  MAX_FRAME_DELTA_MS,
+  MIN_DASH_DURATION_MS,
+  MIN_DASH_RECOVERY_MS,
+  PLAYER_RADIUS,
+} from "./rules/constants";
 
 // The real-time renderer normally advances without a control payload. Reusing
 // this immutable object avoids creating one short-lived object every frame.
 const EMPTY_GAME_INPUT: Readonly<GameInput> = Object.freeze({});
 
 export const GAME_STATE_VERSION = 2 as const;
-export const FIXED_STEP_MS = 1000 / 120;
-export const MAX_FRAME_DELTA_MS = 250;
-export const PLAYER_RADIUS = 0.45;
-export const ENEMY_RADIUS = 0.55;
-export const DASH_HIT_RADIUS = PLAYER_RADIUS;
-export const MIN_DASH_RECOVERY_MS = 80;
-export const MAX_DASH_RECOVERY_MS = 180;
-export const DASH_RECOVERY_MS = 120;
-export const MIN_DASH_DURATION_MS = 35;
-export const MAX_DASH_DURATION_MS = 110;
-export const DASH_SPEED_UNITS_PER_SECOND = 330;
-export const DEFAULT_RUN_SEED = 0x534c4153;
 
 const EPSILON = 1e-8;
 
@@ -152,10 +177,12 @@ export function createGame(stageIndex = 0, rules: Partial<GameRules> = {}): Game
   const encounter = level.encounters[0];
   if (!encounter) throw new Error(`Level ${level.id} has no encounter.`);
   const spawns = phaseOneSpawns(level);
-  return {
+  const state: GameState = {
     version: GAME_STATE_VERSION,
     run: {
       seed: DEFAULT_RUN_SEED,
+      tick: 0,
+      random: createSeededRandom(DEFAULT_RUN_SEED).snapshot(),
       selectedUpgrades: [],
       acquiredResources: {},
     },
@@ -179,7 +206,13 @@ export function createGame(stageIndex = 0, rules: Partial<GameRules> = {}): Game
       hp: 1,
       dash: null,
       recoveryRemainingMs: 0,
-      bufferedDashTarget: null,
+      bufferedAbility: null,
+      abilities: {
+        primary: { abilityId: DASH_SLASH_ABILITY_ID, cooldownRemainingMs: 0 },
+        secondary: null,
+        special: null,
+        ultimate: null,
+      },
     },
     enemies: spawns.map((spawn, index) => {
       const definition = enemyDefinitions.get(spawn.enemyDefinitionId);
@@ -203,14 +236,12 @@ export function createGame(stageIndex = 0, rules: Partial<GameRules> = {}): Game
       kills: 0,
       totalEnemies: spawns.length,
     },
-    lastEvents: [
-      {
-        type: "stage-started",
-        atMs: 0,
-        stageIndex,
-      },
-    ],
+    eventSequence: 0,
+    commandSequence: 0,
+    lastEvents: [],
   };
+  emitGameEvent(state, { type: "stage-started", stageIndex, levelId: level.id });
+  return state;
 }
 
 /** Validation-only worst-case state: 20 renderable enemies with an authored
@@ -252,18 +283,21 @@ export function restartStage(state: GameState): GameState {
   const replacement = createGame(state.stage.index, state.rules);
   replacement.run = {
     seed: state.run.seed,
+    tick: state.run.tick,
+    random: { ...state.run.random },
     selectedUpgrades: [...state.run.selectedUpgrades],
     acquiredResources: { ...state.run.acquiredResources },
   };
+  replacement.eventSequence = state.eventSequence;
+  replacement.commandSequence = state.commandSequence;
   replacement.stage.attempt = nextAttempt;
-  replacement.lastEvents = [
-    {
-      type: "stage-restarted",
-      atMs: 0,
-      stageIndex: replacement.stage.index,
-      attempt: nextAttempt,
-    },
-  ];
+  replacement.lastEvents = [];
+  emitGameEvent(replacement, {
+    type: "stage-restarted",
+    stageIndex: replacement.stage.index,
+    levelId: replacement.stage.levelId,
+    attempt: nextAttempt,
+  });
   Object.assign(state, replacement);
   return state;
 }
@@ -283,9 +317,19 @@ export function advanceStage(state: GameState): GameState {
   const replacement = createGame(nextIndex, state.rules);
   replacement.run = {
     seed: state.run.seed,
+    tick: state.run.tick,
+    random: { ...state.run.random },
     selectedUpgrades: [...state.run.selectedUpgrades],
     acquiredResources: { ...state.run.acquiredResources },
   };
+  replacement.eventSequence = state.eventSequence;
+  replacement.commandSequence = state.commandSequence;
+  replacement.lastEvents = [];
+  emitGameEvent(replacement, {
+    type: "stage-started",
+    stageIndex: replacement.stage.index,
+    levelId: replacement.stage.levelId,
+  });
   Object.assign(state, replacement);
   return state;
 }
@@ -294,88 +338,12 @@ function finiteOr(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
 }
 
-export function clampPointToArena(
-  target: Vec2,
-  arena: ArenaBounds,
-  margin = 0,
-): Vec2 {
-  const safeMargin = Math.max(0, finiteOr(margin, 0));
-  const minX = Math.min(arena.maxX, arena.minX + safeMargin);
-  const maxX = Math.max(arena.minX, arena.maxX - safeMargin);
-  const minZ = Math.min(arena.maxZ, arena.minZ + safeMargin);
-  const maxZ = Math.max(arena.minZ, arena.maxZ - safeMargin);
-  const x = finiteOr(target.x, (arena.minX + arena.maxX) * 0.5);
-  const z = finiteOr(target.z, (arena.minZ + arena.maxZ) * 0.5);
-  return {
-    x: Math.min(maxX, Math.max(minX, x)),
-    z: Math.min(maxZ, Math.max(minZ, z)),
-  };
-}
-
-export function getDashDurationMs(from: Vec2, to: Vec2): number {
-  const distance = Math.sqrt(squaredDistance(from, to));
-  const duration = (distance / DASH_SPEED_UNITS_PER_SECOND) * 1000;
-  return Math.min(
-    MAX_DASH_DURATION_MS,
-    Math.max(MIN_DASH_DURATION_MS, duration),
-  );
-}
-
-function startDash(state: GameState, target: Vec2): void {
-  const from = copyPoint(state.player.position);
-  const to = clampPointToArena(target, state.stage.arena, state.player.radius);
-  const directionX = to.x - from.x;
-  const directionZ = to.z - from.z;
-  const directionLength = Math.hypot(directionX, directionZ);
-
-  if (directionLength > EPSILON) {
-    state.player.facing = {
-      x: directionX / directionLength,
-      z: directionZ / directionLength,
-    };
-  }
-
-  state.player.dash = {
-    from,
-    to,
-    durationMs: getDashDurationMs(from, to),
-    elapsedMs: 0,
-  };
-  state.player.recoveryRemainingMs = 0;
-  state.player.bufferedDashTarget = null;
-  state.lastEvents.push({
-    type: "dash-started",
-    atMs: state.elapsedMs,
-    from: copyPoint(from),
-    to: copyPoint(to),
-    durationMs: state.player.dash.durationMs,
-  });
-}
-
 /**
  * Queues a click/tap. A ready player starts immediately; otherwise only the
  * newest target is retained and fires as soon as the configured recovery expires.
  */
 export function queueDash(state: GameState, target: Vec2): DashRequestResult {
-  if (state.stage.phase !== "playing" || state.player.hp === 0) {
-    return "ignored";
-  }
-
-  const clampedTarget = clampPointToArena(
-    target,
-    state.stage.arena,
-    state.player.radius,
-  );
-  if (
-    state.player.dash === null &&
-    state.player.recoveryRemainingMs <= EPSILON
-  ) {
-    startDash(state, clampedTarget);
-    return "started";
-  }
-
-  state.player.bufferedDashTarget = clampedTarget;
-  return "buffered";
+  return activateAbility(state, "primary", target);
 }
 
 export function isPlayerInvulnerable(state: GameState): boolean {
@@ -400,6 +368,9 @@ function killEnemiesAlongSegment(
   segmentStart: Vec2,
   segmentEnd: Vec2,
 ): void {
+  const dash = state.player.dash;
+  const hitRadius = dash?.hitRadius ?? DASH_HIT_RADIUS;
+  const attackId = dash?.abilityId ?? DASH_SLASH_ABILITY_ID;
   for (const enemy of state.enemies) {
     if (
       !enemy.alive ||
@@ -407,7 +378,7 @@ function killEnemiesAlongSegment(
         segmentStart,
         segmentEnd,
         enemy.position,
-        DASH_HIT_RADIUS + enemy.radius,
+        hitRadius + enemy.radius,
       )
     ) {
       continue;
@@ -417,11 +388,13 @@ function killEnemiesAlongSegment(
     enemy.state = "dead";
     enemy.killedAtMs = state.elapsedMs;
     state.combat.kills += 1;
-    state.lastEvents.push({
+    emitGameEvent(state, {
       type: "enemy-killed",
-      atMs: state.elapsedMs,
       enemyId: enemy.id,
+      sourceId: "player",
+      attackId,
       position: copyPoint(enemy.position),
+      direction: copyPoint(state.player.facing),
     });
   }
 }
@@ -433,10 +406,11 @@ function completeDash(state: GameState): void {
   }
   state.player.position = copyPoint(dash.to);
   state.player.dash = null;
-  state.player.recoveryRemainingMs = state.rules.recoveryMs;
-  state.lastEvents.push({
+  state.player.recoveryRemainingMs = dash.recoveryMs;
+  emitGameEvent(state, {
     type: "dash-ended",
-    atMs: state.elapsedMs,
+    abilityId: dash.abilityId,
+    sourceId: "player",
     position: copyPoint(state.player.position),
   });
 }
@@ -480,18 +454,18 @@ function advancePlayerAction(state: GameState, deltaMs: number): void {
 
       if (
         state.player.recoveryRemainingMs <= EPSILON &&
-        state.player.bufferedDashTarget !== null
+        state.player.bufferedAbility !== null
       ) {
-        const bufferedTarget = state.player.bufferedDashTarget;
-        startDash(state, bufferedTarget);
+        const buffered = state.player.bufferedAbility;
+        activateAbility(state, buffered.slot, buffered.target);
         continue;
       }
       break;
     }
 
-    if (state.player.bufferedDashTarget !== null) {
-      const bufferedTarget = state.player.bufferedDashTarget;
-      startDash(state, bufferedTarget);
+    if (state.player.bufferedAbility !== null) {
+      const buffered = state.player.bufferedAbility;
+      activateAbility(state, buffered.slot, buffered.target);
       continue;
     }
     break;
@@ -517,11 +491,11 @@ function resolveStageCompletion(state: GameState): boolean {
     state.stage.index === STAGE_DEFINITIONS.length - 1
       ? "game-complete"
       : "stage-cleared";
-  state.player.bufferedDashTarget = null;
-  state.lastEvents.push({
+  state.player.bufferedAbility = null;
+  emitGameEvent(state, {
     type: state.stage.phase,
-    atMs: state.elapsedMs,
     stageIndex: state.stage.index,
+    levelId: state.stage.levelId,
   });
   return true;
 }
@@ -546,11 +520,10 @@ function resolvePlayerContact(state: GameState): void {
     state.player.hp = 0;
     state.player.dash = null;
     state.player.recoveryRemainingMs = 0;
-    state.player.bufferedDashTarget = null;
+    state.player.bufferedAbility = null;
     state.stage.phase = "dead";
-    state.lastEvents.push({
+    emitGameEvent(state, {
       type: "player-died",
-      atMs: state.elapsedMs,
       enemyId: enemy.id,
       position: copyPoint(state.player.position),
     });
@@ -564,6 +537,7 @@ function simulateFixedStep(state: GameState): void {
   }
 
   state.tick += 1;
+  state.run.tick += 1;
   state.elapsedMs += FIXED_STEP_MS;
   advancePlayerAction(state, FIXED_STEP_MS);
 
@@ -575,14 +549,32 @@ function simulateFixedStep(state: GameState): void {
   resolvePlayerContact(state);
 }
 
+export function dispatchGameCommand(
+  state: GameState,
+  command: GameCommand,
+): GameCommandDispatchResult {
+  state.commandSequence += 1;
+  let result: GameCommandResult = "ignored";
+  if (command.type === "activate-ability") {
+    result = activateAbility(state, command.slot, command.target);
+  } else if (command.type === "restart-stage") {
+    restartStage(state);
+    result = "restarted";
+  } else if (command.type === "advance-stage" && state.stage.phase === "stage-cleared") {
+    advanceStage(state);
+    result = "advanced";
+  }
+  return { sequence: state.commandSequence, result };
+}
+
 function applyControlInput(state: GameState, input: GameInput): boolean {
   if (input.restart === true) {
-    restartStage(state);
+    dispatchGameCommand(state, { type: "restart-stage" });
     return true;
   }
   if (input.advanceStage === true) {
     const stageBefore = state.stage.index;
-    advanceStage(state);
+    dispatchGameCommand(state, { type: "advance-stage" });
     return state.stage.index !== stageBefore;
   }
   return false;
@@ -590,12 +582,15 @@ function applyControlInput(state: GameState, input: GameInput): boolean {
 
 /** Advances exactly one 120 Hz simulation tick. Ideal for deterministic tests. */
 export function stepGame(state: GameState, input: GameInput = EMPTY_GAME_INPUT): GameState {
-  state.lastEvents.length = 0;
   if (applyControlInput(state, input)) {
     return state;
   }
   if (input.dashTarget !== undefined) {
-    queueDash(state, input.dashTarget);
+    dispatchGameCommand(state, {
+      type: "activate-ability",
+      slot: "primary",
+      target: input.dashTarget,
+    });
   }
   simulateFixedStep(state);
   return state;
@@ -610,12 +605,15 @@ export function advanceGame(
   deltaMs: number,
   input: GameInput = EMPTY_GAME_INPUT,
 ): GameState {
-  state.lastEvents.length = 0;
   if (applyControlInput(state, input)) {
     return state;
   }
   if (input.dashTarget !== undefined) {
-    queueDash(state, input.dashTarget);
+    dispatchGameCommand(state, {
+      type: "activate-ability",
+      slot: "primary",
+      target: input.dashTarget,
+    });
   }
   if (!Number.isFinite(deltaMs) || deltaMs <= 0 || state.stage.phase !== "playing") {
     return state;
@@ -650,6 +648,12 @@ export function getGameSnapshot(state: GameState): GameSnapshot {
       id: state.stage.levelId,
       name: state.stage.name,
     },
+    encounter: { id: state.stage.encounterId },
+    run: {
+      tick: state.run.tick,
+      seed: state.run.seed,
+      selectedUpgrades: [...state.run.selectedUpgrades],
+    },
     phase: state.stage.phase,
     attempt: state.stage.attempt,
     tick: state.tick,
@@ -678,12 +682,42 @@ export function getGameSnapshot(state: GameState): GameSnapshot {
             durationMs: roundForSnapshot(dash.durationMs),
           },
     bufferedTarget:
-      state.player.bufferedDashTarget === null
+      state.player.bufferedAbility === null
         ? null
         : {
-            x: roundForSnapshot(state.player.bufferedDashTarget.x),
-            z: roundForSnapshot(state.player.bufferedDashTarget.z),
+            x: roundForSnapshot(state.player.bufferedAbility.target.x),
+            z: roundForSnapshot(state.player.bufferedAbility.target.z),
           },
+    abilities: {
+      primary:
+        state.player.abilities.primary === null
+          ? null
+          : {
+              id: state.player.abilities.primary.abilityId,
+              cooldownMs: roundForSnapshot(state.player.abilities.primary.cooldownRemainingMs),
+            },
+      secondary:
+        state.player.abilities.secondary === null
+          ? null
+          : {
+              id: state.player.abilities.secondary.abilityId,
+              cooldownMs: roundForSnapshot(state.player.abilities.secondary.cooldownRemainingMs),
+            },
+      special:
+        state.player.abilities.special === null
+          ? null
+          : {
+              id: state.player.abilities.special.abilityId,
+              cooldownMs: roundForSnapshot(state.player.abilities.special.cooldownRemainingMs),
+            },
+      ultimate:
+        state.player.abilities.ultimate === null
+          ? null
+          : {
+              id: state.player.abilities.ultimate.abilityId,
+              cooldownMs: roundForSnapshot(state.player.abilities.ultimate.cooldownRemainingMs),
+            },
+    },
     kills: state.combat.kills,
     enemyCount: state.combat.totalEnemies,
     aliveEnemies: state.enemies
@@ -693,6 +727,24 @@ export function getGameSnapshot(state: GameState): GameSnapshot {
         x: roundForSnapshot(enemy.position.x),
         z: roundForSnapshot(enemy.position.z),
       })),
+    projectiles: state.projectiles.map((projectile) => ({
+      id: projectile.id,
+      definitionId: projectile.definitionId,
+      x: roundForSnapshot(projectile.position.x),
+      z: roundForSnapshot(projectile.position.z),
+    })),
+    obstacles: state.obstacles.map((obstacle) => ({
+      id: obstacle.id,
+      definitionId: obstacle.definitionId,
+      x: roundForSnapshot(obstacle.position.x),
+      z: roundForSnapshot(obstacle.position.z),
+    })),
+    hazards: state.hazards.map((hazard) => ({
+      id: hazard.id,
+      definitionId: hazard.definitionId,
+      x: roundForSnapshot(hazard.position.x),
+      z: roundForSnapshot(hazard.position.z),
+    })),
   };
 }
 
@@ -769,7 +821,7 @@ export function runGameplaySelfCheck(): GameplaySelfCheckResult {
   queueDash(buffering, point(5, 1));
   stepGame(buffering, { dashTarget: point(-5, -1) });
   selfCheck(
-    buffering.player.bufferedDashTarget?.x === -5,
+    buffering.player.bufferedAbility?.target.x === -5,
     "input during dash should enter the buffer",
   );
   tickUntil(
@@ -778,7 +830,7 @@ export function runGameplaySelfCheck(): GameplaySelfCheckResult {
   );
   stepGame(buffering, { dashTarget: point(-7, 2) });
   selfCheck(
-    buffering.player.bufferedDashTarget?.x === -7,
+    buffering.player.bufferedAbility?.target.x === -7,
     "the last recovery input should replace an older buffered input",
   );
   tickUntil(
@@ -787,7 +839,7 @@ export function runGameplaySelfCheck(): GameplaySelfCheckResult {
       state.player.dash !== null && state.player.dash.to.x === -7,
   );
   selfCheck(
-    buffering.player.bufferedDashTarget === null,
+    buffering.player.bufferedAbility === null,
     "buffer should be consumed after the 120 ms recovery",
   );
   checks.push("recovery and last-input buffer");
@@ -838,7 +890,7 @@ function configureLineKillScenario(enemyCount: number): GameState {
   }));
   state.combat.kills = 0;
   state.combat.totalEnemies = enemyCount;
-  state.lastEvents = [];
+  drainGameEvents(state);
   return state;
 }
 

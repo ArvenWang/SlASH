@@ -18,11 +18,10 @@ import {
   advanceStage,
   createGame,
   createStressGame,
+  dispatchGameCommand,
+  drainGameEvents,
   getGameSnapshot,
-  queueDash,
   restartStage,
-  segmentIntersectsCircle,
-  DASH_HIT_RADIUS,
   type EnemyState,
   type GameEvent,
   type GameState,
@@ -357,17 +356,11 @@ function resetVisualStage() {
   updateHud();
 }
 
-function enemyKillPositions(from: { x: number; z: number }, to: { x: number; z: number }) {
-  return gameState.enemies
-    .filter((enemy) => enemy.alive && segmentIntersectsCircle(from, to, enemy.position, DASH_HIT_RADIUS + enemy.radius))
-    .map((enemy) => new THREE.Vector3(enemy.position.x, 0, enemy.position.z));
-}
-
 function triggerDashVisual(event: Extract<GameEvent, { type: "dash-started" }>) {
   const start = new THREE.Vector3(event.from.x, 0, event.from.z);
   const end = new THREE.Vector3(event.to.x, 0, event.to.z);
   const direction = end.clone().sub(start).setY(0).normalize();
-  const kills = enemyKillPositions(event.from, event.to);
+  const kills = event.anticipatedHits.map(({ position }) => new THREE.Vector3(position.x, 0, position.z));
   environment.reactToDash(start, end, Math.min(1.6, 1 + kills.length * 0.08));
   playerHeading = Math.atan2(direction.x, direction.z);
   playerActor.root.rotation.y = playerHeading;
@@ -405,7 +398,7 @@ function consumeEvents(events: readonly GameEvent[]) {
       const visual = enemyVisuals.get(event.enemyId);
       if (visual && visual.deathAge === null) {
         visual.deathAge = 0;
-        visual.slashDirection.set(gameState.player.facing.x, 0, gameState.player.facing.z).normalize();
+        visual.slashDirection.set(event.direction.x, 0, event.direction.z).normalize();
         visual.contactSpawned = false;
         visual.impactSpawned = false;
         visual.separated = false;
@@ -525,11 +518,14 @@ function updatePointer(clientX: number, clientY: number) {
 function requestDashAtPointer() {
   if (!hoverValid || gameState.stage.phase !== "playing") return;
   const inputId = diagnostics.markInput();
-  const result = queueDash(gameState, { x: pointerWorld.x, z: pointerWorld.z });
+  const { result } = dispatchGameCommand(gameState, {
+    type: "activate-ability",
+    slot: "primary",
+    target: { x: pointerWorld.x, z: pointerWorld.z },
+  });
   if (result !== "ignored") pendingDashInputId = inputId;
   if (result === "started") {
-    consumeEvents(gameState.lastEvents);
-    gameState.lastEvents = [];
+    consumeEvents(drainGameEvents(gameState));
   }
 }
 
@@ -658,8 +654,7 @@ function updateSimulation(dt: number) {
       advanceGame(gameState, dt * 1000);
       gameState.enemies.forEach((enemy, index) => { enemy.speed = frozenEnemySpeeds[index] ?? 0; });
     }
-    consumeEvents(gameState.lastEvents);
-    gameState.lastEvents.length = 0;
+    consumeEvents(drainGameEvents(gameState));
   } else if (!simulationEnabled) {
     phaseAge += dt;
     if (phaseAge > 0.82) simulationEnabled = true;
@@ -788,7 +783,7 @@ canvas.addEventListener("pointerdown", (event) => {
     // Audio is optional for input continuity. A later gesture may retry.
   });
   if (gameState.stage.phase === "dead") {
-    restartStage(gameState);
+    dispatchGameCommand(gameState, { type: "restart-stage" });
     resetVisualStage();
     simulationEnabled = true;
     pendingDashInputId = null;
@@ -837,7 +832,7 @@ window.addEventListener("keydown", async (event) => {
     audio.setEnabled(audioEnabled);
   }
   if (event.key.toLowerCase() === "r") {
-    restartStage(gameState);
+    dispatchGameCommand(gameState, { type: "restart-stage" });
     resetVisualStage();
   }
 });
@@ -883,11 +878,14 @@ if (validationMode) {
     dashTo(x, z) {
       if (gameState.stage.phase !== "playing") return "ignored";
       const inputId = diagnostics.markInput();
-      const result = queueDash(gameState, { x, z });
+      const { result } = dispatchGameCommand(gameState, {
+        type: "activate-ability",
+        slot: "primary",
+        target: { x, z },
+      });
       if (result !== "ignored") pendingDashInputId = inputId;
       if (result === "started") {
-        consumeEvents(gameState.lastEvents);
-        gameState.lastEvents = [];
+        consumeEvents(drainGameEvents(gameState));
       }
       return result;
     },

@@ -10,6 +10,8 @@ import type {
   UpgradeId,
 } from "../../core/ids";
 import type { Vec2 } from "../../core/math/vec2";
+import type { SeededRandomState } from "../../core/random/seeded-random";
+import type { AbilitySlot } from "../../content/abilities/definitions";
 
 export type { Vec2 } from "../../core/math/vec2";
 
@@ -36,10 +38,18 @@ export type GamePhase = "playing" | "dead" | "stage-cleared" | "game-complete";
 export type EnemyRuntimeMode = "active" | "dead";
 
 export interface DashState {
+  abilityId: AbilityId;
   from: Vec2;
   to: Vec2;
   durationMs: number;
   elapsedMs: number;
+  hitRadius: number;
+  recoveryMs: number;
+}
+
+export interface BufferedAbilityCommand {
+  slot: AbilitySlot;
+  target: Vec2;
 }
 
 export interface PlayerState {
@@ -49,7 +59,8 @@ export interface PlayerState {
   hp: 0 | 1;
   dash: DashState | null;
   recoveryRemainingMs: number;
-  bufferedDashTarget: Vec2 | null;
+  bufferedAbility: BufferedAbilityCommand | null;
+  abilities: Record<AbilitySlot, AbilityRuntimeState | null>;
 }
 
 export interface EnemyState {
@@ -93,6 +104,8 @@ export interface HazardState {
 
 export interface RunState {
   seed: number;
+  tick: number;
+  random: SeededRandomState;
   selectedUpgrades: UpgradeId[];
   acquiredResources: Record<string, number>;
 }
@@ -112,14 +125,33 @@ export interface CombatRuntimeState {
   totalEnemies: number;
 }
 
-export type GameEvent =
-  | { type: "stage-started"; atMs: number; stageIndex: number }
-  | { type: "stage-restarted"; atMs: number; stageIndex: number; attempt: number }
-  | { type: "dash-started"; atMs: number; from: Vec2; to: Vec2; durationMs: number }
-  | { type: "enemy-killed"; atMs: number; enemyId: string; position: Vec2 }
-  | { type: "dash-ended"; atMs: number; position: Vec2 }
-  | { type: "player-died"; atMs: number; enemyId: string; position: Vec2 }
-  | { type: "stage-cleared" | "game-complete"; atMs: number; stageIndex: number };
+export interface BaseGameEvent {
+  id: string;
+  tick: number;
+  sequence: number;
+  atMs: number;
+}
+
+export type GameEventPayload =
+  | { type: "stage-started"; stageIndex: number; levelId: LevelId }
+  | { type: "stage-restarted"; stageIndex: number; levelId: LevelId; attempt: number }
+  | {
+      type: "dash-started";
+      abilityId: AbilityId;
+      sourceId: EntityId;
+      from: Vec2;
+      to: Vec2;
+      direction: Vec2;
+      durationMs: number;
+      anticipatedHits: Array<{ entityId: EntityId; position: Vec2 }>;
+    }
+  | { type: "enemy-killed"; enemyId: EntityId; sourceId: EntityId; attackId: AbilityId; position: Vec2; direction: Vec2 }
+  | { type: "dash-ended"; abilityId: AbilityId; sourceId: EntityId; position: Vec2 }
+  | { type: "player-died"; enemyId: EntityId; position: Vec2 }
+  | { type: "stage-cleared" | "game-complete"; stageIndex: number; levelId: LevelId };
+
+type WithEventBase<TPayload> = TPayload extends unknown ? TPayload & BaseGameEvent : never;
+export type GameEvent = WithEventBase<GameEventPayload>;
 
 export interface GameRules {
   recoveryMs: number;
@@ -139,6 +171,8 @@ export interface GameState {
   elapsedMs: number;
   accumulatorMs: number;
   rules: GameRules;
+  eventSequence: number;
+  commandSequence: number;
   lastEvents: GameEvent[];
 }
 
@@ -148,11 +182,25 @@ export interface GameInput {
   advanceStage?: boolean;
 }
 
+export type GameCommand =
+  | { type: "activate-ability"; slot: AbilitySlot; target: Vec2 }
+  | { type: "restart-stage" }
+  | { type: "advance-stage" };
+
+export type GameCommandResult = DashRequestResult | "restarted" | "advanced" | "ignored";
+
+export interface GameCommandDispatchResult {
+  sequence: number;
+  result: GameCommandResult;
+}
+
 export type DashRequestResult = "started" | "buffered" | "ignored";
 export type PlayerAction = "ready" | "dashing" | "recovering" | "dead";
 
 export interface GameSnapshot {
   stage: { index: number; number: number; count: number; id: string; name: string };
+  encounter: { id: EncounterId };
+  run: { tick: number; seed: number; selectedUpgrades: UpgradeId[] };
   phase: GamePhase;
   attempt: number;
   tick: number;
@@ -178,9 +226,13 @@ export interface GameSnapshot {
     durationMs: number;
   } | null;
   bufferedTarget: Vec2 | null;
+  abilities: Record<AbilitySlot, { id: AbilityId; cooldownMs: number } | null>;
   kills: number;
   enemyCount: number;
   aliveEnemies: Array<{ id: string; x: number; z: number }>;
+  projectiles: Array<{ id: EntityId; definitionId: ProjectileDefinitionId; x: number; z: number }>;
+  obstacles: Array<{ id: EntityId; definitionId: ObstacleDefinitionId; x: number; z: number }>;
+  hazards: Array<{ id: EntityId; definitionId: HazardDefinitionId; x: number; z: number }>;
 }
 
 export interface GameplaySelfCheckResult {
