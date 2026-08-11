@@ -6,7 +6,7 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 
 ## 当前进展
 
-- Phase 2A 已在 `codex/phase2a-foundation` 分支启动。本阶段只建立可扩展 Gameplay 与视觉生产架构，不把当前画面描述为视觉合格，也不合入 Vector Focus、镜头或关卡改动。
+- Phase 2A 已在 `codex/phase2a-foundation` 分支完成实现与整体技术验收。本阶段建立可扩展 Gameplay 与视觉生产架构，不把当前画面描述为视觉合格，也未合入 Vector Focus、镜头或关卡改动。
 - Phase 2A-0 基线层已完成：新增 Vitest 独立测试，锁定三关定义、初始状态、代表性 Dash 与事件顺序；生产镜头参数已有单一事实源，输入延迟脚本不再复制旧镜头，也不会因截图失败丢失测量报告。
 - Phase 2A-0 小规模验证已通过：3 个基线测试、TypeScript 检查和 100 次真实输入均通过；本轮 P95 输入到逻辑 1.1ms、输入到可见结果 16.7ms，浏览器问题 0。该项除非相关输入/镜头代码再次变化，不重复运行。
 - Phase 2A Gameplay V2 已完成第一轮迁移：三关内容改由 `LevelDefinition + EncounterDefinition + SpawnDefinition` 驱动；Enemy 使用 Definition ID 与 `DirectChaseBehavior`；`GameState` 升级为 V2，并建立 Projectile / Obstacle / Hazard 正式 Domain 入口。
@@ -20,6 +20,8 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - Phase 2A Visual Profile / Pool / Labs 已完成：当前材质 Token、Material Profile、Lighting、Environment、VFX、Audio、Post FX 与 Impact Profile 均为数据化定义；现有数值和效果保持不变，后续视觉迭代可以替换 Profile，而不再修改 Gameplay。
 - 新增通用 Object Pool 与六类正式预算入口，现有 Kill Impact Flash 已真实复用池对象；`render_game_to_text` 明确输出 `visible-rAF-frame-time`、Renderer、分类预算和 Pool 使用量，不把普通帧时间冒充 GPU 时间。环境 Scene 已按 Arena / Transit / City / Weather / Lighting 模块分组。
 - Character Lab 已升级为 Animation Lab；另有真实 VFX Lab、Environment Lab 和 Content Sandbox。它们可以选择 Provider、状态、速度、Loop、冻结帧、Gameplay Camera、VFX、昼夜检查 Profile、雨雾、Level、Enemy、Ability 与 Debug Upgrade。
+- `docs/architecture/` 已补齐 Gameplay、Content、Ability、Presentation、Character、Animation、Level、Replay、Performance 与独立 Architecture Review；文档记录真实代码路径、接口、扩展示例和当前尚未实现的机制，不用空文档冒充架构完成。
+- 架构 Critic 在 Phase 2A 范围内通过：Gameplay/Content 无 Presentation/Three.js 反向依赖，64 个本地 TypeScript 模块无循环依赖；新增自动守门会持续检查边界、循环和 `main.ts` Bootstrap 职责。
 - 已有可运行的 TypeScript + Vite + Three.js Web 游戏：三关（8 / 12 / 18 敌人）、点击地面无限距离直线 Dash、路径多杀、玩家 1HP、Dash 无敌、Recovery/Input Buffer、死亡点击重开、自动过关/通关、HUD、声音、后处理、鼠标与触控输入。
 - 环境方向为 Transit Cathedral：深湿金属竞技台、交叉轨道与巨拱、五节列车、近中远城市、雨雾与蒸汽。
 - 角色美术已进入 V5：新三视图位于 `art/characters/concepts/hero-turnaround-v5.png` 与 `art/characters/concepts/enemy-turnaround-v5.png`；当前实现重点是连续人体大形、关节衔接、低位蓄势和冲跑动势，不再用旧 V4 数值叠加代替主观视觉判断。
@@ -30,7 +32,7 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 用户当前不在电脑前，已明确授权把 Tripo 高精角色候选作为延期项，并在没有其他发布阻塞时同步当前可玩基线到 GitHub。延期不等于视觉验收通过，当前程序化角色不会冒充 Tripo 成果。
 - 公开仓库卫生已完成：本地 `output/`、`.playwright-cli/` 与大型 `validation/` 证据不提交；保留正式源码、概念图、三视图输入、验收文档、可复用验证脚本、精简许可证审计和一张真实游戏截图。所有本地证据仍保留，未删除。
 - GitHub 公开空仓库已初始化：初始提交 `63ac2a5` 已推送到 `https://github.com/ArvenWang/SlASH.git` 的 `main` 分支，本地 `main` 正在跟踪 `origin/main`。
-- Gameplay、浏览器矩阵、生命周期、1080p / 1440p 性能和资产许可审计已闭合。第一轮稳定性实测已提供约 10 分钟数据；用户明确要求停止继续重复长测，第二轮已中止。
+- Phase 2A 整体验证已闭合：全量单测/构建、Replay、真实 GLB、五项 Lab、死亡重开与完整三关、100 次输入、七项浏览器矩阵、生命周期、1080p / 1440p 性能和资产许可均通过。第一轮稳定性实测已提供约 10 分钟数据；用户明确要求停止继续重复长测，第二轮已中止。
 - 本地生产预览：`http://127.0.0.1:4175/`。
 
 ## 已完成内容
@@ -57,9 +59,9 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 ### 性能、兼容性与商业审计
 
 - 20 敌人 + 八杀 + Rain/Steam/Blood/Corpses/Camera/Post FX 的 60 秒可见系统 Chrome 压力测试：
-  - 1920×1080：59.97 FPS，P95 18.1ms，P99 18.6ms，最慢 32.6ms；通过。
-  - 2560×1440：59.97 FPS，P95 18.3ms，P99 18.6ms，最慢 31.8ms；通过。
-- 同机空白可见 Chrome rAF 基线为 59.98 FPS / P95 18.1ms；1080p 门按 60Hz 16.67ms + 10% 调度容差（18.33ms）判定，原始游戏帧时间未平滑或删改。
+  - 1920×1080：59.95 FPS，P95 18.6ms，P99 18.7ms，最慢 50.0ms；同轮空白 rAF P95 18.6ms，游戏相对基线增加 0ms，校准门与绝对 P99/Worst 门通过。
+  - 2560×1440：59.95 FPS，P95 18.6ms，P99 18.7ms，最慢 48.3ms；通过。
+- 当前系统 Chrome 的空白可见 rAF P95 从历史 18.1ms 漂移为 18.6ms，旧 18.33ms 门连空白页也会失败。验证工具现显式绑定同机同分辨率空白基线，限制游戏 P95 最多增加 0.5ms，并继续保留 P95 <25ms、P99 与 Worst 绝对门；原始失败报告与校准报告均保留，未平滑或删改数据。
 - 敌人接触阴影改为单个 Instanced soft layer，避免 20 个分节角色重复进入方向光阴影 pass；Stage 3 绘制调用约从 882 降至 519，保持贴地感。
 - 系统 Chrome 1920×1080 / 2560×1440 / 1366×768、高画质/兼容模式、Firefox、WebKit、390×844 触屏全部通过真实输入，控制台零错误。
 - Resize / DPR、可信键盘全屏、Chrome renderer freeze/resume、WebGL Context Loss/Restore 和恢复后 Gameplay 均通过。
@@ -67,14 +69,15 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 
 ## 下一步计划
 
-1. 补齐架构总览、Gameplay / Presentation 边界、Content 扩展、Character Pipeline、Animation、Replay 与性能预算文档。
-2. 更新接力状态，明确当前视觉仍未签核、两份 GLB 无原生 Clip，以及后续设计迭代入口。
-3. 只执行一次整体验证，确认三关、Replay、GLB、浏览器、性能与资产门。
+1. 由用户确定下一轮整体视觉方向；优先在 Animation / VFX / Environment Lab 中迭代 Profile、Provider 与动作，再回到战场上下文验收。
+2. 玩法扩展按真实垂直切片推进：建议先选一个新 Enemy + Attack Strategy、一个新 Ability/Projectile、一个非 Immediate Encounter，逐个证明现有边界，而不是同时堆大量空系统。
+3. 发布前补真人视觉签核、真人音频试听，以及实体 Edge / Safari 门；当前内核级自动化不能替代这些人工门。
 
 ## 遇到的问题
 
 - 第一轮稳定性脚本实际等待约 10 分钟，但最后一笔样本停在 570.34 秒，导致 `duration` 单项失败；游戏数据本身为堆 +0.36MB、几何体恒 93、纹理恒 23、浏览器零错误。脚本已修复，但用户明确要求不再重复长测，第二轮已主动中止。
-- Three.js 核心 chunk 约 573KB，生产构建有 `>500KB` 提示；总压缩体积远低于 50MB 加载门，但仍需在最终报告中记录。
+- Three.js 核心 chunk 约 604.35KB（gzip 152.69KB），生产构建有 `>500KB` 提示；总压缩体积远低于 50MB 加载门，GLTF Provider 已按需拆分，但该提示仍需持续记录。
+- Phase 2A 首轮 1080p 原始 P95 为 18.6ms，旧 18.33ms 固定门失败；同轮空白页也为 18.6ms，确认是当前显示/Chrome 调度基线变化而非游戏新增延迟。原始失败证据没有删除，最终使用同机基线校准闭合。
 - 当前有真实系统 Chrome、Firefox 和 Playwright WebKit 证据；本机未安装 Edge，WebKit 证据也不能冒充“真人 Safari 点击验收”。这两项需在发布前补实体浏览器或由用户明确接受现有内核级覆盖。
 - WebM 录像不录制 Web Audio；音频已有可播放 WAV 与数值报告，但最终混音仍需真人试听。
 - 用户提供的 Tripo API Key 经官方余额接口确认 API 余额为 0；首次生成在创建任务前即被余额不足拒绝，消耗 0 分。Chrome 与备用浏览器的 Tripo Studio 均未登录，无法访问用户所说的约 600 网页积分。密钥未写入仓库、日志或进度文档。
@@ -85,7 +88,7 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 修复尸体跪姿、Dash 主体落后残影、HUD 提前扣数、命中反馈延迟、Firefox/WebKit 首次输入被 AudioContext 阻塞的问题。
 - 修复 WebGL Context Loss 后无法恢复、全屏拒绝产生未处理异常、后台恢复长时间步、验证脚本等待隐藏 Loading 层的问题。
 - 修复每帧临时 Input/Event/EnemySpeed/HUD 分配和重复 DOM 写入；玩法回归测试保持通过。
-- 修复完整三关验收脚本仍使用旧相机与 1600×900 投影的问题；现在与生产相机及 1920×1080 一致，待最终重跑。
+- 修复完整三关验收脚本仍使用旧相机与 1600×900 投影的问题；现在与生产相机及 1920×1080 一致，最终真实点击三关已通过。
 - 修复旧事件缺少稳定 ID、Run Tick 和完整表现事实的问题；表现层不再根据已经变化的敌人或玩家状态重建击杀位置、攻击方向。
 - 将 Dash 的硬编码入口改为可注册 Ability 与通用缓冲命令；Recovery 与 Hit Radius 只能通过白名单 Modifier 字段改变，调试扩展不会污染生产内容注册表。
 - 修复 `main.ts` 同时承担玩法推进、输入、调试、Renderer、角色与 HUD 集成的问题；现在各 Runtime 有独立职责，Gameplay Definition 与可替换视觉 Profile 也已解耦。
@@ -93,17 +96,26 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 恢复并加固 Tripo 生成 / Rig / Animation 三条工具链：只从环境变量读取密钥、支持短连接轮询与 Task ID 恢复；未合入远端 Vector Focus、镜头、地图或玩法代码。
 - 修复 VFX、Audio、灯光、Post FX 和环境反应由表现层直接写死调用的问题；Gameplay Event 现在先解析 Presentation Profile，再由对应 Runtime 执行。Kill Impact 的重复 Mesh / Material 分配已进入真实对象池。
 - 修复调试工具只能看单一程序角色的问题；Content / Animation / VFX / Environment 都有独立真实运行入口，Debug GUI 也拆成 VISUAL / GAMEPLAY / CONTENT 三组。
+- 修复隐藏 Debug GUI 仍通过十个 `.listen()` 每帧重复生成 Gameplay/Presentation Snapshot 的问题；现在只在面板可见时每帧取一次快照，隐藏时停止刷新。
+- 修复性能门把显示调度写死为历史 18.33ms 的问题；新增同机空白 rAF 校准、绝对尾帧门、现有报告重评工具和三条回归测试，不通过重复跑场景或静默抬高固定阈值制造通过。
 - 完成公开仓库清理、初始提交与 `main` 首次推送；本地大型验证证据未删除，也未进入 Git。
 
 ## 未解决问题
 
 - 稳定性终点采样脚本门未形式化闭合；按用户要求不再重复长测，保留首轮真实数据与这一限制。
-- 最新完整三关 1920×1080 录像和固定目录证据包尚未重跑；当前优先交给用户实际试玩。
 - 用户尚未对 V5 主角、敌人、动作和最终整体画面完成主观签核；旧 V4 数值通过不再视为当前主观视觉门。
-- Tripo 主角候选尚未生成；用户已明确允许本轮延期，因此它不再阻塞当前基线推送，但仍是未完成美术项。失败记录是脱敏的本地文件，不会提交到 GitHub。
+- 两份 Tripo Rigged GLB 已接入 Provider，但原文件都没有 AnimationClip，且尚未获得视觉签核；当前自制骨骼驱动和程序角色回退不是最终美术完成证明。
 
 ## 验证情况
 
+- Phase 2A 最终整体门：`npm test` 为 10 个文件 / 33 个测试通过；随后新增的性能校准门 1 个文件 / 3 个测试单独通过。最终 `npm run build` 与 `git diff --check` 通过，仅保留 Three.js 核心 Chunk 提示。
+- Phase 2A 架构门：Gameplay/Content 反向依赖、64 模块循环依赖和 `main.ts` Bootstrap 三项通过；Architecture Review 回答 Enemy、Ability、Upgrade、Level、Hero GLB、Dash VFX 与 Projectile 的实际修改范围。
+- Phase 2A 最终真实三关：生产构建先由 Enemy 接触致死并用真实 Canvas 点击重开，再用 35 次真实 Canvas 点击完成 Stage 1/2/3，最终 `game-complete`；8/12/18 敌人全清，浏览器问题 0，WebM 与截图已生成到本轮临时证据目录。
+- Phase 2A 最终输入：100 次真实 Canvas 点击通过；逻辑 P95 1.1ms、可见 P95 16.5ms、状态保持干净、浏览器问题 0。
+- Phase 2A 最终浏览器/生命周期：Chrome 1920×1080、2560×1440、1366×768、Firefox、WebKit、兼容模式和 390×844 触屏七项通过；Resize/DPR、可信全屏、冻结恢复、WebGL 丢失/恢复及恢复后 Gameplay 全部通过。
+- Phase 2A 最终表现/资产：Procedural Idle、GLTF Idle/Action/Recovery 与 VFX、Night/Day Environment、Content、Animation 五项 Lab 通过；两份 GLB 为 Provider Ready、0 Native Clip；资产许可、无外链和无密钥门通过。
+- Phase 2A 最终性能：1080p 原始 59.95 FPS / P95 18.6ms / P99 18.7ms / Worst 50ms；同轮空白页 P95/P99 为 18.6/18.7ms，校准后全部门通过。1440p 为 59.95 FPS / P95 18.6ms / P99 18.7ms / Worst 48.3ms，全部门通过。
+- Phase 2A Visual Regression：最新 Phase 1/V5 战场基线与本轮 Idle/Dash 截图在构图、材质、灯光、角色、环境和反馈上无技术性缺失；开场 Banner 差异来自采样时刻。该项只证明重构未明显破坏画面，不代表视觉合格或用户签核。
 - Phase 2A-0：`npm run test:baseline` 通过，1 个测试文件 / 3 个测试全部通过。
 - Phase 2A-0：`npm run check` 通过。
 - Phase 2A-0：100 次真实 Canvas 输入通过；逻辑 P95 1.1ms、首个可见结果 P95 16.7ms、截图与浏览器清洁门通过。证据保存在本次临时目录，不进入仓库。
@@ -132,10 +144,10 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - Performance：`validation/performance/final-1080p-calibrated/` 与 `validation/performance/final-1440p/` 通过；空白基线见 `validation/performance/blank-raf-baseline/`。
 - License：`validation/licenses/asset-audit.txt` 通过。
 - Tripo 管线：Python 语法检查通过；首次 API 调用由官方余额接口返回 0 并在创建任务前拒绝，确认无模型文件、无积分消耗、仓库内无密钥内容或密钥前缀字符串。
-- Tripo 输入/检查台：6 张角色输入均已核对尺寸与内容；`npm run check` 通过，`git diff --check` 通过。尚无真实 GLB，因此没有伪造加载通过结论。
-- 发布收口：当前工作树 `npm run build` 通过；`npm run verify:assets` 通过，确认生产运行时无第三方二进制美术/音频、无外链、无密钥模式，依赖许可证已知。仅保留既有 Three.js 核心 chunk 573.27KB 提示。
+- Tripo 输入/检查台：6 张角色输入均已核对；两份真实 Rigged GLB 已进入 Provider 与独立 Lab，资产门如实报告 Native Clip 为 0，不把骨骼或自制驱动冒充原生动画。
+- 发布收口：当前工作树 `npm run build` 通过；资产审计确认两份打包 GLB 均为已声明第一方资产，生产运行时无未声明二进制、无外链、无密钥模式，依赖许可证已知。仅保留 Three.js 核心 chunk 604.35KB 提示。
 
 ## 暂勿并行修改
 
-- Phase 2A 正在迁移 Gameplay 与 Presentation 边界；不要并行修改 `src/game/`、`src/main.ts`、`src/presentation/`、测试基线或 Tripo 角色管线。
+- Phase 2A 实现已收口，当前没有持续编辑锁；在本分支合并/评审前，避免对 `src/game/`、`src/presentation/`、性能门和角色 Provider 做相互覆盖的平行重构。
 - 不要删除现有程序化角色、三视图输入或本地验证证据；它们仍是视觉回退与迁移对照。

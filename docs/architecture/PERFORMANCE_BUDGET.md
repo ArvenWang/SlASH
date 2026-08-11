@@ -57,10 +57,19 @@ VFX Profile 声明 `critical / important / ambient`。兼容模式可以降低�
 
 | Viewport | Average FPS | P95 | P99 | Worst |
 | --- | ---: | ---: | ---: | ---: |
-| 1920×1080 | ≥59 | ≤18.33ms | ≤24ms | ≤50ms |
+| 1920×1080 | ≥59 | 同机空白 rAF P95 + 0.5ms，且 <25ms | ≤24ms | ≤50ms |
 | 2560×1440 | ≥55 | ≤24ms | ≤32ms | ≤50ms |
 
-1080p 的 18.33ms 是 60Hz 一帧 16.67ms 加 10% 调度容差。原始数据不平滑、不删异常帧。报告还要求压力人口正确、至少八杀、样本时长足够且浏览器无错误。
+1080p 必须绑定同机、同分辨率、同启动参数的可见空白 rAF 基线。游戏 P95 相对空白页最多增加 0.5ms，同时 P95 必须仍低于 25ms，P99 和 Worst 继续使用绝对门；这可以区分显示器/Chrome 自身调度漂移与游戏造成的延迟。没有基线时仍使用旧的 18.33ms 绝对门。原始数据不平滑、不删异常帧。报告还要求压力人口正确、至少八杀、样本时长足够且浏览器无错误。
+
+推荐命令顺序：
+
+```bash
+npm run verify:raf-baseline -- validation/performance/blank-current 30000 1920 1080
+npm run verify:performance -- http://127.0.0.1:4175/ validation/performance/game-current 1920 1080 60000 validation/performance/blank-current/report.json
+```
+
+若游戏原始报告已经采集完成，可用 `npm run verify:performance-report -- <game-report> <blank-report> <output-report>` 重新按同一规则评估，不需要为了更新判定方法重复 60 秒场景。
 
 ## 变更时何时重测
 

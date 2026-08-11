@@ -16,6 +16,7 @@
     "verify:lifecycle": "node validation/tools/verify-lifecycle-stability.mjs",
     "verify:memory": "node validation/tools/profile-memory-stability.mjs",
     "verify:performance": "node validation/tools/profile-acceptance-performance.mjs",
+    "verify:performance-report": "node validation/tools/evaluate-performance-report.mjs",
     "verify:raf-baseline": "node validation/tools/profile-raf-baseline.mjs",
     "verify:browsers": "node validation/tools/verify-browser-matrix.mjs",
     "verify:audio": "node validation/tools/capture-audio-evidence.mjs",

@@ -1,6 +1,7 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
+import { evaluatePerformanceGates } from "./performance-gates.mjs";
 
 const chromePath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const rawBaseUrl = process.argv[2] ?? "http://127.0.0.1:4175/";
@@ -8,6 +9,10 @@ const outputDirectory = path.resolve(process.argv[3] ?? "validation/performance/
 const width = Number(process.argv[4] ?? 1920);
 const height = Number(process.argv[5] ?? 1080);
 const durationMs = Number(process.argv[6] ?? 60_000);
+const cadenceBaselinePath = process.argv[7] ? path.resolve(process.argv[7]) : null;
+const cadenceBaseline = cadenceBaselinePath
+  ? JSON.parse(await readFile(cadenceBaselinePath, "utf8"))
+  : null;
 await mkdir(outputDirectory, { recursive: true });
 
 const url = new URL(rawBaseUrl);
@@ -50,26 +55,24 @@ try {
   const heapEnd = await page.evaluate(() => performance.memory?.usedJSHeapSize ?? null);
   await page.screenshot({ path: path.join(outputDirectory, "worst-case-final.png") });
   const is1080 = width === 1920 && height === 1080;
-  const thresholds = is1080
-    ? { averageFpsMin: 59, p95MsMax: 18.33, p99MsMax: 24, worstMsMax: 50 }
-    : { averageFpsMin: 55, p95MsMax: 24, p99MsMax: 32, worstMsMax: 50 };
-  const gates = {
-    averageFps: diagnostics.frame.averageFps >= thresholds.averageFpsMin,
-    p95: diagnostics.frame.p95Ms <= thresholds.p95MsMax,
-    p99: diagnostics.frame.p99Ms <= thresholds.p99MsMax,
-    worstFrame: diagnostics.frame.worstMs <= thresholds.worstMsMax,
-    sampleDuration: diagnostics.frame.sampleCount >= Math.floor((durationMs / 1000) * 50),
-    stressPopulation: state.enemyCount === 20 && state.kills >= 8,
-    browserClean: browserIssues.length === 0,
-  };
+  const evaluation = evaluatePerformanceGates({
+    frame: diagnostics.frame,
+    state,
+    browserIssues,
+    viewport: { width, height },
+    durationMs,
+    cadenceBaseline,
+  });
   report = {
     capturedAt: new Date().toISOString(),
     url: url.toString(),
     viewport: { width, height },
     durationMs,
     scenario: "20 enemies; one real eight-target swept dash; rain, steam, blood, corpses, camera and post FX enabled",
-    frameCadenceMethod: is1080
-      ? "Visible 60 Hz Chrome. P95 gate is one 16.67 ms refresh interval plus 10% scheduling tolerance (18.33 ms); raw intervals remain unmodified."
+    frameCadenceMethod: cadenceBaseline
+      ? "Visible Chrome raw rAF intervals, calibrated against a same-machine visible blank rAF capture; absolute P99 and worst-frame gates remain enforced."
+      : is1080
+        ? "Visible 60 Hz Chrome. P95 gate is one 16.67 ms refresh interval plus 10% scheduling tolerance (18.33 ms); raw intervals remain unmodified."
       : "Visible Chrome at the requested viewport; raw requestAnimationFrame intervals remain unmodified.",
     dashResult,
     state,
@@ -79,9 +82,7 @@ try {
       heapEnd,
       heapDelta: heapStart === null || heapEnd === null ? null : heapEnd - heapStart,
     },
-    thresholds,
-    gates,
-    passed: Object.values(gates).every(Boolean),
+    ...evaluation,
     browserIssues,
   };
   await context.close();

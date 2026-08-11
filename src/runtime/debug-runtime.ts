@@ -64,6 +64,26 @@ export interface DebugRuntime {
 export async function createDebugRuntime(options: DebugRuntimeOptions): Promise<DebugRuntime> {
   let panel: import("lil-gui").default | null = null;
   let panelVisible = false;
+  let panelRefreshFrame: number | null = null;
+  const liveControllers: Array<{ updateDisplay(): unknown }> = [];
+  let liveSnapshot = options.inspect();
+
+  function stopPanelRefresh(): void {
+    if (panelRefreshFrame === null) return;
+    cancelAnimationFrame(panelRefreshFrame);
+    panelRefreshFrame = null;
+  }
+
+  function refreshVisiblePanel(): void {
+    if (!panelVisible) {
+      panelRefreshFrame = null;
+      return;
+    }
+    liveSnapshot = options.inspect();
+    for (const controller of liveControllers) controller.updateDisplay();
+    panelRefreshFrame = requestAnimationFrame(refreshVisiblePanel);
+  }
+
   if (options.enabled) {
     const { default: GuiConstructor } = await import("lil-gui");
     panel = new GuiConstructor({ title: "PROJECT SLASH / TUNING" });
@@ -76,34 +96,34 @@ export async function createDebugRuntime(options: DebugRuntimeOptions): Promise<
     visual.add(options.tuning, "fogDensity", 0, 0.02, 0.0001).onChange(options.controls.setFogDensity);
     visual.add(options.tuning, "dashPreview");
     const live = {
-      get phase() { return options.inspect().gameplay.phase; },
-      get action() { return options.inspect().gameplay.action; },
-      get enemies() { return options.inspect().gameplay.enemies; },
-      get invulnerable() { return options.inspect().gameplay.invulnerable; },
-      get animation() { return options.inspect().visual.animation; },
-      get activeVfx() { return options.inspect().visual.activeVfx; },
-      get drawCalls() { return options.inspect().visual.drawCalls; },
-      get level() { return options.inspect().content.level; },
-      get ability() { return options.inspect().content.ability; },
-      get enemyDefinition() { return options.inspect().content.enemyDefinition; },
+      get phase() { return liveSnapshot.gameplay.phase; },
+      get action() { return liveSnapshot.gameplay.action; },
+      get enemies() { return liveSnapshot.gameplay.enemies; },
+      get invulnerable() { return liveSnapshot.gameplay.invulnerable; },
+      get animation() { return liveSnapshot.visual.animation; },
+      get activeVfx() { return liveSnapshot.visual.activeVfx; },
+      get drawCalls() { return liveSnapshot.visual.drawCalls; },
+      get level() { return liveSnapshot.content.level; },
+      get ability() { return liveSnapshot.content.ability; },
+      get enemyDefinition() { return liveSnapshot.content.enemyDefinition; },
     };
     const gameplay = panel.addFolder("GAMEPLAY");
-    gameplay.add(live, "phase").listen().disable();
-    gameplay.add(live, "action").listen().disable();
-    gameplay.add(live, "enemies").listen().disable();
-    gameplay.add(live, "invulnerable").listen().disable();
+    liveControllers.push(gameplay.add(live, "phase").disable());
+    liveControllers.push(gameplay.add(live, "action").disable());
+    liveControllers.push(gameplay.add(live, "enemies").disable());
+    liveControllers.push(gameplay.add(live, "invulnerable").disable());
     gameplay.add(options.tuning, "enemyMotion");
     const content = panel.addFolder("CONTENT");
-    content.add(live, "level").listen().disable();
-    content.add(live, "ability").listen().disable();
-    content.add(live, "enemyDefinition").listen().disable();
+    liveControllers.push(content.add(live, "level").disable());
+    liveControllers.push(content.add(live, "ability").disable());
+    liveControllers.push(content.add(live, "enemyDefinition").disable());
     content.add({ stage1: () => options.validation.setStage(0) }, "stage1");
     content.add({ stage2: () => options.validation.setStage(1) }, "stage2");
     content.add({ stage3: () => options.validation.setStage(2) }, "stage3");
     content.add({ stress20: () => options.validation.setStressScenario(20) }, "stress20");
-    visual.add(live, "animation").listen().disable();
-    visual.add(live, "activeVfx").listen().disable();
-    visual.add(live, "drawCalls").listen().disable();
+    liveControllers.push(visual.add(live, "animation").disable());
+    liveControllers.push(visual.add(live, "activeVfx").disable());
+    liveControllers.push(visual.add(live, "drawCalls").disable());
     panel.hide();
   }
 
@@ -117,10 +137,17 @@ export async function createDebugRuntime(options: DebugRuntimeOptions): Promise<
     togglePanel() {
       if (!panel) return;
       panelVisible = !panelVisible;
-      if (panelVisible) panel.show();
-      else panel.hide();
+      if (panelVisible) {
+        panel.show();
+        refreshVisiblePanel();
+      } else {
+        panel.hide();
+        stopPanelRefresh();
+      }
     },
     dispose() {
+      panelVisible = false;
+      stopPanelRefresh();
       panel?.destroy();
       delete window.slash_validation;
     },
