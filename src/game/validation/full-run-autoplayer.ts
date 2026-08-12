@@ -1,52 +1,54 @@
-import { eventForRouteNode } from "../../content/events/definitions";
-import { encounterForRouteNode } from "../../content/encounters/definitions";
+import { rewardPoolV2SkillDefinitionById } from "../../content/upgrades/reward-pool-v2";
 import type { GameCommand, GameCommandDispatchResult, GameState, Vec2 } from "../domain/types";
-import type { RouteNodeState } from "../run/types";
-import { currentRouteNode, routeNodeById } from "../run/run-system";
+import { routeNodeById } from "../run/run-system";
 import { getPlayerAction, stepGame } from "../game";
 import { planDashGeometry } from "../entities/obstacle-system";
 
+const VALIDATION_SKILL_PRIORITY = [
+  "skill-wide-slash-v1",
+  "skill-breach-momentum-v1",
+  "skill-chain-breach-v1",
+  "skill-execution-tempo-v1",
+  "skill-predator-drive-v1",
+  "skill-backline-battery-v1",
+  "skill-armor-shrapnel-v1",
+  "skill-kill-momentum-v1",
+  "skill-projectile-reversal-v1",
+  "skill-echo-slash-v1",
+] as const;
+
 export interface FullRunAutoplayerResult {
   readonly route: Array<{ readonly id: string; readonly act: number; readonly layer: number; readonly kind: string }>;
+  readonly completedNodes: Array<{ readonly id: string; readonly act: number; readonly layer: number; readonly kind: string }>;
   readonly bosses: string[];
+  readonly rewardChoices: string[];
+  readonly finalSkills: string[];
+  readonly victory: true;
 }
 
+/**
+ * Completes the Redesign V2 run flow. The third parameter is retained only for
+ * compatibility with legacy validation callers; V2 builds come exclusively
+ * from the reward drafts produced between encounters.
+ */
 export function completeFullRunForValidation(
   state: GameState,
   send: (command: GameCommand) => GameCommandDispatchResult,
-  buildTargets: readonly string[] = [],
+  _ignoredLegacyBuildTargets: readonly string[] = [],
 ): FullRunAutoplayerResult {
-  const route: FullRunAutoplayerResult["route"] = [];
   const bosses: string[] = [];
+  const rewardChoices: string[] = [];
   assert(send({ type: "start-full-game-run" }).result === "run-started", "run did not start");
-  for (let guard = 0; guard < 80 && state.run.fullGame?.phase !== "victory"; guard += 1) {
+  const initialPhase = state.run.fullGame?.phase;
+  assert(initialPhase === "combat", `run started at ${initialPhase}`);
+  for (let guard = 0; guard < 80; guard += 1) {
     const campaign = state.run.fullGame;
     assert(campaign, "campaign disappeared");
-    if (campaign.phase === "reward") {
-      assert(send({ type: "acknowledge-reward" }).result === "reward-acknowledged", "reward acknowledgement failed");
-      continue;
-    }
-    if (campaign.phase === "event") {
-      const node = currentRouteNode(campaign.routeProgress);
-      assert(node, "event has no current route node");
-      const definition = eventForRouteNode(node, state.run.seed);
-      assert(send({ type: "resolve-event-choice", choiceId: definition.choices[0]!.id }).result === "event-resolved", "event resolution failed");
-      continue;
-    }
-    if (campaign.phase === "forge") {
-      assert(send({ type: "confirm-forge" }).result === "forge-confirmed", "forge confirmation failed");
-      continue;
-    }
-    assert(campaign.phase === "planning", `unexpected phase ${campaign.phase}`);
-    allocateBuild(state, send, buildTargets);
-    const node = campaign.routeProgress.availableNodeIds
-      .map((id) => routeNodeById(campaign.routeProgress.route, id))
-      .sort((a, b) => routePriority(state, a) - routePriority(state, b) || a.id.localeCompare(b.id))[0];
-    assert(node, "route has no available node");
-    assert(send({ type: "preview-route-node", nodeId: node.id }).result === "route-previewed", "route preview failed");
-    assert(send({ type: "confirm-planning" }).result === "planning-confirmed", "planning confirmation failed");
-    route.push({ id: node.id, act: node.actIndex + 1, layer: node.layerIndex + 1, kind: node.kind });
-    if (node.kind === "event" || node.kind === "forge") continue;
+    if (campaign.phase === "victory") break;
+    assert(campaign.phase === "combat", `unexpected phase ${campaign.phase}`);
+    const currentNodeId = campaign.routeProgress.currentNodeId;
+    assert(currentNodeId, "combat has no current route node");
+    const node = routeNodeById(campaign.routeProgress.route, currentNodeId);
     if (node.kind === "boss") {
       advanceUntil(state, () => state.run.fullGame?.activeBoss !== null, 400);
       const bossId = state.run.fullGame?.activeBoss?.definitionId;
@@ -56,33 +58,58 @@ export function completeFullRunForValidation(
     } else {
       playEncounter(state, send);
     }
+
+    const completedCampaign = state.run.fullGame;
+    assert(completedCampaign, "campaign disappeared after combat");
+    if (completedCampaign.phase === "victory") break;
+    assert(completedCampaign.phase === "upgrade-choice", `combat ended at ${completedCampaign.phase}`);
+    const draft = completedCampaign.activeRewardDraft;
+    assert(draft, "upgrade choice has no active reward draft");
+    assert(draft.candidateSkillIds.length === 3, `reward draft ${draft.offerId} does not contain three skills`);
+    const legalSkillIds = draft.candidateSkillIds.filter((skillId) => {
+      const definition = rewardPoolV2SkillDefinitionById(skillId);
+      return !completedCampaign.skills.committedSkillIds.includes(skillId)
+        && definition.prerequisites.every((id) => completedCampaign.skills.committedSkillIds.includes(id));
+    });
+    const selectedSkillId = [...legalSkillIds].sort((left, right) => (
+      validationSkillPriority(left) - validationSkillPriority(right)
+      || left.localeCompare(right)
+    ))[0];
+    assert(selectedSkillId, `reward draft ${draft.offerId} has no legal skill`);
+    assert(send({
+      type: "select-reward-skill",
+      offerId: draft.offerId,
+      skillId: selectedSkillId,
+    }).result === "reward-skill-selected", `reward selection failed for ${selectedSkillId}`);
+    rewardChoices.push(selectedSkillId);
+    assert(state.run.fullGame?.phase === "combat", `reward continued at ${state.run.fullGame?.phase}`);
   }
-  assert(state.run.fullGame?.phase === "victory", `run ended at ${state.run.fullGame?.phase}`);
-  return { route, bosses };
+  const completedCampaign = state.run.fullGame;
+  assert(completedCampaign?.phase === "victory", `run ended at ${completedCampaign?.phase}`);
+  const route = completedCampaign.routeProgress.completedNodeIds.map((id) => {
+    const node = routeNodeById(completedCampaign.routeProgress.route, id);
+    return { id: node.id, act: node.actIndex + 1, layer: node.layerIndex + 1, kind: node.kind };
+  });
+  assert(bosses.length === 4, `run completed with ${bosses.length} bosses`);
+  assert(new Set(bosses).size === 4, "run did not complete four distinct bosses");
+  return {
+    route,
+    completedNodes: route,
+    bosses,
+    rewardChoices,
+    finalSkills: [...completedCampaign.skills.committedSkillIds],
+    victory: true,
+  };
 }
 
-function allocateBuild(state: GameState, send: (command: GameCommand) => GameCommandDispatchResult, targets: readonly string[]): void {
-  for (let pass = 0; pass < targets.length; pass += 1) {
-    let changed = false;
-    for (const skillId of targets) {
-      const skills = state.run.fullGame?.skills;
-      if (!skills || skills.totalEarnedPoints - skills.committedSkillIds.length - skills.draftAddedSkillIds.length + skills.draftRemovedSkillIds.length <= 0) return;
-      if (skills.committedSkillIds.includes(skillId) || skills.draftAddedSkillIds.includes(skillId)) continue;
-      if (send({ type: "preview-skill-purchase", skillId }).result === "skill-drafted") changed = true;
-    }
-    if (!changed) return;
-  }
-}
-
-function routePriority(state: GameState, node: RouteNodeState): number {
-  if (node.kind === "event") return 0;
-  if (node.kind === "forge") return 1;
-  if (node.kind === "boss") return 1_000;
-  const encounter = encounterForRouteNode(node, state.run.seed);
-  assert(encounter, `missing encounter for ${node.id}`);
-  return (node.kind === "elite" ? 40 : node.kind === "challenge" ? 30 : 10) +
-    encounter.initialHazards.length * 20 + encounter.initialObstacles.length * 12 +
-    encounter.waves.flatMap((wave) => wave.spawns).filter((spawn) => spawn.enemyDefinitionId.includes("vanguard") || spawn.enemyDefinitionId.includes("bastion") || spawn.enemyDefinitionId.includes("fortress")).length * 4;
+function validationSkillPriority(skillId: string): number {
+  if (
+    skillId === "skill-curve-dash-v1"
+    || skillId === "skill-refraction-v1"
+    || skillId === "skill-rapid-dash-v1"
+  ) return 10_000;
+  const index = VALIDATION_SKILL_PRIORITY.indexOf(skillId as typeof VALIDATION_SKILL_PRIORITY[number]);
+  return index === -1 ? VALIDATION_SKILL_PRIORITY.length : index;
 }
 
 function playEncounter(state: GameState, send: (command: GameCommand) => GameCommandDispatchResult): void {
@@ -98,7 +125,7 @@ function playEncounter(state: GameState, send: (command: GameCommand) => GameCom
     else send({ type: "activate-ability", slot: "primary", target });
     stepGame(state);
   }
-  assert(state.run.fullGame?.phase === "reward", `encounter ended at ${state.run.fullGame?.phase}`);
+  assert(state.run.fullGame?.phase === "upgrade-choice", `encounter ended at ${state.run.fullGame?.phase}`);
 }
 
 function chargingIsSafe(state: GameState): boolean {
@@ -172,7 +199,10 @@ function solveMirrorRegent(state: GameState, send: (command: GameCommand) => Gam
     const real = state.enemies.find((enemy) => enemy.id === mechanics.realEntityId);
     assert(real, "Mirror Regent real body missing");
     dashThrough(state, send, real.position, 6);
-    if (hit < 2) advanceUntil(state, () => state.run.fullGame?.activeBoss?.actionPhase === "objective", 1_000);
+    if (hit < 2) advanceUntil(state, () => (
+      state.run.fullGame?.activeBoss?.actionPhase === "objective"
+      && getPlayerAction(state) === "ready"
+    ), 1_000);
   }
   finishBoss(state);
 }
@@ -198,9 +228,12 @@ function solveLastConductor(state: GameState, send: (command: GameCommand) => Ga
   settleReady(state);
   const points = lastMechanics(state).finaleNodes.map((node) => node.position);
   assert(send({ type: "start-ultimate" }).result === "ultimate-planning-started", "final Ultimate did not start");
-  for (let index = 0; index < points.length; index += 1) {
-    const result = send({ type: "add-ultimate-point", target: points[index]! }).result;
-    assert(result === (index === points.length - 1 ? "ultimate-executing" : "ultimate-point-added"), "final Ultimate point rejected");
+  const requiredPointCount = state.player.ultimatePlanning?.requiredPointCount;
+  assert(requiredPointCount === 3 || requiredPointCount === 4, "final Ultimate has an invalid point count");
+  const plannedPoints = requiredPointCount === 4 ? [...points, { x: 0, z: 0 }] : points;
+  for (let index = 0; index < plannedPoints.length; index += 1) {
+    const result = send({ type: "add-ultimate-point", target: plannedPoints[index]! }).result;
+    assert(result === (index === plannedPoints.length - 1 ? "ultimate-executing" : "ultimate-point-added"), "final Ultimate point rejected");
   }
   finishBoss(state);
 }
@@ -234,7 +267,7 @@ function settleReady(state: GameState): void {
 }
 
 function finishBoss(state: GameState): void {
-  advanceUntil(state, () => state.run.fullGame?.phase === "reward" || state.run.fullGame?.phase === "victory", 1_500);
+  advanceUntil(state, () => state.run.fullGame?.phase === "upgrade-choice" || state.run.fullGame?.phase === "victory", 1_500);
 }
 
 function waitLastPhase(state: GameState, phaseIndex: number): void {

@@ -13,24 +13,29 @@ try {
   const autoplay = await server.ssrLoadModule("/src/game/validation/full-run-autoplayer.ts");
   const state = game.createFullGameGame(seed);
   const recorder = replayModule.createReplayRecorder(state);
-  const build = [
-    "skill-wide-slash-v1", "skill-gravity-slash-v1",
-    "skill-breach-momentum-v1", "skill-chain-breach-v1",
-    "skill-execution-tempo-v1", "skill-predator-drive-v1",
-    "skill-cross-execution-v1", "skill-cross-purge-v1",
-    "skill-projectile-reversal-v1", "skill-kill-momentum-v1",
-  ];
-  const run = autoplay.completeFullRunForValidation(state, (command) => recorder.dispatch(command), build);
+  const run = autoplay.completeFullRunForValidation(state, (command) => recorder.dispatch(command));
   const log = recorder.finish();
   const replay = replayModule.playReplay(log);
   const finalState = game.getGameSnapshot(state);
+  const rewardChoiceCount = run.rewardChoices.length;
+  const finalSkillCount = run.finalSkills.length;
+  const completedNodeCount = run.completedNodes.length;
+  const bossCount = run.bosses.length;
   const report = {
-    ok: replay.matched && run.route.length === 24 && run.bosses.length === 4 && finalState.player.hp === 1,
+    ok: run.victory && replay.matched && completedNodeCount > 0 && bossCount === 4 &&
+      rewardChoiceCount === completedNodeCount - 1 && finalSkillCount === rewardChoiceCount &&
+      finalState.player.hp === 1,
     seed,
     protocol: "standard",
-    route: run.route,
+    rewardChoices: run.rewardChoices,
+    rewardChoiceCount,
+    finalSkills: run.finalSkills,
+    finalSkillCount,
+    completedNodes: run.completedNodes,
+    completedNodeCount,
     bosses: run.bosses,
-    build: [...state.run.selectedUpgrades],
+    bossCount,
+    victory: run.victory,
     commands: log.entries.length,
     ticks: log.finalRunTick,
     expectedHash: log.expectedStateHash,
@@ -41,7 +46,18 @@ try {
   await mkdir(outputDirectory, { recursive: true });
   await writeFile(resolve(outputDirectory, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
   await writeFile(resolve(outputDirectory, "replay.json"), `${JSON.stringify(log)}\n`);
-  console.log(JSON.stringify({ ok: report.ok, seed, nodes: run.route.length, bosses: run.bosses.length, skills: report.build.length, commands: report.commands, ticks: report.ticks, replayMatched: replay.matched }, null, 2));
+  console.log(JSON.stringify({
+    ok: report.ok,
+    seed,
+    rewardChoices: rewardChoiceCount,
+    finalSkills: finalSkillCount,
+    completedNodes: completedNodeCount,
+    bosses: bossCount,
+    victory: run.victory,
+    commands: report.commands,
+    ticks: report.ticks,
+    replayMatched: replay.matched,
+  }, null, 2));
   if (!report.ok) process.exitCode = 1;
 } finally {
   await server.close();

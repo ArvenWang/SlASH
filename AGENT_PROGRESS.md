@@ -33,6 +33,7 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - [x] 定向 6 文件 / 32 项、Production Build、whitespace 和一次真实浏览器短流程通过。
 - [x] 生产 Campaign UI 死代码清理：正式路径仅保留主页、设置、暂停、三选一、胜负；旧流程和约 480 行死 CSS 已移除。
 - [x] Clean Arena Environment Provider 与自适应远景镜头已接入正式关卡。
+- [x] 第一阶段完整局收口：Seed 911 完成 23 节点 / 4 Boss / 22 次三选一并 Replay Hash Match；3 Seed 的 V2 完整局回放门通过。
 
 ## Redesign V2 当前状态与问题
 
@@ -40,6 +41,7 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 当前场景仍是第一版结构基线，完成的是 Environment Provider、正式关卡接线与镜头构图，后续仍需继续做视觉精修。
 - 当前角色可读性不是最终状态，将随 Primitive Character Provider 几何体阶段继续优化。
 - 旧自动化仍有多项把完整树、路线图和详细文案视为成功条件，必须随对应实现小节改写，不能保留为新流程的阻塞门。
+- 完整局自动玩家与报告已迁移到 V2；剩余旧非战斗页面验收脚本仍要在相关清理小节逐项改写，但不再作为当前 V2 主流程通过标准。
 - V5R、旧场景和旧 UI 文件暂时仍在仓库；完成标准是正式运行与 Registry 不再引用，而不是提前删除文件。
 
 ## Full Game Production 当前进展
