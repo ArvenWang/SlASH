@@ -100,10 +100,12 @@ import {
 } from "./combat/armor";
 import {
   acknowledgeCampaignReward,
+  abandonCampaignRun,
   advanceCampaignEncounterScheduler,
   campaignAvailableRouteNodes,
   campaignEncounterCanComplete,
   completeCampaignEncounter,
+  configureCampaignProtocol,
   confirmCampaignForge,
   confirmCampaignPlanning,
   discardCampaignSkillDraft,
@@ -118,6 +120,7 @@ import {
   startBossPractice,
   startFullGameRun,
   synchronizeCampaignChallenge,
+  synchronizeCampaignRunMetrics,
   useCampaignForgeToken,
 } from "./campaign/campaign-system";
 import { skillAllocationSnapshot } from "./upgrades/skill-system";
@@ -1452,6 +1455,7 @@ function simulateFixedStep(state: GameState): void {
   state.elapsedMs += FIXED_STEP_MS;
   const worldTimeScale = state.player.ultimatePlanning?.worldTimeScale ?? 1;
   const worldDeltaMs = FIXED_STEP_MS * worldTimeScale;
+  synchronizeCampaignRunMetrics(state);
   advanceCampaignEncounterScheduler(state);
   advancePlayerAction(state, FIXED_STEP_MS);
   resolveScheduledSlashes(state, worldDeltaMs);
@@ -1497,6 +1501,10 @@ export function dispatchGameCommand(
     result = "advanced";
   } else if (command.type === "start-full-game-run") {
     result = startFullGameRun(state);
+  } else if (command.type === "configure-run-protocol") {
+    result = configureCampaignProtocol(state, command.mode, command.threatLevel);
+  } else if (command.type === "abandon-run") {
+    result = abandonCampaignRun(state);
   } else if (command.type === "start-boss-practice") {
     result = startBossPractice(state, command.bossDefinitionId);
   } else if (command.type === "return-to-title") {
@@ -1535,6 +1543,7 @@ export function dispatchGameCommand(
     result = cancelVectorFocus(state);
   }
   synchronizeCampaignChallenge(state);
+  synchronizeCampaignRunMetrics(state);
   return { sequence: state.commandSequence, result };
 }
 
@@ -1553,6 +1562,7 @@ function applyControlInput(state: GameState, input: GameInput): boolean {
 
 /** Advances exactly one 120 Hz simulation tick. Ideal for deterministic tests. */
 export function stepGame(state: GameState, input: GameInput = EMPTY_GAME_INPUT): GameState {
+  synchronizeCampaignRunMetrics(state);
   if (applyControlInput(state, input)) {
     return state;
   }
@@ -1564,6 +1574,7 @@ export function stepGame(state: GameState, input: GameInput = EMPTY_GAME_INPUT):
     });
   }
   simulateFixedStep(state);
+  synchronizeCampaignRunMetrics(state);
   return state;
 }
 
@@ -1576,6 +1587,7 @@ export function advanceGame(
   deltaMs: number,
   input: GameInput = EMPTY_GAME_INPUT,
 ): GameState {
+  synchronizeCampaignRunMetrics(state);
   if (applyControlInput(state, input)) {
     return state;
   }
@@ -1597,6 +1609,7 @@ export function advanceGame(
   ) {
     state.accumulatorMs = Math.max(0, state.accumulatorMs - FIXED_STEP_MS);
     simulateFixedStep(state);
+    synchronizeCampaignRunMetrics(state);
   }
   if (state.stage.phase !== "playing") {
     state.accumulatorMs = 0;
@@ -1640,6 +1653,7 @@ function bossDetailsForSnapshot(runtime: BossRuntimeState): NonNullable<NonNulla
 
 /** Compact, stable state intended for renderGameToText and browser QA agents. */
 export function getGameSnapshot(state: GameState): GameSnapshot {
+  synchronizeCampaignRunMetrics(state);
   const dash = state.player.dash;
   const campaign = state.run.fullGame;
   const allocation = campaign ? skillAllocationSnapshot(campaign.skills) : null;
@@ -1827,6 +1841,20 @@ export function getGameSnapshot(state: GameState): GameSnapshot {
     },
     campaign: campaign === null || allocation === null ? null : {
       phase: campaign.phase,
+      protocol: {
+        mode: campaign.protocol.mode,
+        threatLevel: campaign.protocol.threatLevel,
+        assistRebootsRemaining: campaign.protocol.assistRebootsRemaining,
+        leaderboardEligible: campaign.protocol.leaderboardEligible,
+      },
+      runMetrics: {
+        durationMs: roundForSnapshot(Math.max(0, state.elapsedMs - campaign.runMetrics.startedAtMs)),
+        kills: campaign.runMetrics.kills,
+        armorBreaks: campaign.runMetrics.armorBreaks,
+        projectileCuts: campaign.runMetrics.projectileCuts,
+        bossBreaks: campaign.runMetrics.bossBreaks,
+        deathSourceId: campaign.runMetrics.deathSourceId,
+      },
       actIndex: campaign.routeProgress.actIndex,
       layerIndex: campaign.routeProgress.layerIndex,
       currentNodeId: campaign.routeProgress.currentNodeId,

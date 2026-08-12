@@ -314,14 +314,14 @@ P11 Visual Branch Integration Contract + Git Push
 
 ### 任务
 
-- [ ] Profile Save Schema / Version。
+- [x] Profile Save Schema / Version；独立 Envelope、Checksum、损坏原文保留与显式备份重建。
 - [x] Safe Node Run Save / Continue；战斗中只保留最后一个安全节点存档。
 - [x] 未知 Schema / Content Version 与损坏数据明确拒绝并保留原文；当前无历史生产 Schema，迁移器待首次兼容版本需求再增加。
-- [ ] Dossier、Practice、Victory Records。
-- [ ] Assist Protocol。
-- [ ] Threat Protocol 1–5。
-- [ ] 本地统计，不默认联网。
-- [ ] Settings 持久化。
+- [x] Dossier、解锁式 Boss Practice、Victory / Death Records。
+- [x] Assist Protocol：每 Act 1 Reboot、Telegraph +25%、Projectile -15%、独立记录。
+- [x] Threat Protocol 1–5：路线、Hazard、Boss 变式、Intel、Redline 均为真实 Gameplay 规则。
+- [x] 本地统计，不默认联网。
+- [x] Settings 持久化：Audio、Quality、Reduced Motion、High Contrast。
 
 ### 完成门
 
@@ -335,13 +335,13 @@ P11 Visual Branch Integration Contract + Git Push
 
 ### 任务
 
-- [ ] Title / Continue / New Run / Practice / Settings。
+- [x] Title / Continue / New Run / Practice / Settings。
 - [ ] Run Map 与 Threat Preview。
 - [ ] Skill Tree / Forge。
 - [ ] Charged Indicator / Armor Part / Ultimate Planning。
 - [ ] Boss Objective HUD。
-- [ ] Pause / Defeat / Victory / Run Summary。
-- [ ] Touch 全流程。
+- [x] Pause / Resume / Abandon、Defeat / Victory 与本局核心统计；死亡来源翻译仍待补充。
+- [ ] Touch 全流程；Ultimate / Cancel 与 44px 已完成，完整 4 Act 触控流程待验收。
 - [ ] 非颜色提示与灰度检查。
 - [ ] 为视觉分支提供 Enemy / Attack / Boss / Entity Presentation ID 清单。
 

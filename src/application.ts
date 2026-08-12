@@ -15,6 +15,7 @@ import { createRendererRuntime } from "./runtime/renderer-runtime";
 import { createCampaignUiRuntime } from "./runtime/campaign-ui-runtime";
 import { isRunSaveSafe } from "./game/save/run-save";
 import { createRunSaveRuntime } from "./runtime/run-save-runtime";
+import { createProfileRuntime } from "./runtime/profile-runtime";
 
 function requiredElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -40,13 +41,27 @@ export async function bootstrapSlashApplication(): Promise<void> {
     loadingLabel: requiredElement<HTMLParagraphElement>("#loading-label"),
     loadingProgress: requiredElement<HTMLSpanElement>("#loading-progress"),
     campaignUi: requiredElement<HTMLDivElement>("#campaign-ui"),
+    touchUltimate: requiredElement<HTMLButtonElement>("#touch-ultimate"),
+    touchCancel: requiredElement<HTMLButtonElement>("#touch-cancel"),
   };
   const pageParameters = new URLSearchParams(window.location.search);
-  const qualityMode = pageParameters.get("quality") === "compatibility"
-    ? "compatibility"
-    : "high";
   const deterministicCapture = pageParameters.get("deterministic") === "1";
   const validationMode = pageParameters.get("validation") === "1";
+  const profileRuntime = createProfileRuntime({
+    getItem(key) {
+      return window.localStorage.getItem(key);
+    },
+    setItem(key, value) {
+      window.localStorage.setItem(key, value);
+    },
+  });
+  const initialSettings = profileRuntime.profile().settings;
+  const qualityParameter = pageParameters.get("quality");
+  const qualityMode = qualityParameter === "compatibility" || qualityParameter === "high"
+    ? qualityParameter
+    : initialSettings.qualityMode;
+  document.body.classList.toggle("high-contrast", initialSettings.highContrast);
+  document.body.classList.toggle("reduced-motion", initialSettings.reducedMotion);
 
   function setLoadingPhase(progress: number, label: string): void {
     const scale = Math.min(1, Math.max(0.05, progress));
@@ -78,16 +93,18 @@ export async function bootstrapSlashApplication(): Promise<void> {
     environmentId: initialLevel.environmentId,
     lightingProfileId: initialLevel.lightingProfileId,
   });
+  rendererRuntime.audio.setEnabled(initialSettings.audioEnabled);
   setLoadingPhase(0.62, "ASSEMBLING COMBAT SPACE");
   const tuning: RuntimeTuning = {
     exposure: 0.98,
     bloom: 0.34,
     cameraFov: 28.5,
-    vfxDensity: 1,
-    rainDensity: 1,
+    vfxDensity: initialSettings.reducedMotion ? 0.72 : 1,
+    rainDensity: initialSettings.reducedMotion ? 0.55 : 1,
     fogDensity: 0.0078,
     enemyMotion: true,
     dashPreview: true,
+    reducedMotion: initialSettings.reducedMotion,
   };
   const characterProviders = createCharacterProviderRegistry();
   const activeCharacterProviderIds = [
@@ -115,6 +132,28 @@ export async function bootstrapSlashApplication(): Promise<void> {
       gameRuntime.loadState(restored.state);
       return { ok: true };
     },
+    profile: profileRuntime,
+    validationMode,
+    onPauseChanged(paused) {
+      simulationEnabled = !paused;
+    },
+    onSettingsChanged(settings, changedKey) {
+      if (changedKey === "audioEnabled") {
+        audioEnabled = settings.audioEnabled;
+        rendererRuntime.audio.setEnabled(audioEnabled);
+      } else if (changedKey === "reducedMotion") {
+        tuning.reducedMotion = settings.reducedMotion;
+        tuning.vfxDensity = settings.reducedMotion ? 0.72 : 1;
+        tuning.rainDensity = settings.reducedMotion ? 0.55 : 1;
+        rendererRuntime.vfx.setDensity(tuning.vfxDensity);
+        rendererRuntime.environment.setRainDensity(tuning.rainDensity);
+        document.body.classList.toggle("reduced-motion", settings.reducedMotion);
+      } else if (changedKey === "highContrast") {
+        document.body.classList.toggle("high-contrast", settings.highContrast);
+      } else if (changedKey === "qualityMode" && !validationMode) {
+        window.location.reload();
+      }
+    },
     onStateTransition(result) {
       if (
         result === "planning-confirmed" ||
@@ -129,6 +168,7 @@ export async function bootstrapSlashApplication(): Promise<void> {
       ) {
         presentationRuntime.resetStage();
       }
+      consumeGameEvents(gameRuntime.drainEvents());
       if (result !== "ignored" && result !== "run-continued" && isRunSaveSafe(gameState)) {
         const saved = runSaveRuntime.write(gameState);
         if (!saved.ok) console.warn(saved.message);
@@ -140,11 +180,16 @@ export async function bootstrapSlashApplication(): Promise<void> {
   let lastTime = performance.now();
   let simulationEnabled = true;
   let graphicsContextState: "ready" | "lost" | "restoring" = "ready";
-  let audioEnabled = true;
+  let audioEnabled = initialSettings.audioEnabled;
   let chargedPointerActive = false;
   let chargedPointerInputId: number | null = null;
   let ultimatePointPointerActive = false;
   let ultimatePointInputId: number | null = null;
+
+  function consumeGameEvents(events: ReturnType<typeof gameRuntime.drainEvents>): void {
+    profileRuntime.observe(gameState, events);
+    presentationRuntime.consumeEvents(events);
+  }
 
   function dispatchPrimaryAbility(target: { x: number; z: number }): string {
     if (gameState.stage.phase !== "playing") return "ignored";
@@ -155,7 +200,7 @@ export async function bootstrapSlashApplication(): Promise<void> {
       target,
     });
     if (result !== "ignored") presentationRuntime.markPendingAbilityInput(inputId);
-    if (result === "started") presentationRuntime.consumeEvents(gameRuntime.drainEvents());
+    if (result === "started") consumeGameEvents(gameRuntime.drainEvents());
     return result;
   }
 
@@ -166,7 +211,7 @@ export async function bootstrapSlashApplication(): Promise<void> {
 
   function updateFrame(dt: number): void {
     if (simulationEnabled && gameState.stage.phase === "playing") {
-      presentationRuntime.consumeEvents(gameRuntime.advance(dt * 1000, tuning.enemyMotion));
+      consumeGameEvents(gameRuntime.advance(dt * 1000, tuning.enemyMotion));
     }
     const lifecycleAction = presentationRuntime.update(dt);
     if (lifecycleAction === "restart-stage") {
@@ -180,6 +225,11 @@ export async function bootstrapSlashApplication(): Promise<void> {
       resetPresentationStage();
     }
     campaignUiRuntime.update();
+    shell.touchUltimate.classList.toggle(
+      "visible",
+      gameState.stage.phase === "playing" && gameState.player.ultimateEnergy >= 100 && gameState.player.ultimatePlanning === null,
+    );
+    shell.touchCancel.classList.toggle("visible", gameState.player.ultimatePlanning !== null);
   }
 
   function renderScene(): void {
@@ -334,7 +384,7 @@ export async function bootstrapSlashApplication(): Promise<void> {
       },
       releaseChargeTo(x, z) {
         const result = gameRuntime.dispatch({ type: "release-charge", target: { x, z } }).result;
-        presentationRuntime.consumeEvents(gameRuntime.drainEvents());
+        consumeGameEvents(gameRuntime.drainEvents());
         return result;
       },
       startUltimate() {
@@ -342,7 +392,7 @@ export async function bootstrapSlashApplication(): Promise<void> {
       },
       addUltimatePoint(x, z) {
         const result = gameRuntime.dispatch({ type: "add-ultimate-point", target: { x, z } }).result;
-        presentationRuntime.consumeEvents(gameRuntime.drainEvents());
+        consumeGameEvents(gameRuntime.drainEvents());
         return result;
       },
       cancelUltimate() {
@@ -379,8 +429,9 @@ export async function bootstrapSlashApplication(): Promise<void> {
         // A later trusted gesture may retry audio without interrupting gameplay.
       });
       if (gameState.stage.phase === "dead") {
-        gameRuntime.dispatch({ type: "restart-stage" });
-        resetPresentationStage();
+        const { result } = gameRuntime.dispatch({ type: "restart-stage" });
+        if (result === "restarted") resetPresentationStage();
+        consumeGameEvents(gameRuntime.drainEvents());
         campaignUiRuntime.update();
         return;
       }
@@ -396,7 +447,7 @@ export async function bootstrapSlashApplication(): Promise<void> {
       const { result } = gameRuntime.dispatch({ type: "begin-charge", target });
       chargedPointerActive = result === "charge-started";
       chargedPointerInputId = chargedPointerActive ? inputId : null;
-      if (chargedPointerActive) presentationRuntime.consumeEvents(gameRuntime.drainEvents());
+      if (chargedPointerActive) consumeGameEvents(gameRuntime.drainEvents());
     },
     onPrimaryPointerUp: ({ clientX, clientY }) => {
       presentationRuntime.updatePointer(clientX, clientY);
@@ -412,7 +463,7 @@ export async function bootstrapSlashApplication(): Promise<void> {
         if (result === "ultimate-executing" && ultimatePointInputId !== null) {
           presentationRuntime.markPendingAbilityInput(ultimatePointInputId);
         }
-        presentationRuntime.consumeEvents(gameRuntime.drainEvents());
+        consumeGameEvents(gameRuntime.drainEvents());
         ultimatePointPointerActive = false;
         ultimatePointInputId = null;
         return;
@@ -426,26 +477,26 @@ export async function bootstrapSlashApplication(): Promise<void> {
       if ((result === "started" || result === "charged-released") && chargedPointerInputId !== null) {
         presentationRuntime.markPendingAbilityInput(chargedPointerInputId);
       }
-      presentationRuntime.consumeEvents(gameRuntime.drainEvents());
+      consumeGameEvents(gameRuntime.drainEvents());
       chargedPointerActive = false;
       chargedPointerInputId = null;
     },
     onPrimaryPointerCancel: () => {
       if (chargedPointerActive) {
         gameRuntime.dispatch({ type: "cancel-charge" });
-        presentationRuntime.consumeEvents(gameRuntime.drainEvents());
+        consumeGameEvents(gameRuntime.drainEvents());
       }
       chargedPointerActive = false;
       chargedPointerInputId = null;
       ultimatePointPointerActive = false;
       ultimatePointInputId = null;
       const ultimateResult = gameRuntime.dispatch({ type: "cancel-ultimate" }).result;
-      if (ultimateResult !== "ignored") presentationRuntime.consumeEvents(gameRuntime.drainEvents());
+      if (ultimateResult !== "ignored") consumeGameEvents(gameRuntime.drainEvents());
     },
     onSecondaryPointer: () => {
       gameRuntime.dispatch({ type: "cancel-charge" });
       gameRuntime.dispatch({ type: "cancel-ultimate" });
-      presentationRuntime.consumeEvents(gameRuntime.drainEvents());
+      consumeGameEvents(gameRuntime.drainEvents());
       chargedPointerActive = false;
       chargedPointerInputId = null;
       ultimatePointPointerActive = false;
@@ -453,19 +504,48 @@ export async function bootstrapSlashApplication(): Promise<void> {
     },
     onUltimate: () => {
       const { result } = gameRuntime.dispatch({ type: "start-ultimate" });
-      if (result !== "ignored") presentationRuntime.consumeEvents(gameRuntime.drainEvents());
+      if (result !== "ignored") consumeGameEvents(gameRuntime.drainEvents());
+    },
+    onPause: () => {
+      if (gameState.player.charge !== null || gameState.player.ultimatePlanning !== null) {
+        gameRuntime.dispatch({ type: "cancel-charge" });
+        gameRuntime.dispatch({ type: "cancel-ultimate" });
+        consumeGameEvents(gameRuntime.drainEvents());
+        chargedPointerActive = false;
+        chargedPointerInputId = null;
+        ultimatePointPointerActive = false;
+        ultimatePointInputId = null;
+        return;
+      }
+      campaignUiRuntime.togglePause();
     },
     onPointerLeave: presentationRuntime.clearPointer,
     onRestart: () => {
-      gameRuntime.dispatch({ type: "restart-stage" });
-      resetPresentationStage();
+      const { result } = gameRuntime.dispatch({ type: "restart-stage" });
+      if (result === "restarted") resetPresentationStage();
+      consumeGameEvents(gameRuntime.drainEvents());
+      campaignUiRuntime.update();
     },
     onToggleAudio: () => {
       audioEnabled = !audioEnabled;
       rendererRuntime.audio.setEnabled(audioEnabled);
+      const saved = profileRuntime.updateSettings({ audioEnabled });
+      if (!saved.ok) console.warn(saved.message);
     },
     onToggleDebug: debugRuntime.togglePanel,
     onResize: resize,
+  });
+
+  shell.touchUltimate.addEventListener("click", () => {
+    const { result } = gameRuntime.dispatch({ type: "start-ultimate" });
+    if (result !== "ignored") consumeGameEvents(gameRuntime.drainEvents());
+  });
+  shell.touchCancel.addEventListener("click", () => {
+    gameRuntime.dispatch({ type: "cancel-charge" });
+    gameRuntime.dispatch({ type: "cancel-ultimate" });
+    consumeGameEvents(gameRuntime.drainEvents());
+    chargedPointerActive = false;
+    ultimatePointPointerActive = false;
   });
 
   shell.canvas.addEventListener("webglcontextlost", (event) => {

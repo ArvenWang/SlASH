@@ -1,6 +1,7 @@
 import type { GameState } from "../game/domain/types";
 import {
   RUN_SAVE_STORAGE_KEY,
+  RUN_SAVE_LEGACY_STORAGE_KEYS,
   RunSaveError,
   createRunSave,
   inspectRunSave,
@@ -61,7 +62,13 @@ function readRaw(storage: RunSaveStorage):
   | { readonly ok: true; readonly value: string | null }
   | { readonly ok: false; readonly message: string } {
   try {
-    return { ok: true, value: storage.getItem(RUN_SAVE_STORAGE_KEY) };
+    const current = storage.getItem(RUN_SAVE_STORAGE_KEY);
+    if (current !== null) return { ok: true, value: current };
+    for (const key of RUN_SAVE_LEGACY_STORAGE_KEYS) {
+      const legacy = storage.getItem(key);
+      if (legacy !== null) return { ok: true, value: legacy };
+    }
+    return { ok: true, value: null };
   } catch (error) {
     return { ok: false, message: `无法读取本地存档：${error instanceof Error ? error.message : String(error)}` };
   }

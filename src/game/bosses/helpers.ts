@@ -6,6 +6,7 @@ import type { ArmorPartState, EnemyState, GameState } from "../domain/types";
 import { createEnemyTacticalState } from "../enemies/enemy-attack-system";
 import { emitGameEvent } from "../events/event-buffer";
 import type { BossActionPhase, BossRuntimeState } from "./types";
+import { telegraphDurationScale } from "../difficulty/protocol-system";
 
 export function spawnBossAuxiliaryEnemy(
   state: GameState,
@@ -54,7 +55,10 @@ export function enterBossActionPhase(
   const wasCoreExposed = runtime.coreExposed;
   runtime.actionPhase = actionPhase;
   runtime.phaseElapsedMs = 0;
-  runtime.phaseDurationMs = Math.max(0, durationMs);
+  runtime.phaseDurationMs = Math.max(
+    0,
+    durationMs * (actionPhase === "telegraph" ? telegraphDurationScale(state) : 1),
+  );
   runtime.lockedTarget = target ? copyVec2(target) : null;
   runtime.coreExposed = actionPhase === "vulnerable";
   if (wasCoreExposed && !runtime.coreExposed) {

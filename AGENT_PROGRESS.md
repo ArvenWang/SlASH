@@ -15,7 +15,7 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 已增加 `FULL_GAME_CONTENT_MANIFEST.json`、统一术语表和 `npm run verify:full-game-design`；机器门已确认 4 Act、28 Skill、10+4 Enemy、4 Boss、3/4/2 Entity、53 个 Encounter 目标和 12/28 点数上限一致。
 - 技能经济已改为完整 Run：开局 2 点、每 Act 保证 2 点、Elite 最多补 2 点；保证 10、上限 12，只能购买 28 节点中的 42.86%。
 - Charged Dash 正式规则锁定为：整条路线贯穿敌群；命中真实 Armor Coverage 就卸对应甲；命中裸露区就击杀；无甲背部可直接处决，后背有甲则先卸后甲。
-- 当前已完成根战斗、28 个被动 Hook、Projectile / Obstacle / Hazard、Event / Forge、Safe Save / Continue、Replay v2、10+4 Enemy、49 个非 Boss Encounter 与 4 个机制型 Boss；53 / 53 Encounter 已有真实 Definition 和生命周期。Profile、Dossier、Threat / Assist、完整 Run 矩阵、性能与真人体验门仍按计划推进，不把 P7 冒充整款游戏完成。
+- 当前已完成根战斗、28 个被动 Hook、Projectile / Obstacle / Hazard、Event / Forge、Safe Save / Continue、Replay v3、10+4 Enemy、49 个非 Boss Encounter、4 个机制型 Boss、Profile / Dossier / Settings 与 Standard / Assist / Threat；53 / 53 Encounter 已有真实 Definition 和生命周期。完整 Run 矩阵、最终 UI、性能与真人体验门仍按计划推进。
 
 ## Full Game 已完成内容
 
@@ -93,11 +93,17 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - [x] Boss Practice：Title 可直接进入 4 个零技能练习，完成后可返回 Title；自动门 4 Boss × 100 次，共 400 次，死亡 / 死锁 0；Boss 失败重开后的 Replay 最终 Hash Match。
 - [x] P7 真实浏览器：4 / 4 Boss 使用真实 Canvas 点击、长按松开和 Space 三点选取完成；Boss HUD、锁定线、背核、Mirror Path、Rail / Finale 节点均可见；390×844 无横向溢出，Console 0。
 - [x] P7 全量自动化：27 个测试文件 / 168 项通过；TypeScript、Production Build、53 项 Design Manifest、49 Encounter 报告、400 次 Boss 报告与 whitespace 全通过；构建仅保留已知 Three core 605.52kB 警告。
+- [x] P8 Run Protocol：Standard 死亡结束本局；Assist 每区 1 次重启、敌人前摇 +25%、敌弹速度 -15%、不进入标准纪录；Threat 1–5 依次改变精英路线、危险区寿命、4 个 Boss 公开变式、有效情报和开场 Arc Rail。
+- [x] P8 Profile：独立 Profile v1、Checksum、损坏原文保留、玩家确认后备份重建；记录敌人 / 首领发现、练习解锁、通关、死亡来源、技能和路线选择，不含永久战斗数值。
+- [x] P8 Dossier / Practice / Settings：14 类敌人和 4 个首领条目、见过后解锁首领练习、Audio / Quality / Reduced Motion / High Contrast 持久化；新页面已按用户要求改为中文为主并压缩文案。
+- [x] P8 Save / Replay：Run Save 升级为 v2 并校验 Protocol / Reboot；Replay 升级为 v3 并记录 Title Protocol 命令；1,000 次混合协议 Safe Save Roundtrip 与 Protocol Replay Hash 通过。
+- [x] P8 当前自动化：28 个测试文件 / 176 项通过；TypeScript、Build 通过；Profile / Protocol 浏览器门覆盖 Assist 重启、档案、设置、损坏恢复、44px 与 390×844，Console 0。
+- [x] P9 第一批产品流程：Esc Pause / Resume / Abandon、当前构筑与操作说明、触控 Ultimate / Cancel 52px 按钮、Defeat / Victory 本局击杀 / 卸甲 / 切弹 / Boss Break 统计；390×844 真实页面、最小 44px 与 Console 0 通过。
 
 ## Full Game 下一步计划
 
-1. 进入 P8：完成 Profile Schema、Dossier / 解锁式 Practice、Assist Protocol、Threat Protocol 1–5、本地统计与 Settings 持久化；现有 Boss Direct Practice 作为真实基础继续扩展。
-2. 随后完成 P9 UI / Touch / Accessibility，把 Boss Objective、死亡原因、Run Summary 和全部输入做成最终产品流程。
+1. 继续 P9：补充可读死亡来源、完整 Run Map 历史路径、非颜色提示和灰度检查。
+2. 完成全流程 UI / Touch / Accessibility，把 Boss Objective、死亡原因和全部输入做成最终产品流程。
 3. 内容与元系统完成后执行 100 Seed × 4 Build Replay Matrix、完整 Run、性能与真人体验门。
 4. 每个有意义变更继续执行自动化、截图、`render_game_to_text` 和 Console 检查，再依 P8–P11 推进。
 
@@ -105,8 +111,8 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 
 - 视觉 Agent 的大量角色 / 动画 / Asset 修改尚未提交，本分支不会从其脏工作树复制文件；最终只合并稳定 Commit。
 - 53 / 53 Encounter 已接入，Boss 路线不再锁定；但尚未完成真实完整 4 Act Run 的 100 Seed × 4 Build、P95 时长和真人 3 次 / Boss 门，当前仍不能宣称 Hard Gate FG-H01 已关闭。
-- Run Save 已覆盖当前正式 Campaign 字段与 Boss 前后安全边界，但 Threat Protocol、Assist 与 Profile 尚未实现；这些字段加入时必须同步升级 Save Schema 测试，当前不能宣称 FG-SV01–SV03 全部门完成。
-- Replay v2 已通过代表性 Campaign 路径与 Boss 失败重开 Hash Match，但 FG-R01 要求的 100 Seed × 4 Build 完整回放仍未执行。
+- Run Save v2 与 Profile v1 已覆盖 Protocol、Assist、设置和统计边界；仍需在最终完整 Run 矩阵中再次验证跨 Act Reboot 与首次标准通关解锁 Threat 的端到端流程。
+- Replay v3 已通过代表性 Campaign Protocol 路径与 Boss 失败重开 Hash Match，但 FG-R01 要求的 100 Seed × 4 Build 完整回放仍未执行。
 - 现有 `game.ts` 仍承担较多编排；新增系统必须进入独立模块，不能继续形成 God Object。
 - Route Graph 第一版曾因错误旋转目标映射造成部分 Seed 节点不可达；已改成旋转源投影，并用 100 Seed 回归锁住该问题。
 - Planning Board 第一版因高内容面板仍采用垂直居中，导致顶部路线卡被推到视口外；真实浏览器已发现并改为顶部展开，普通点击回归通过。
@@ -116,7 +122,7 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 
 ## Full Game 暂勿并行修改
 
-- 本分支下一阶段将修改 Profile / Save / Campaign UI / Difficulty / Settings；其他 Agent 不应在 `codex/full-game-production` 平行重构这些文件。
+- 本分支下一阶段将修改 Pause / Run Summary / Touch UI / Accessibility；其他 Agent 不应在 `codex/full-game-production` 平行重构这些文件。
 - 视觉 Agent 可继续在原工作树修改 Presentation / Character / Asset；不要把 Gameplay 规则写入视觉资产层。
 
 ---

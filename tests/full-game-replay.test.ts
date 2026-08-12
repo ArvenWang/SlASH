@@ -19,7 +19,26 @@ import {
 } from "../src/game/replay/replay";
 import type { RouteNodeState } from "../src/game/run/types";
 
-describe("full-game replay v2", () => {
+describe("full-game replay v3", () => {
+  test("records the selected Run Protocol before route generation", () => {
+    const state = createFullGameGame(601);
+    const recorder = createReplayRecorder(state);
+    expect(recorder.dispatch({
+      type: "configure-run-protocol",
+      mode: "threat",
+      threatLevel: 3,
+    }).result).toBe("protocol-configured");
+    expect(recorder.dispatch({ type: "start-full-game-run" }).result).toBe("run-started");
+    const log = recorder.finish();
+    expect(log.entries[0]?.command).toEqual({
+      type: "configure-run-protocol",
+      mode: "threat",
+      threatLevel: 3,
+    });
+    const replay = playReplay(log);
+    expect(replay.matched).toBe(true);
+    expect(replay.state.run.fullGame?.protocol).toMatchObject({ mode: "threat", threatLevel: 3 });
+  });
   test("replays route, allocation, Charged, Ultimate, and Event commands to the same hash", () => {
     const { state, target } = stateWithReplayFriendlyEvent();
     const recorder = createReplayRecorder(state);

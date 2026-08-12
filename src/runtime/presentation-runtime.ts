@@ -901,9 +901,9 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       postFx.triggerImpact(presentation.cameraProfileId, kills.length * 0.055);
       heroAnchorLight.intensity = Math.min(34, 18 + kills.length * 2.6);
       cameraImpulse.add(new THREE.Vector3(
-        direction.x * 0.16,
-        0.065 + kills.length * 0.009,
-        direction.z * 0.13,
+        direction.x * 0.16 * (tuning.reducedMotion ? 0 : 1),
+        (0.065 + kills.length * 0.009) * (tuning.reducedMotion ? 0 : 1),
+        direction.z * 0.13 * (tuning.reducedMotion ? 0 : 1),
       ));
       previewSuppressedUntil = worldTime + 0.42;
       shell.reticle.classList.add("active");
@@ -1284,7 +1284,11 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     let lifecycleAction: PresentationLifecycleAction | null = null;
     if (gameState.stage.phase !== "playing") {
       phaseAge += dt;
-      if (gameState.stage.phase === "dead" && phaseAge > 0.78) lifecycleAction = "restart-stage";
+      if (
+        gameState.stage.phase === "dead" &&
+        gameState.run.fullGame === null &&
+        phaseAge > 0.78
+      ) lifecycleAction = "restart-stage";
       else if (gameState.stage.phase === "stage-cleared" && phaseAge > 1.05) lifecycleAction = "advance-stage";
       else if (gameState.stage.phase === "game-complete" && phaseAge > 1.8) lifecycleAction = "reset-run";
     }

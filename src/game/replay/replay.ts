@@ -14,7 +14,7 @@ import type {
 } from "../domain/types";
 import { stableHash } from "../serialization/stable";
 
-export const REPLAY_VERSION = 2 as const;
+export const REPLAY_VERSION = 3 as const;
 export const REPLAY_CONTENT_VERSION = "full-game-v1" as const;
 export type ReplayMode = "legacy-stage" | "full-game";
 
@@ -55,6 +55,7 @@ function cloneCommand(command: GameCommand): GameCommand {
 }
 
 export function gameplayStateHash(state: GameState): string {
+  getGameSnapshot(state);
   const serializable = {
     version: state.version,
     run: state.run,

@@ -15,6 +15,15 @@ import { availableRouteNodes, routeNodeById } from "../game/run/run-system";
 import { skillAllocationSnapshot } from "../game/upgrades/skill-system";
 import type { RunSaveStatus } from "./run-save-runtime";
 import { BOSS_DEFINITIONS } from "../content/bosses/definitions";
+import {
+  ASSIST_PROTOCOL_RULES,
+  THREAT_PROTOCOL_DEFINITIONS,
+  type RunProtocolMode,
+} from "../content/protocols/definitions";
+import { ENEMY_DOSSIER_DEFINITIONS } from "../content/profile/dossier";
+import { effectiveIntelDepth } from "../game/difficulty/protocol-system";
+import type { ProfileSettings } from "../game/profile/types";
+import type { ProfileRuntime } from "./profile-runtime";
 
 export interface CampaignUiRuntimeOptions {
   readonly root: HTMLDivElement;
@@ -22,11 +31,16 @@ export interface CampaignUiRuntimeOptions {
   readonly dispatch: (command: GameCommand) => GameCommandDispatchResult;
   readonly getContinueStatus: () => RunSaveStatus;
   readonly continueRun: () => { readonly ok: true } | { readonly ok: false; readonly message: string };
+  readonly profile: ProfileRuntime;
+  readonly validationMode?: boolean;
+  readonly onSettingsChanged: (settings: Readonly<ProfileSettings>, changedKey: keyof ProfileSettings) => void;
+  readonly onPauseChanged: (paused: boolean) => void;
   readonly onStateTransition: (result: GameCommandDispatchResult["result"] | "run-continued") => void;
 }
 
 export interface CampaignUiRuntime {
   update(): void;
+  togglePause(): void;
   dispose(): void;
 }
 
@@ -61,6 +75,8 @@ export function createCampaignUiRuntime(options: CampaignUiRuntimeOptions): Camp
   const { root, gameState, dispatch, onStateTransition } = options;
   let renderedSignature = "";
   let continueError = "";
+  let titleView: "main" | "practice" | "dossier" | "settings" = "main";
+  let paused = false;
 
   const onClick = (event: MouseEvent) => {
     const target = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-action]") : null;
@@ -77,11 +93,56 @@ export function createCampaignUiRuntime(options: CampaignUiRuntimeOptions): Camp
     } else if (action === "start-run") {
       continueError = "";
       result = dispatch({ type: "start-full-game-run" });
+    } else if (action === "title-view" && target.dataset.view) {
+      const requested = target.dataset.view;
+      if (requested === "main" || requested === "practice" || requested === "dossier" || requested === "settings") {
+        titleView = requested;
+        renderedSignature = "";
+        update();
+      }
+      return;
+    } else if (action === "configure-protocol" && target.dataset.mode) {
+      const mode = target.dataset.mode as RunProtocolMode;
+      const threatLevel = Number(target.dataset.threatLevel ?? 0);
+      result = dispatch({ type: "configure-run-protocol", mode, threatLevel });
     } else if (action === "start-boss-practice" && target.dataset.bossId) {
       continueError = "";
       result = dispatch({ type: "start-boss-practice", bossDefinitionId: target.dataset.bossId });
+    } else if (action === "restart-encounter") {
+      result = dispatch({ type: "restart-stage" });
+    } else if (action === "abandon-run") {
+      result = dispatch({ type: "abandon-run" });
+      paused = false;
+      options.onPauseChanged(false);
+    } else if (action === "resume-game") {
+      paused = false;
+      options.onPauseChanged(false);
+      renderedSignature = "";
+      update();
+      return;
     } else if (action === "return-to-title") {
       result = dispatch({ type: "return-to-title" });
+    } else if (action === "setting" && target.dataset.setting && target.dataset.value) {
+      const key = target.dataset.setting as keyof ProfileSettings;
+      const current = options.profile.profile().settings;
+      const value: ProfileSettings[keyof ProfileSettings] = key === "qualityMode"
+        ? (target.dataset.value === "compatibility" ? "compatibility" : "high")
+        : target.dataset.value === "true";
+      const outcome = options.profile.updateSettings({ [key]: value });
+      continueError = outcome.ok ? "" : outcome.message;
+      if (outcome.ok) options.onSettingsChanged({ ...current, [key]: value }, key);
+      renderedSignature = "";
+      update();
+      return;
+    } else if (action === "rebuild-profile") {
+      if (!window.confirm("确认重建本地档案？损坏原文会先保存为独立备份，不会被覆盖。")) return;
+      const outcome = options.profile.rebuildCorruptProfile();
+      continueError = outcome.ok
+        ? (outcome.backupKey ? `旧档案已备份：${outcome.backupKey}` : "档案已重建。")
+        : outcome.message;
+      renderedSignature = "";
+      update();
+      return;
     } else if (action === "select-route" && target.dataset.nodeId) {
       result = dispatch({ type: "preview-route-node", nodeId: target.dataset.nodeId });
     } else if (action === "skill" && target.dataset.skillId) {
@@ -105,8 +166,9 @@ export function createCampaignUiRuntime(options: CampaignUiRuntimeOptions): Camp
     } else if (action === "confirm-forge") {
       result = dispatch({ type: "confirm-forge" });
     }
-    if (result) {
+      if (result) {
       renderedSignature = "";
+      if (result.result === "returned-to-title" || result.result === "run-abandoned") titleView = "main";
       onStateTransition(result.result);
       update();
     }
@@ -129,20 +191,27 @@ export function createCampaignUiRuntime(options: CampaignUiRuntimeOptions): Camp
       eventHistory: campaign.eventHistory.length,
       resources: gameState.run.acquiredResources,
       forgeTokensSpent: campaign.forgeTokensSpentThisVisit,
+      protocol: campaign.protocol,
       continueStatus,
       continueError,
+      titleView,
+      profile: options.profile.profile(),
+      profileStatus: options.profile.status(),
+      paused,
     });
     if (signature === renderedSignature) return;
     renderedSignature = signature;
     root.className = campaign ? `campaign-ui phase-${campaign.phase}` : "campaign-ui hidden";
-    document.body.classList.toggle("campaign-ui-active", Boolean(campaign && campaign.phase !== "combat" && campaign.phase !== "defeat"));
+    document.body.classList.toggle("campaign-ui-active", Boolean(campaign && (campaign.phase !== "combat" || paused)));
 
-    if (!campaign || campaign.phase === "combat" || campaign.phase === "defeat") {
+    if (!campaign || (campaign.phase === "combat" && !paused)) {
       root.replaceChildren();
       return;
     }
-    if (campaign.phase === "title") {
-      root.innerHTML = renderTitle(continueStatus, continueError);
+    if (paused && campaign.phase === "combat") {
+      root.innerHTML = renderPause(gameState);
+    } else if (campaign.phase === "title") {
+      root.innerHTML = renderTitle(gameState, options, titleView, continueStatus, continueError);
     } else if (campaign.phase === "planning") {
       root.innerHTML = renderPlanning(gameState);
     } else if (campaign.phase === "event") {
@@ -151,6 +220,8 @@ export function createCampaignUiRuntime(options: CampaignUiRuntimeOptions): Camp
       root.innerHTML = renderForge(gameState);
     } else if (campaign.phase === "reward") {
       root.innerHTML = renderReward(gameState);
+    } else if (campaign.phase === "defeat") {
+      root.innerHTML = renderDefeat(gameState);
     } else {
       root.innerHTML = renderVictory(gameState);
     }
@@ -159,6 +230,14 @@ export function createCampaignUiRuntime(options: CampaignUiRuntimeOptions): Camp
   update();
   return {
     update,
+    togglePause() {
+      const campaign = gameState.run.fullGame;
+      if (!campaign || campaign.phase !== "combat" || gameState.stage.phase !== "playing") return;
+      paused = !paused;
+      options.onPauseChanged(paused);
+      renderedSignature = "";
+      update();
+    },
     dispose() {
       root.removeEventListener("click", onClick);
       root.replaceChildren();
@@ -167,36 +246,165 @@ export function createCampaignUiRuntime(options: CampaignUiRuntimeOptions): Camp
   };
 }
 
-function renderTitle(continueStatus: RunSaveStatus, continueError: string): string {
+function renderTitle(
+  state: GameState,
+  options: CampaignUiRuntimeOptions,
+  view: "main" | "practice" | "dossier" | "settings",
+  continueStatus: RunSaveStatus,
+  continueError: string,
+): string {
+  if (view === "practice") return renderPractice(options);
+  if (view === "dossier") return renderDossier(options);
+  if (view === "settings") return renderSettings(options, continueError);
+  const campaign = state.run.fullGame;
+  if (!campaign) return "";
+  const profile = options.profile.profile();
+  const profileStatus = options.profile.status();
   const statusMessage = continueError || (continueStatus.kind === "error" ? continueStatus.message : "");
   const continueButton = continueStatus.kind === "empty" ? "" : `
-    <button class="secondary-action" type="button" data-action="continue-run">CONTINUE / 继续上次 RUN</button>`;
+    <button class="secondary-action" type="button" data-action="continue-run">继续上次游戏</button>`;
   const continueSummary = continueStatus.kind === "ready" ? `
-    <small class="continue-summary">ACT ${continueStatus.summary.actNumber} · LAYER ${continueStatus.summary.layerNumber} · ${continueStatus.summary.committedSkillCount} SKILLS · SEED ${continueStatus.summary.seed}</small>` : "";
+    <small class="continue-summary">${protocolLabel(continueStatus.summary.protocolMode, continueStatus.summary.threatLevel)} · 第 ${continueStatus.summary.actNumber} 区 · 第 ${continueStatus.summary.layerNumber} 层 · ${continueStatus.summary.committedSkillCount} 个技能 · 种子 ${continueStatus.summary.seed}</small>` : "";
   return `
     <section class="campaign-panel title-panel" aria-labelledby="campaign-title">
-      <p class="panel-kicker">PROJECT SLASH / FULL GAME</p>
+      <p class="panel-kicker">PROJECT SLASH</p>
       <h1 id="campaign-title">REDLINE ASCENT</h1>
       <p class="panel-copy">三种主动模组。四个区域。每局最多 12 点，只能完成 28 个被动中的一部分。</p>
       <div class="base-rules" aria-label="基础战斗规则">
-        <span>Basic：点击突进</span>
-        <span>Charged：撞甲卸甲，撞裸露区击杀</span>
-        <span>Ultimate：满能量后规划多段路径</span>
+        <span>普通突进：点击目标位置</span>
+        <span>蓄力突进：整线贯穿；撞甲卸甲，命中裸露区直接击杀</span>
+        <span>终极突进：满能量后规划三段路径</span>
       </div>
+      ${renderProtocolSelector(campaign.protocol.mode, campaign.protocol.threatLevel, profile.unlocks.maximumThreatLevel)}
       <div class="title-actions">
         ${continueButton}
-        <button class="primary-action" type="button" data-action="start-run">NEW RUN / 开始新局</button>
+        <button class="primary-action" type="button" data-action="start-run">开始新局</button>
       </div>
       ${continueSummary}
       ${statusMessage ? `<p class="save-error" role="alert">${escapeHtml(statusMessage)}</p>` : ""}
-      <section class="practice-selector" aria-labelledby="practice-title">
-        <p class="panel-kicker" id="practice-title">BOSS PRACTICE / 零构筑练习</p>
-        <div>${BOSS_DEFINITIONS.map((boss) => `
-          <button class="secondary-action" type="button" data-action="start-boss-practice" data-boss-id="${escapeHtml(boss.id)}">
-            <b>ACT ${boss.actIndex + 1}</b>${escapeHtml(boss.title)}
-          </button>`).join("")}</div>
-      </section>
+      ${profileStatus.kind === "error" ? `<p class="save-error" role="alert">${escapeHtml(profileStatus.message)}</p>` : ""}
+      <nav class="title-nav" aria-label="附加菜单">
+        <button class="secondary-action" type="button" data-action="title-view" data-view="practice">首领练习</button>
+        <button class="secondary-action" type="button" data-action="title-view" data-view="dossier">作战档案</button>
+        <button class="secondary-action" type="button" data-action="title-view" data-view="settings">设置</button>
+      </nav>
     </section>`;
+}
+
+function renderProtocolSelector(
+  selectedMode: RunProtocolMode,
+  selectedThreatLevel: number,
+  maximumThreatLevel: number,
+): string {
+  const selected = (mode: RunProtocolMode, level = 0) => (
+    selectedMode === mode && (mode !== "threat" || selectedThreatLevel === level) ? "selected" : ""
+  );
+  return `
+    <section class="protocol-selector" aria-labelledby="protocol-title">
+      <p class="panel-kicker" id="protocol-title">本局规则</p>
+      <div class="protocol-primary-options">
+        <button class="protocol-option ${selected("standard")}" type="button" data-action="configure-protocol" data-mode="standard">
+          <b>标准</b><span>死亡后结束本局。</span>
+        </button>
+        <button class="protocol-option ${selected("assist")}" type="button" data-action="configure-protocol" data-mode="assist">
+          <b>辅助</b><span>每区 ${ASSIST_PROTOCOL_RULES.rebootPerAct} 次重启；敌人前摇 +25%；敌弹速度 -15%；单独记录。</span>
+        </button>
+      </div>
+      <div class="threat-levels" aria-label="Threat 等级">
+        <span><b>威胁等级</b>${maximumThreatLevel > 0 ? "效果逐级累积" : "标准难度首次通关后解锁"}</span>
+        ${THREAT_PROTOCOL_DEFINITIONS.map((definition) => {
+          const unlocked = definition.level <= maximumThreatLevel;
+          return `<button class="threat-level ${selected("threat", definition.level)}" type="button"
+            data-action="configure-protocol" data-mode="threat" data-threat-level="${definition.level}"
+            title="${escapeHtml(definition.effect)}" ${unlocked ? "" : "disabled"}>${definition.level}</button>`;
+        }).join("")}
+      </div>
+      ${selectedMode === "threat" ? `<ol class="threat-effects">${THREAT_PROTOCOL_DEFINITIONS.slice(0, selectedThreatLevel).map((definition) => `<li><b>${escapeHtml(definition.title)}</b><span>${escapeHtml(definition.effect)}</span></li>`).join("")}</ol>` : ""}
+    </section>`;
+}
+
+function renderPractice(options: CampaignUiRuntimeOptions): string {
+  const unlocked = new Set(options.profile.profile().unlocks.bossPracticeIds);
+  return `
+    <section class="campaign-panel library-panel" aria-labelledby="practice-title">
+      ${renderSubpageHeader("首领练习", "在正式游戏中见过首领后解锁。练习结果不计入通关记录。")}
+      <div class="library-grid">${BOSS_DEFINITIONS.map((boss) => {
+        const available = options.validationMode || unlocked.has(boss.id);
+        return `<article class="library-card ${available ? "" : "locked"}">
+          <span>第 ${boss.actIndex + 1} 区 · ${available ? "已发现" : "未发现"}</span>
+          <h2>${available ? escapeHtml(boss.title) : "未识别首领"}</h2>
+          <p>${available ? escapeHtml(boss.summary) : "在正式 Run 中抵达该首领后，练习入口与完整机制说明会永久解锁。"}</p>
+          <button class="secondary-action" type="button" data-action="start-boss-practice" data-boss-id="${escapeHtml(boss.id)}" ${available ? "" : "disabled"}>${available ? "开始练习" : "尚未解锁"}</button>
+        </article>`;
+      }).join("")}</div>
+    </section>`;
+}
+
+function renderDossier(options: CampaignUiRuntimeOptions): string {
+  const profile = options.profile.profile();
+  const seenEnemies = new Set(profile.discoveries.enemyDefinitionIds);
+  const seenBosses = new Set(profile.discoveries.bossDefinitionIds);
+  const stats = profile.statistics;
+  return `
+    <section class="campaign-panel library-panel" aria-labelledby="dossier-title">
+      ${renderSubpageHeader("作战档案", "只记录发现、练习和难度解锁，不提供永久战斗加成。")}
+      <div class="profile-summary">
+        <span><b>${stats.runsStarted}</b>已开始</span>
+        <span><b>${stats.clears.standard}</b>标准通关</span>
+        <span><b>${stats.playerDeaths}</b>死亡</span>
+        <span><b>${seenEnemies.size}/${ENEMY_DOSSIER_DEFINITIONS.length}</b>敌人</span>
+        <span><b>${seenBosses.size}/${BOSS_DEFINITIONS.length}</b>首领</span>
+      </div>
+      <h2 class="library-section-title">敌人档案</h2>
+      <div class="dossier-grid">${ENEMY_DOSSIER_DEFINITIONS.map((entry) => {
+        const available = seenEnemies.has(entry.enemyDefinitionId);
+        return `<article class="dossier-card ${available ? "" : "locked"}">
+          <span>${available ? (entry.classification === "ELITE" ? "精英" : "普通") : "未知"}</span>
+          <h3>${available ? escapeHtml(entry.title) : "未识别单位"}</h3>
+          <dl>${available ? `<div><dt>行为</dt><dd>${escapeHtml(entry.behavior)}</dd></div><div><dt>对策</dt><dd>${escapeHtml(entry.counterplay)}</dd></div>` : `<div><dt>记录</dt><dd>在正式 Run 中遭遇后解锁。</dd></div>`}</dl>
+        </article>`;
+      }).join("")}</div>
+      <h2 class="library-section-title">首领记录</h2>
+      <div class="dossier-grid">${BOSS_DEFINITIONS.map((boss) => {
+        const available = seenBosses.has(boss.id);
+        return `<article class="dossier-card ${available ? "" : "locked"}">
+          <span>${available ? `击败 ${stats.bossVictoriesById[boss.id] ?? 0} · 阵亡 ${stats.bossDeathsById[boss.id] ?? 0}` : "未知"}</span>
+          <h3>${available ? escapeHtml(boss.title) : "未识别首领"}</h3>
+          <p>${available ? escapeHtml(boss.summary) : "抵达该首领后解锁。"}</p>
+        </article>`;
+      }).join("")}</div>
+    </section>`;
+}
+
+function renderSettings(options: CampaignUiRuntimeOptions, message: string): string {
+  const settings = options.profile.profile().settings;
+  const status = options.profile.status();
+  return `
+    <section class="campaign-panel library-panel settings-panel" aria-labelledby="settings-title">
+      ${renderSubpageHeader("设置", "设置保存在本机，不上传数据。")}
+      ${message ? `<p class="save-error" role="status">${escapeHtml(message)}</p>` : ""}
+      ${status.kind === "error" ? `<div class="profile-recovery"><p class="save-error" role="alert">${escapeHtml(status.message)}</p><button class="secondary-action" type="button" data-action="rebuild-profile">备份原文并重建档案</button></div>` : `
+        ${renderSettingRow("音频", "关闭后立即静音；设置会在下次启动继续生效。", "audioEnabled", settings.audioEnabled)}
+        ${renderSettingRow("减少动态效果", "降低环境粒子并关闭镜头冲击；关键攻击提示仍保留。", "reducedMotion", settings.reducedMotion)}
+        ${renderSettingRow("高对比度", "强化面板、按钮、HUD 与状态边界，不只依赖颜色。", "highContrast", settings.highContrast)}
+        <div class="setting-row"><div><b>画质模式</b><p>High 使用较高像素比与阴影；Compatibility 降低渲染成本。切换后自动重载。</p></div><div class="setting-actions">
+          <button class="secondary-action ${settings.qualityMode === "high" ? "selected" : ""}" type="button" data-action="setting" data-setting="qualityMode" data-value="high">高画质</button>
+          <button class="secondary-action ${settings.qualityMode === "compatibility" ? "selected" : ""}" type="button" data-action="setting" data-setting="qualityMode" data-value="compatibility">兼容模式</button>
+        </div></div>`}
+    </section>`;
+}
+
+function renderSubpageHeader(title: string, copy: string): string {
+  return `<header class="library-header"><div><p class="panel-kicker">PROJECT SLASH</p><h1>${escapeHtml(title)}</h1><p>${escapeHtml(copy)}</p></div><button class="secondary-action" type="button" data-action="title-view" data-view="main">返回</button></header>`;
+}
+
+function renderSettingRow(
+  title: string,
+  copy: string,
+  key: "audioEnabled" | "reducedMotion" | "highContrast",
+  enabled: boolean,
+): string {
+  return `<div class="setting-row"><div><b>${escapeHtml(title)}</b><p>${escapeHtml(copy)}</p></div><button class="secondary-action ${enabled ? "selected" : ""}" type="button" data-action="setting" data-setting="${key}" data-value="${String(!enabled)}">${enabled ? "开启" : "关闭"}</button></div>`;
 }
 
 function renderPlanning(state: GameState): string {
@@ -209,19 +417,19 @@ function renderPlanning(state: GameState): string {
     : null;
   const act = FULL_GAME_ACT_DEFINITIONS[campaign.routeProgress.actIndex];
   const moduleColumns = MODULE_ORDER.map((module) => renderSkillModule(module, allocation.nodes)).join("");
-  const intel = Math.max(0, Math.min(3, state.run.acquiredResources.intel ?? 0));
+  const intel = effectiveIntelDepth(state);
   return `
     <section class="campaign-panel planning-panel" aria-labelledby="planning-title">
       <header class="planning-header">
         <div>
-          <p class="panel-kicker">ACT ${campaign.routeProgress.actIndex + 1} / LAYER ${campaign.routeProgress.layerIndex + 1}</p>
+          <p class="panel-kicker">第 ${campaign.routeProgress.actIndex + 1} 区 · 第 ${campaign.routeProgress.layerIndex + 1} 层</p>
           <h1 id="planning-title">${escapeHtml(act?.name ?? "PLANNING BOARD")}</h1>
           <p>先暂定下一节点，再用已知威胁决定是否花点；确认前路线与技能都不会锁定。</p>
         </div>
         <div class="point-counter" aria-label="技能点">
           <strong>${allocation.unspentPoints}</strong>
-          <span>UNSPENT SP</span>
-          <small>${allocation.spentPoints} 已投入 / ${allocation.totalEarnedPoints} 已获得</small>
+          <span>可用技能点</span>
+          <small>${allocation.spentPoints} 已投入 · ${allocation.totalEarnedPoints} 已获得</small>
         </div>
       </header>
 
@@ -250,7 +458,7 @@ function renderPlanning(state: GameState): string {
           <span>${allocation.draftAddedSkillIds.length} 个新增草案 · ${allocation.unspentPoints} 点将在确认后保留</span>
         </div>
         <button class="secondary-action" type="button" data-action="discard-draft" ${allocation.draftAddedSkillIds.length === 0 && allocation.draftRemovedSkillIds.length === 0 ? "disabled" : ""}>撤销本次草案</button>
-        <button class="primary-action" type="button" data-action="confirm-planning" ${selectedNode ? "" : "disabled"}>LOCK BUILD & ENTER / 锁定并进入</button>
+        <button class="primary-action" type="button" data-action="confirm-planning" ${selectedNode ? "" : "disabled"}>确认并进入</button>
       </footer>
     </section>`;
 }
@@ -268,9 +476,9 @@ function renderRouteCard(
       <p>${escapeHtml(preview.summary)}</p>
       <div class="tag-row">${preview.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>
       ${preview.challengeCondition ? `<p class="challenge-contract"><b>CONDITION</b> ${escapeHtml(preview.challengeCondition)}<br><b>REWARD</b> ${escapeHtml(preview.challengeReward ?? "无额外奖励")}</p>` : ""}
-      <small>${preview.hostileCount} HOSTILES · ${preview.waveCount} WAVES · PRESSURE ${preview.pressure.toFixed(1)}</small>
-      <small>ARMOR ${preview.armoredHostileCount} · PROJECTILE ${preview.projectileSourceCount} · OBSTACLE ${preview.obstacleSourceCount} · HAZARD ${preview.hazardSourceCount}</small>
-      <small>NODE REWARD ${escapeHtml(node.reward.toUpperCase())}</small>
+      <small>${preview.hostileCount} 名敌人 · ${preview.waveCount} 波 · 压力 ${preview.pressure.toFixed(1)}</small>
+      <small>装甲 ${preview.armoredHostileCount} · 弹幕 ${preview.projectileSourceCount} · 障碍 ${preview.obstacleSourceCount} · 危险区 ${preview.hazardSourceCount}</small>
+      <small>节点奖励：${escapeHtml(rewardName(node.reward))}</small>
     </button>`;
 }
 
@@ -278,11 +486,12 @@ function renderRunResources(state: GameState): string {
   const energy = state.run.acquiredResources["next-combat-energy"] ?? 0;
   const tokens = state.run.acquiredResources["reroute-token"] ?? 0;
   const intel = state.run.acquiredResources.intel ?? 0;
+  const effectiveIntel = effectiveIntelDepth(state);
   return `
     <div class="run-resource-strip" aria-label="本局资源">
-      <span><b>${energy}</b> NEXT COMBAT ENERGY</span>
-      <span><b>${tokens}</b> REROUTE TOKEN</span>
-      <span><b>${intel}</b> INTEL DEPTH</span>
+      <span><b>${energy}</b>下场初始能量</span>
+      <span><b>${tokens}</b>重接凭证</span>
+      <span><b>${effectiveIntel}</b>情报深度${effectiveIntel < intel ? ` · 持有 ${intel}` : ""}</span>
     </div>`;
 }
 
@@ -291,7 +500,7 @@ function renderIntelLookahead(state: GameState, depthLimit: number): string {
   if (!campaign || depthLimit <= 0) {
     return `
       <section class="intel-panel is-empty" aria-label="路线情报">
-        <strong>INTEL / 0</strong>
+        <strong>情报 0</strong>
         <p>事件可提供路线情报；获得后会在这里显示当前选项之后的确定节点。</p>
       </section>`;
   }
@@ -303,7 +512,7 @@ function renderIntelLookahead(state: GameState, depthLimit: number): string {
     frontier = nextIds.map((id) => routeNodeById(campaign.routeProgress.route, id));
     layers.push(`
       <div class="intel-layer">
-        <b>+${depth} LAYER</b>
+        <b>后续第 ${depth} 层</b>
         ${frontier.map((node) => {
           const preview = threatPreviewForRouteNode(node, state.run.seed);
           return `<span><i>${escapeHtml(node.kind.toUpperCase())}</i>${escapeHtml(preview.title)}<small>${escapeHtml(node.reward.toUpperCase())}</small></span>`;
@@ -312,7 +521,7 @@ function renderIntelLookahead(state: GameState, depthLimit: number): string {
   }
   return `
     <section class="intel-panel" aria-label="路线情报">
-      <strong>INTEL / ${depthLimit}</strong>
+      <strong>情报 ${depthLimit}</strong>
       <p>以下为已解析的后续确定节点；当前选择仍只锁定下一层。</p>
       ${layers.join("") || "<p>本分支之后没有更多可解析节点。</p>"}
     </section>`;
@@ -328,7 +537,7 @@ function renderSkillModule(
   return `
     <section class="skill-module module-${module}">
       <div class="module-root">
-        <span>BASE / 0 SP</span>
+        <span>基础能力 · 0 点</span>
         <h3>${escapeHtml(root?.nameEn ?? module.toUpperCase())}</h3>
         <strong>${escapeHtml(root?.nameZh ?? module)}</strong>
         <p>${escapeHtml(root?.description ?? "")}</p>
@@ -383,7 +592,7 @@ function renderEvent(state: GameState): string {
   }
   return `
     <section class="campaign-panel event-panel" aria-labelledby="event-title">
-      <p class="panel-kicker">ROUTE EVENT / 二选一</p>
+      <p class="panel-kicker">路线事件 · 二选一</p>
       <h1 id="event-title">${escapeHtml(definition.title)}</h1>
       <p class="event-situation">${escapeHtml(definition.situation)}</p>
       ${renderRunResources(state)}
@@ -414,13 +623,13 @@ function renderForge(state: GameState): string {
     <section class="campaign-panel planning-panel forge-panel" aria-labelledby="forge-title">
       <header class="planning-header">
         <div>
-          <p class="panel-kicker">FORGE / BUILD RESPEC</p>
+          <p class="panel-kicker">构筑重接</p>
           <h1 id="forge-title">构筑重接</h1>
           <p>可移除最多 ${allocation.forgeMoveLimit} 个已锁定技能点并重新分配；移除前置会连同依赖节点一起计入移动数。</p>
         </div>
         <div class="point-counter" aria-label="Forge 移动次数">
           <strong>${allocation.forgeMovesUsed}/${allocation.forgeMoveLimit}</strong>
-          <span>MOVES USED</span>
+          <span>已移动</span>
           <small>${allocation.unspentPoints} 未投入 SP · ${tokens} 枚凭证</small>
         </div>
       </header>
@@ -440,16 +649,16 @@ function renderForge(state: GameState): string {
           <span>确认前都只是草案；凭证一经使用会立即消耗。</span>
         </div>
         <button class="secondary-action" type="button" data-action="discard-draft" ${allocation.draftAddedSkillIds.length === 0 && allocation.draftRemovedSkillIds.length === 0 ? "disabled" : ""}>撤销重接草案</button>
-        <button class="secondary-action" type="button" data-action="use-forge-token" ${tokens > 0 ? "" : "disabled"}>使用凭证 / +1 MOVE</button>
-        <button class="primary-action" type="button" data-action="confirm-forge">确认并离开 FORGE</button>
+        <button class="secondary-action" type="button" data-action="use-forge-token" ${tokens > 0 ? "" : "disabled"}>使用凭证 · 增加 1 次移动</button>
+        <button class="primary-action" type="button" data-action="confirm-forge">确认并离开</button>
       </footer>
     </section>`;
 }
 
 function resourceName(resourceId: string): string {
-  if (resourceId === "next-combat-energy") return "NEXT COMBAT ENERGY";
-  if (resourceId === "reroute-token") return "REROUTE TOKEN";
-  if (resourceId === "intel") return "INTEL";
+  if (resourceId === "next-combat-energy") return "下场初始能量";
+  if (resourceId === "reroute-token") return "重接凭证";
+  if (resourceId === "intel") return "情报";
   return resourceId.toUpperCase();
 }
 
@@ -458,12 +667,12 @@ function renderReward(state: GameState): string {
   const challenge = reward?.challenge;
   return `
     <section class="campaign-panel reward-panel" aria-labelledby="reward-title">
-      <p class="panel-kicker">NODE COMPLETE</p>
+      <p class="panel-kicker">节点完成</p>
       <h1 id="reward-title">节点结算</h1>
-      <div class="reward-value"><strong>+${reward?.skillPointsGranted ?? 0}</strong><span>SKILL POINT</span></div>
+      <div class="reward-value"><strong>+${reward?.skillPointsGranted ?? 0}</strong><span>技能点</span></div>
       <p>${reward?.skillPointsGranted ? "新点数会在下一张 Planning Board 中进入 Draft，可花费也可保留。" : "本节点没有技能点奖励；现有未消费点仍会保留。"}</p>
       ${challenge ? `<div class="challenge-result ${challenge.status}"><strong>CHALLENGE ${escapeHtml(challenge.status.toUpperCase())}</strong><p>${challenge.status === "succeeded" ? `额外资源：${escapeHtml(resourceName(challenge.rewardResourceId))} +${challenge.rewardAmount}` : `未获得额外资源：${escapeHtml(challenge.failureReason ?? "条件未满足")}`}</p></div>` : ""}
-      <button class="primary-action" type="button" data-action="acknowledge-reward">CONTINUE TO PLANNING / 继续规划</button>
+      <button class="primary-action" type="button" data-action="acknowledge-reward">继续规划</button>
     </section>`;
 }
 
@@ -474,11 +683,87 @@ function renderVictory(state: GameState): string {
     : null;
   return `
     <section class="campaign-panel reward-panel" aria-labelledby="victory-title">
-      <p class="panel-kicker">${practice ? "BOSS PRACTICE COMPLETE" : "RUN COMPLETE"}</p>
+      <p class="panel-kicker">${practice ? "首领练习完成" : "本局完成"}</p>
       <h1 id="victory-title">${practice ? escapeHtml(practice.title) : "REDLINE CLEARED"}</h1>
-      <p>${practice ? "零技能基础模组验证完成。" : `${campaign?.routeProgress.completedNodeIds.length ?? 0} 节点 · ${campaign?.skills.committedSkillIds.length ?? 0} 个已锁定技能 · Seed ${state.run.seed}`}</p>
-      <button class="primary-action" type="button" data-action="return-to-title">RETURN TO TITLE / 返回标题</button>
+      <p>${practice ? "练习完成，不计入正式通关纪录。" : `${protocolLabel(campaign?.protocol.mode ?? "standard", campaign?.protocol.threatLevel ?? 0)} · ${campaign?.routeProgress.completedNodeIds.length ?? 0} 节点 · ${campaign?.skills.committedSkillIds.length ?? 0} 个技能 · ${(campaign ? Math.max(0, state.elapsedMs - campaign.runMetrics.startedAtMs) / 60_000 : 0).toFixed(1)} 分钟 · 种子 ${state.run.seed}`}</p>
+      ${practice || !campaign ? "" : renderRunMetrics(campaign)}
+      <button class="primary-action" type="button" data-action="return-to-title">返回标题</button>
     </section>`;
+}
+
+function renderDefeat(state: GameState): string {
+  const campaign = state.run.fullGame;
+  if (!campaign) return "";
+  const practice = campaign.practiceBossDefinitionId !== null;
+  const canReboot = practice || (
+    campaign.protocol.mode === "assist" && campaign.protocol.assistRebootsRemaining > 0
+  );
+  const title = practice
+    ? "练习失败"
+    : campaign.protocol.mode === "assist" && canReboot
+      ? "可以重启"
+      : "本局结束";
+  const copy = practice
+    ? "练习失败不会影响正式纪录，可以从当前 Boss 起点立即重试。"
+    : canReboot
+      ? `本 Act 还剩 ${campaign.protocol.assistRebootsRemaining} 次 Reboot；重试会消耗 1 次并恢复本节点初始状态。`
+      : `死亡会结束本局。种子 ${state.run.seed}，已完成 ${campaign.routeProgress.completedNodeIds.length} 个节点。`;
+  return `
+    <section class="campaign-panel reward-panel defeat-panel" aria-labelledby="defeat-title">
+      <p class="panel-kicker">${practice ? "首领练习" : protocolLabel(campaign.protocol.mode, campaign.protocol.threatLevel)}</p>
+      <h1 id="defeat-title">${title}</h1>
+      <p>${escapeHtml(copy)}</p>
+      ${practice ? "" : renderRunMetrics(campaign)}
+      <div class="defeat-actions">
+        ${canReboot ? `<button class="primary-action" type="button" data-action="restart-encounter">${practice ? "重试" : "使用重启"}</button>` : ""}
+        <button class="secondary-action" type="button" data-action="return-to-title">返回标题</button>
+      </div>
+    </section>`;
+}
+
+function renderRunMetrics(campaign: NonNullable<GameState["run"]["fullGame"]>): string {
+  const metrics = campaign.runMetrics;
+  return `<div class="run-summary-grid" aria-label="本局统计">
+    <span><b>${metrics.kills}</b>击杀</span>
+    <span><b>${metrics.armorBreaks}</b>卸甲</span>
+    <span><b>${metrics.projectileCuts}</b>切弹</span>
+    <span><b>${metrics.bossBreaks}</b>首领破坏</span>
+  </div>`;
+}
+
+function renderPause(state: GameState): string {
+  const campaign = state.run.fullGame;
+  if (!campaign) return "";
+  const skills = campaign.skills.committedSkillIds
+    .map((id) => FULL_GAME_SKILL_DEFINITIONS.find((skill) => skill.id === id)?.presentation.nameZh)
+    .filter((name): name is string => Boolean(name));
+  return `
+    <section class="campaign-panel pause-panel" aria-labelledby="pause-title">
+      <p class="panel-kicker">已暂停</p>
+      <h1 id="pause-title">第 ${campaign.routeProgress.actIndex + 1} 区 · 第 ${campaign.routeProgress.layerIndex + 1} 层</h1>
+      <div class="pause-grid">
+        <section><h2>操作</h2><p>点击：普通突进</p><p>长按：蓄力突进</p><p>空格：终极突进</p><p>Esc：继续</p></section>
+        <section><h2>当前构筑</h2>${skills.length ? `<ul>${skills.map((name) => `<li>${escapeHtml(name)}</li>`).join("")}</ul>` : "<p>尚未分配技能。</p>"}</section>
+      </div>
+      <div class="pause-actions">
+        <button class="primary-action" type="button" data-action="resume-game">继续</button>
+        <button class="secondary-action" type="button" data-action="abandon-run">放弃本局</button>
+      </div>
+    </section>`;
+}
+
+function protocolLabel(mode: RunProtocolMode, threatLevel: number): string {
+  if (mode === "assist") return "辅助";
+  if (mode === "threat") return `威胁 ${threatLevel}`;
+  return "标准";
+}
+
+function rewardName(reward: string): string {
+  if (reward === "skill-point") return "技能点";
+  if (reward === "elite-bonus") return "精英奖励";
+  if (reward === "act-clear") return "区域完成";
+  if (reward === "run-victory") return "最终通关";
+  return "无";
 }
 
 function escapeHtml(value: string): string {

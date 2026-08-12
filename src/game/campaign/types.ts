@@ -4,6 +4,7 @@ import type { EncounterRuntimeState } from "../encounters/types";
 import type { FullGameRunProgressState, RouteReward } from "../run/types";
 import type { SkillAllocationState } from "../upgrades/types";
 import type { BossRuntimeState } from "../bosses/types";
+import type { RunProtocolState } from "../difficulty/types";
 
 export type CampaignPhase = "title" | "planning" | "event" | "forge" | "combat" | "reward" | "defeat" | "victory";
 
@@ -41,8 +42,20 @@ export interface CampaignRewardState {
   readonly challenge: CampaignChallengeRewardState | null;
 }
 
+export interface CampaignRunMetricsState {
+  startedAtMs: number;
+  kills: number;
+  armorBreaks: number;
+  projectileCuts: number;
+  bossBreaks: number;
+  lastProcessedEventSequence: number;
+  deathSourceId: string | null;
+}
+
 export interface FullGameCampaignState {
   readonly contentVersion: "full-game-v1";
+  protocol: RunProtocolState;
+  runMetrics: CampaignRunMetricsState;
   phase: CampaignPhase;
   routeProgress: FullGameRunProgressState;
   skills: SkillAllocationState;

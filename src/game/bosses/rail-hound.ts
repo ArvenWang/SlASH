@@ -13,6 +13,7 @@ import {
   progressBossObjective,
 } from "./helpers";
 import type { BossRuntimeState } from "./types";
+import { bossThreatVariationEnabled } from "../difficulty/protocol-system";
 
 export const RAIL_HOUND_TELEGRAPH_MS = 800;
 export const RAIL_HOUND_CORE_WINDOW_MS = 1_500;
@@ -44,7 +45,11 @@ export function createRailHoundRuntime(
     coreExposed: false,
     completed: false,
     transitionCount: 0,
-    mechanics: { kind: "rail-hound", chargeIndex: 0, chargesThisCycle: 1 },
+    mechanics: {
+      kind: "rail-hound",
+      chargeIndex: 0,
+      chargesThisCycle: railChargeCount(state, 0),
+    },
   };
   entity.facing = copyVec2(runtime.lockedDirection);
   beginBossPhase(state, runtime, runtime.phaseId, 0, 1);
@@ -123,12 +128,17 @@ export function resolveRailHoundDashContact(
   }
   runtime.transitionCount += 1;
   runtime.mechanics.chargeIndex = 0;
-  runtime.mechanics.chargesThisCycle = runtime.breakCount >= 1 ? 2 : 1;
+  runtime.mechanics.chargesThisCycle = railChargeCount(state, runtime.breakCount);
   if (runtime.breakCount === 1) {
     beginBossPhase(state, runtime, "double-charge", 1, 2);
   }
   enterBossActionPhase(state, runtime, "transition", RAIL_HOUND_TRANSITION_MS, null);
   return true;
+}
+
+function railChargeCount(state: GameState, breakCount: number): number {
+  const base = breakCount >= 1 ? 2 : 1;
+  return base + (bossThreatVariationEnabled(state) ? 1 : 0);
 }
 
 function beginTelegraph(state: GameState, runtime: BossRuntimeState, entity: EnemyState): void {

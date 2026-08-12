@@ -40,7 +40,7 @@ Hash 用来检测回放结果分歧，不是密码学签名，也不用于防作
 
 ## 版本策略
 
-当前版本为 Replay `2`、Content `full-game-v1`。破坏确定性的内容或规则变更必须：
+当前版本为 Replay `3`、Content `full-game-v1`。Replay 3 增加 Title 阶段的 Standard / Assist / Threat 配置命令；它必须先于路线生成记录，确保 Threat 路线与 Boss 变式可精确回放。破坏确定性的内容或规则变更必须：
 
 1. 更新 Content Version；
 2. 决定旧 Replay 是迁移、保留旧模拟器还是明确拒绝；
@@ -53,6 +53,6 @@ Hash 用来检测回放结果分歧，不是密码学签名，也不用于防作
 
 自动测试会以固定 Seed 完整通过 Stage 1，记录所有 Ability Commands，再从新 GameState 回放，要求 Stage Clear、8 Kills 和最终 Hash 完全一致。
 
-当前除 Legacy Stage 外，Full-game Replay 已覆盖 Route Choice、Skill Draft / Commit、Event、Forge、Charged Hold / Release 与 Ultimate Planning。代表性 Campaign 路径会从全新 Title State 重放并要求最终 Hash 完全一致。
+当前除 Legacy Stage 外，Full-game Replay 已覆盖 Run Protocol、Route Choice、Skill Draft / Commit、Event、Forge、Charged Hold / Release 与 Ultimate Planning。代表性 Campaign 路径会从全新 Title State 重放并要求最终 Hash 完全一致。
 
 Boss Practice 现已覆盖“先失败 → Restart → 完整击破 → 从全新 GameState 回放 → 最终 Hash Match”。尚未完成 FG-R01 的 `100 Seed × 4 Build` 完整 Run 矩阵，也尚未提供玩家可见的 Replay 管理 UI、跨版本模拟器、联网同步或反作弊；这些不能因为 Boss Replay 已通过就宣称完成。

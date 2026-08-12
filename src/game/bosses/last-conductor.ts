@@ -1,6 +1,9 @@
 import { LAST_CONDUCTOR_BOSS_ID, type BossDefinition } from "../../content/bosses/definitions";
 import { CHARGED_DASH_ABILITY_ID, VECTOR_FOCUS_ABILITY_ID } from "../../content/abilities/definitions";
-import { STRIKER_ENEMY_ID } from "../../content/enemies/definitions";
+import {
+  REDLINE_LANCER_ELITE_ID,
+  STRIKER_ENEMY_ID,
+} from "../../content/enemies/definitions";
 import {
   ARC_RAIL_HAZARD_ID,
   BOSS_SHARD_PROJECTILE_ID,
@@ -28,6 +31,7 @@ import {
   spawnBossAuxiliaryEnemy,
 } from "./helpers";
 import type { BossObjectiveNodeState, BossRuntimeState } from "./types";
+import { bossThreatVariationEnabled } from "../difficulty/protocol-system";
 
 const PHASE_TELEGRAPH_MS = [650, 1_400, 650, 600] as const;
 const BARRAGE_SHOT_INTERVAL_MS = 1_250;
@@ -305,7 +309,9 @@ function advanceRailGrid(
   if (runtime.mechanics.kind !== "last-conductor" || runtime.actionPhase !== "objective") return;
   runtime.mechanics.railPulseCooldownMs = Math.max(0, runtime.mechanics.railPulseCooldownMs - deltaMs);
   if (runtime.mechanics.railPulseCooldownMs > EPSILON) return;
-  runtime.mechanics.railPulseCooldownMs = RAIL_PULSE_INTERVAL_MS;
+  runtime.mechanics.railPulseCooldownMs = bossThreatVariationEnabled(state)
+    ? 2_000
+    : RAIL_PULSE_INTERVAL_MS;
   runtime.attackSequence += 1;
   spawnHazard(state, {
     id: `${runtime.entityId}:rail-pulse-${runtime.attackSequence}`,
@@ -359,7 +365,9 @@ function spawnBarrageSupports(state: GameState, runtime: BossRuntimeState): void
   [{ x: -7, z: -3 }, { x: 7, z: -3 }].forEach((position, index) => {
     spawnBossAuxiliaryEnemy(state, {
       id: ids[index]!,
-      definitionId: STRIKER_ENEMY_ID,
+      definitionId: bossThreatVariationEnabled(state)
+        ? REDLINE_LANCER_ELITE_ID
+        : STRIKER_ENEMY_ID,
       position,
       facing: { x: 0, z: 1 },
       countTowardEncounterTotal: true,

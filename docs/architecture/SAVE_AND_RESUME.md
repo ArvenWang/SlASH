@@ -16,7 +16,7 @@ Run Save 只负责中断恢复，不是战斗快照，也不是 Replay。当前�
 
 拒绝保存：Combat、Defeat、Dash、Charging、Ultimate Planning / Execution 或任何仍挂接 Encounter Runtime 的状态。
 
-写入前会复制状态并清除瞬时战斗实体、残留事件、Recovery、Buffered Input 与 Accumulator。Route、Skill Draft / Commit、Run Resource、Event History、Ultimate Energy、Tick 和命令序列保留。
+写入前会复制状态并清除瞬时战斗实体、残留事件、Recovery、Buffered Input 与 Accumulator。Route、Skill Draft / Commit、Run Resource、Event History、Ultimate Energy、Run Protocol、Assist Reboot、Tick 和命令序列保留。
 
 Planning 中每次合法路线预选或技能草案变化都会覆盖安全存档。确认进入 Combat 后不再写入，因此战斗中异常退出会回到确认前 Planning，而不会恢复半场 Projectile / Hazard 或产生不可重放状态。
 
@@ -24,13 +24,13 @@ Planning 中每次合法路线预选或技能草案变化都会覆盖安全存�
 
 当前格式：
 
-- Schema Version：`1`；
+- Schema Version：`2`；
 - Content Version：`full-game-v1`；
-- Storage Key：`project-slash:run-save:v1`；
+- Storage Key：`project-slash:run-save:v2`；旧 `v1` Key 不会删除，若存在会被明确识别为不支持的旧格式；
 - Checksum：稳定序列化后的 FNV-1a 32-bit，用于发现截断或意外修改，不用于安全防护。
 
-恢复按顺序检查 JSON、Envelope、Schema、Content、Checksum、Route Graph、Campaign Phase、Skill Prerequisite、Resource 与 Event History。任何失败都会返回用户可理解的错误，并保留 localStorage 原始字符串；禁止捕获异常后静默清空。
+恢复按顺序检查 JSON、Envelope、Schema、Content、Checksum、Route Graph、Campaign Phase、Run Protocol、Assist Reboot、Skill Prerequisite、Resource 与 Event History。任何失败都会返回用户可理解的错误，并保留 localStorage 原始字符串；禁止捕获异常后静默清空。
 
 ## 当前边界
 
-四个 Boss 与 Practice 已实现，但战斗中间状态明确不保存；Boss 前 Planning Safe Save 与 Boss 后 Reward / Victory 仍沿用同一安全边界。Threat Protocol、Assist、Profile、Settings 与统计尚未实现，它们进入正式 State 时必须同步升级 Save 测试；因此当前实现不能单独视为 FG-SV01–SV03 全部门完成。
+四个 Boss 与 Practice 已实现，但战斗中间状态明确不保存；Boss 前 Planning Safe Save 与 Boss 后 Reward / Victory 仍沿用同一安全边界。Standard / Assist / Threat 与剩余 Reboot 已进入 Schema 2，并在 1,000 次混合协议 Roundtrip 中验证。Profile / Settings 使用独立的 `project-slash:profile:v1` Envelope、Checksum 与损坏原文备份，不混入 Run Save，也不包含永久战斗数值。

@@ -70,8 +70,12 @@ describe("full-game campaign state", () => {
     expect(getGameSnapshot(state).campaign?.availableNodes.length).toBeGreaterThan(0);
   });
 
-  test("restarts the current encounter with the same deterministic enemy IDs", () => {
+  test("uses the one-per-Act Assist Reboot and preserves deterministic enemy IDs", () => {
     const state = createFullGameGame(44);
+    expect(dispatchGameCommand(state, {
+      type: "configure-run-protocol",
+      mode: "assist",
+    }).result).toBe("protocol-configured");
     startFirstEncounter(state);
     advanceTicks(state, 90);
     const firstIds = state.enemies.map((enemy) => enemy.id);
@@ -81,6 +85,21 @@ describe("full-game campaign state", () => {
     advanceTicks(state, 90);
     expect(state.enemies.map((enemy) => enemy.id)).toEqual(firstIds);
     expect(state.stage.attempt).toBe(2);
+    expect(state.run.fullGame?.protocol.assistRebootsRemaining).toBe(0);
+    state.stage.phase = "dead";
+    markCampaignDefeat(state);
+    expect(dispatchGameCommand(state, { type: "restart-stage" }).result).toBe("ignored");
+  });
+
+  test("ends a Standard Run on death instead of silently restarting", () => {
+    const state = createFullGameGame(45);
+    startFirstEncounter(state);
+    state.stage.phase = "dead";
+    markCampaignDefeat(state);
+    expect(dispatchGameCommand(state, { type: "restart-stage" }).result).toBe("ignored");
+    expect(state.run.fullGame?.phase).toBe("defeat");
+    expect(dispatchGameCommand(state, { type: "return-to-title" }).result).toBe("returned-to-title");
+    expect(state.run.fullGame?.phase).toBe("title");
   });
 
   test("is deterministic and JSON-safe before and during combat", () => {

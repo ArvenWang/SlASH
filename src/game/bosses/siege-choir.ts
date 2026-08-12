@@ -1,6 +1,9 @@
 import { SIEGE_CHOIR_BOSS_ID, type BossDefinition } from "../../content/bosses/definitions";
 import { CHARGED_DASH_ABILITY_ID } from "../../content/abilities/definitions";
-import { GUNNER_ENEMY_ID } from "../../content/enemies/definitions";
+import {
+  GUNNER_ENEMY_ID,
+  TWIN_GUNNER_ELITE_ID,
+} from "../../content/enemies/definitions";
 import { DEPLOYABLE_BARRIER_OBSTACLE_ID } from "../../content/entities/definitions";
 import { copyVec2 } from "../../core/math/vec2";
 import { resolveArmorContact } from "../combat/armor";
@@ -18,6 +21,7 @@ import {
   spawnBossAuxiliaryEnemy,
 } from "./helpers";
 import type { BossRuntimeState } from "./types";
+import { bossThreatVariationEnabled } from "../difficulty/protocol-system";
 
 export const SIEGE_CHOIR_CORE_WINDOW_MS = 1_500;
 const SIEGE_CHOIR_TRANSITION_MS = 600;
@@ -169,7 +173,7 @@ function spawnTurrets(state: GameState, runtime: BossRuntimeState): void {
   runtime.mechanics.turretEntityIds = ids;
   ids.forEach((id, index) => spawnBossAuxiliaryEnemy(state, {
     id,
-    definitionId: GUNNER_ENEMY_ID,
+    definitionId: bossThreatVariationEnabled(state) ? TWIN_GUNNER_ELITE_ID : GUNNER_ENEMY_ID,
     position: positions[index]!,
     facing: { x: 0, z: 1 },
     countTowardEncounterTotal: true,

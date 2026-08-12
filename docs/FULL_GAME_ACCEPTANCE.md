@@ -327,6 +327,8 @@ Stage Clear 仅在以下条件同时成立时发生：
 
 解锁项只能影响内容可用性、Practice、Dossier、外观和 Threat Protocol；自动扫描不得发现永久 Dash Damage / HP / Recovery 数值加成。
 
+当前自动证据：Profile v1 Roundtrip、损坏原文保留与显式备份重建通过；本地档案记录 14 类敌人、4 个 Boss、Practice、Run / Clear / Death、技能和路线选择；序列化扫描不含永久战斗数值字段。Standard / Assist / Threat 与 Reboot 已进入 Run Save v2，并通过 1,000 次混合协议安全节点 Roundtrip。
+
 ## 10. UI、输入与可访问性
 
 ### FG-UI01 — 完整流程

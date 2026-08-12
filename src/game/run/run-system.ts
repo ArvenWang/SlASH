@@ -9,8 +9,9 @@ export type RouteCompletionResult = "layer-complete" | "act-complete" | "run-com
 export function createFullGameRunProgress(
   seed: number,
   definition: RunDefinition = FULL_GAME_RUN_DEFINITION,
+  threatLevel = 0,
 ): FullGameRunProgressState {
-  const route = generateRunRoute(seed, definition);
+  const route = generateRunRoute(seed, definition, threatLevel);
   const firstAct = route.acts[0];
   if (!firstAct) throw new Error("A full game run requires at least one act.");
   return {

@@ -49,9 +49,18 @@ import {
   bossDefinitionForEncounter,
 } from "../../content/bosses/definitions";
 import { ensureCampaignBossRuntime } from "../bosses/boss-system";
+import type { RunProtocolMode } from "../../content/protocols/definitions";
+import {
+  createRunProtocolState,
+  redlineOpeningRailEnabled,
+  resetAssistRebootForAct,
+} from "../difficulty/protocol-system";
+import { ARC_RAIL_HAZARD_ID } from "../../content/entities/definitions";
 
 export type CampaignCommandResult =
   | "run-started"
+  | "protocol-configured"
+  | "run-abandoned"
   | "boss-practice-started"
   | "returned-to-title"
   | "route-previewed"
@@ -69,6 +78,16 @@ export type CampaignCommandResult =
 export function createFullGameCampaignState(seed: number): FullGameCampaignState {
   return {
     contentVersion: "full-game-v1",
+    protocol: createRunProtocolState(),
+    runMetrics: {
+      startedAtMs: 0,
+      kills: 0,
+      armorBreaks: 0,
+      projectileCuts: 0,
+      bossBreaks: 0,
+      lastProcessedEventSequence: 0,
+      deathSourceId: null,
+    },
     phase: "title",
     routeProgress: createFullGameRunProgress(seed),
     skills: createSkillAllocationState(),
@@ -123,17 +142,52 @@ export function startFullGameRun(state: GameState): CampaignCommandResult {
   const campaign = state.run.fullGame;
   if (!campaign || campaign.phase !== "title") return "ignored";
   campaign.phase = "planning";
+  campaign.runMetrics.startedAtMs = state.elapsedMs;
+  campaign.runMetrics.lastProcessedEventSequence = state.eventSequence;
   state.stage.phase = "planning";
   openSkillAllocationVisit(campaign.skills, "planning");
-  emitGameEvent(state, { type: "campaign-started", seed: state.run.seed });
+  emitGameEvent(state, {
+    type: "campaign-started",
+    seed: state.run.seed,
+    protocolMode: campaign.protocol.mode,
+    threatLevel: campaign.protocol.threatLevel,
+  });
   return "run-started";
+}
+
+export function configureCampaignProtocol(
+  state: GameState,
+  mode: RunProtocolMode,
+  threatLevel = 0,
+): CampaignCommandResult {
+  const campaign = state.run.fullGame;
+  if (!campaign || campaign.phase !== "title") return "ignored";
+  campaign.protocol = createRunProtocolState(mode, threatLevel);
+  campaign.routeProgress = createFullGameRunProgress(
+    state.run.seed,
+    undefined,
+    campaign.protocol.threatLevel,
+  );
+  campaign.provisionalRouteNodeId = null;
+  return "protocol-configured";
 }
 
 export function returnCampaignToTitle(state: GameState): CampaignCommandResult {
   const campaign = state.run.fullGame;
-  if (!campaign || (campaign.phase !== "victory" && campaign.phase !== "reward")) return "ignored";
+  if (!campaign || !["victory", "reward", "defeat"].includes(campaign.phase)) return "ignored";
+  const fromPhase = campaign.phase as "victory" | "reward" | "defeat";
   initializeFullGameCampaign(state, state.run.seed);
+  emitGameEvent(state, { type: "campaign-returned-to-title", fromPhase });
   return "returned-to-title";
+}
+
+export function abandonCampaignRun(state: GameState): CampaignCommandResult {
+  const campaign = state.run.fullGame;
+  if (!campaign || campaign.phase === "title") return "ignored";
+  const fromPhase = campaign.phase;
+  initializeFullGameCampaign(state, state.run.seed);
+  emitGameEvent(state, { type: "campaign-abandoned", fromPhase });
+  return "run-abandoned";
 }
 
 export function previewCampaignRouteNode(
@@ -325,6 +379,20 @@ export function synchronizeCampaignChallenge(state: GameState): void {
   );
 }
 
+export function synchronizeCampaignRunMetrics(state: GameState): void {
+  const metrics = state.run.fullGame?.runMetrics;
+  if (!metrics) return;
+  for (const event of state.lastEvents) {
+    if (event.sequence <= metrics.lastProcessedEventSequence) continue;
+    if (event.type === "enemy-killed") metrics.kills += 1;
+    else if (event.type === "armor-broken") metrics.armorBreaks += 1;
+    else if (event.type === "projectile-destroyed") metrics.projectileCuts += 1;
+    else if (event.type === "boss-break") metrics.bossBreaks += 1;
+    else if (event.type === "player-died") metrics.deathSourceId = event.enemyId;
+    metrics.lastProcessedEventSequence = Math.max(metrics.lastProcessedEventSequence, event.sequence);
+  }
+}
+
 export function campaignEncounterCanComplete(state: GameState): boolean {
   const campaign = state.run.fullGame;
   if (
@@ -376,6 +444,7 @@ function completeCampaignNode(state: GameState, nodeId: RouteNodeId): boolean {
     }
   }
   const routeResult = completeCurrentRouteNode(campaign.routeProgress);
+  if (routeResult === "act-complete") resetAssistRebootForAct(campaign.protocol);
   campaign.pendingReward = {
     completedNodeId: node.id,
     routeReward: node.reward,
@@ -510,6 +579,10 @@ export function restartCampaignEncounter(state: GameState): CampaignCommandResul
   const practiceBoss = campaign.practiceBossDefinitionId === null
     ? null
     : bossDefinitions.get(campaign.practiceBossDefinitionId);
+  if (!practiceBoss) {
+    if (campaign.protocol.mode !== "assist" || campaign.protocol.assistRebootsRemaining <= 0) return "ignored";
+    campaign.protocol.assistRebootsRemaining -= 1;
+  }
   const encounter = practiceBoss
     ? fullGameEncounterDefinitions.get(practiceBoss.encounterId)
     : node ? encounterForRouteNode(node, state.run.seed) : null;
@@ -683,6 +756,16 @@ function spawnEncounterEnvironment(
       sourceId: definition.id,
     });
     if (!spawned) throw new Error(`Encounter ${definition.id} could not spawn hazard ${hazard.id}.`);
+  }
+  if (definition.category !== "boss" && redlineOpeningRailEnabled(state)) {
+    const spawned = spawnHazard(state, {
+      id: `${nodeId}:threat-redline-rail`,
+      definitionId: ARC_RAIL_HAZARD_ID,
+      position: vec2(0, 0),
+      rotationRadians: 0,
+      sourceId: "threat-05-redline",
+    });
+    if (!spawned) throw new Error(`Encounter ${definition.id} could not spawn the Threat 5 Arc Rail.`);
   }
 }
 

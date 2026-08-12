@@ -543,13 +543,13 @@ Assist 记录独立标记，但可以解锁剧情与基础内容。
 
 ### 13.4 Threat Protocol
 
-通关后逐级开启，示例：
+标准难度首次通关后一次性解锁 1–5 级；选择高等级会累积此前全部规则：
 
-1. Elite 出现率提高。
-2. Hazard Active 时间 +20%。
-3. Boss 增加一项已公开模式。
-4. 每 Act 路线预览减少一项 Intel。
-5. 完整 Redline 组合与排行榜规则。
+1. 每个三选一压力层额外增加一个 Elite 选项；开场层和安全层不变。
+2. 所有 Hazard 的 Active 时间 +20%；Telegraph 不缩短。
+3. Boss 启用公开变式：Rail Hound 每轮额外一段冲锋、Siege Choir 炮台升级为 Twin Gunner、Mirror Regent 增加一个镜像、Last Conductor 使用 Redline 支援并提高 Rail 频率。
+4. 有效 Intel 深度 -1，最低为 0；已获得的 Intel 资源不删除。
+5. 每个非 Boss Combat 开场增加一条提前 1.4 秒显示的 Arc Rail。
 
 ## 14. UI 与信息设计
 

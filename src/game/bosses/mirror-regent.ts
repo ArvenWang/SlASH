@@ -13,6 +13,10 @@ import {
   spawnBossAuxiliaryEnemy,
 } from "./helpers";
 import type { BossRuntimeState } from "./types";
+import {
+  bossThreatVariationEnabled,
+  telegraphDurationScale,
+} from "../difficulty/protocol-system";
 
 export const MIRROR_SLASH_TELEGRAPH_MS = 800;
 const MIRROR_SLASH_ACTIVE_MS = 150;
@@ -26,6 +30,14 @@ const FORMATION_POSITIONS = [
   { x: 8, z: -5 },
   { x: -8, z: 6 },
   { x: 8, z: 6 },
+] as const;
+
+const THREAT_FORMATION_POSITIONS = [
+  { x: -9, z: -5 },
+  { x: 9, z: -5 },
+  { x: -9, z: 6 },
+  { x: 9, z: 6 },
+  { x: 0, z: 0 },
 ] as const;
 
 export function createMirrorRegentRuntime(
@@ -177,22 +189,26 @@ export function recordMirrorRegentDash(
     to: copyVec2(segment.to),
   }));
   if (segments.length === 0) return;
+  const telegraphDurationMs = MIRROR_SLASH_TELEGRAPH_MS * telegraphDurationScale(state);
   runtime.mechanics.mirrorSlash = {
     phase: "telegraph",
     elapsedMs: 0,
-    durationMs: MIRROR_SLASH_TELEGRAPH_MS,
+    durationMs: telegraphDurationMs,
     segments,
   };
   runtime.attackSequence += 1;
   enterBossActionPhase(state, runtime, "telegraph", MIRROR_SLASH_TELEGRAPH_MS, null);
-  emitMirrorSlashEvent(state, runtime, "telegraph", segments, MIRROR_SLASH_TELEGRAPH_MS);
+  emitMirrorSlashEvent(state, runtime, "telegraph", segments, telegraphDurationMs);
 }
 
 function placeMirrorFormation(state: GameState, runtime: BossRuntimeState, entity: EnemyState): void {
   if (runtime.mechanics.kind !== "mirror-regent") return;
   dismissClones(state, runtime);
-  const realSlot = runtime.mechanics.cycle % FORMATION_POSITIONS.length;
-  entity.position = copyVec2(FORMATION_POSITIONS[realSlot]!);
+  const positions = bossThreatVariationEnabled(state)
+    ? THREAT_FORMATION_POSITIONS
+    : FORMATION_POSITIONS;
+  const realSlot = runtime.mechanics.cycle % positions.length;
+  entity.position = copyVec2(positions[realSlot]!);
   entity.alive = true;
   entity.state = "active";
   entity.killedAtMs = null;
@@ -204,7 +220,7 @@ function placeMirrorFormation(state: GameState, runtime: BossRuntimeState, entit
     active: true,
   });
   const cloneIds: string[] = [];
-  FORMATION_POSITIONS.forEach((position, slot) => {
+  positions.forEach((position, slot) => {
     if (slot === realSlot) return;
     const id = `${runtime.entityId}:cycle-${runtime.mechanics.kind === "mirror-regent" ? runtime.mechanics.cycle : 0}:clone-${slot}`;
     cloneIds.push(id);

@@ -14,6 +14,7 @@ import { spawnHazard } from "../entities/hazard-system";
 import { spawnObstacle } from "../entities/obstacle-system";
 import { spawnProjectile } from "../entities/projectile-system";
 import { emitGameEvent } from "../events/event-buffer";
+import { telegraphDurationScale } from "../difficulty/protocol-system";
 
 const EPSILON = 1e-8;
 
@@ -163,7 +164,9 @@ function beginTelegraph(
   const authored = repeated && profile.repeatTelegraphMs !== null
     ? profile.repeatTelegraphMs
     : profile.telegraphMs * tactical.currentTelegraphMultiplier;
-  const duration = Math.max(profile.minimumTelegraphMs, Math.round(authored));
+  const duration = Math.round(
+    Math.max(profile.minimumTelegraphMs, authored) * telegraphDurationScale(state),
+  );
   enterPhase(state, enemy, tactical, profile, "telegraph", duration);
 }
 

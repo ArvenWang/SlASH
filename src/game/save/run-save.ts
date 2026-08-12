@@ -5,10 +5,13 @@ import type { GameState } from "../domain/types";
 import { validateRunRoute } from "../run/route-generator";
 import { stableHash } from "../serialization/stable";
 import { MAXIMUM_SKILL_POINTS, FORGE_MOVE_LIMIT } from "../upgrades/skill-system";
+import type { RunProtocolMode } from "../../content/protocols/definitions";
+import { ASSIST_PROTOCOL_RULES } from "../../content/protocols/definitions";
 
-export const RUN_SAVE_SCHEMA_VERSION = 1 as const;
+export const RUN_SAVE_SCHEMA_VERSION = 2 as const;
 export const RUN_SAVE_CONTENT_VERSION = "full-game-v1" as const;
-export const RUN_SAVE_STORAGE_KEY = "project-slash:run-save:v1" as const;
+export const RUN_SAVE_STORAGE_KEY = "project-slash:run-save:v2" as const;
+export const RUN_SAVE_LEGACY_STORAGE_KEYS = ["project-slash:run-save:v1"] as const;
 
 export type RunSaveFailureCode =
   | "unsafe-phase"
@@ -43,6 +46,8 @@ export interface RunSaveSummary {
   readonly layerNumber: number;
   readonly completedNodeCount: number;
   readonly committedSkillCount: number;
+  readonly protocolMode: RunProtocolMode;
+  readonly threatLevel: number;
 }
 
 const SAFE_CAMPAIGN_PHASES = new Set(["title", "planning", "event", "forge", "reward", "victory"]);
@@ -121,6 +126,8 @@ export function inspectRunSave(serialized: string): RunSaveSummary {
     layerNumber: campaign.routeProgress.layerIndex + 1,
     completedNodeCount: campaign.routeProgress.completedNodeIds.length,
     committedSkillCount: campaign.skills.committedSkillIds.length,
+    protocolMode: campaign.protocol.mode,
+    threatLevel: campaign.protocol.threatLevel,
   };
 }
 
@@ -189,6 +196,8 @@ function validateSavedState(state: unknown): asserts state is GameState {
   if (!campaign || campaign.contentVersion !== RUN_SAVE_CONTENT_VERSION) {
     throw invalidState("缺少 full-game-v1 Campaign State");
   }
+  validateProtocol(campaign.protocol);
+  validateRunMetrics(campaign.runMetrics);
   if (!isRunSaveSafe(candidate)) throw invalidState("存档不处于允许恢复的安全阶段");
   if (candidate.enemies.length > 0 || candidate.projectiles.length > 0 || candidate.obstacles.length > 0 || candidate.hazards.length > 0) {
     throw invalidState("安全存档包含战斗实体");
@@ -233,6 +242,34 @@ function validateSavedState(state: unknown): asserts state is GameState {
     if (!definition?.choices.some((choice) => choice.id === history.choiceId)) {
       throw invalidState("Event History 引用未知事件或选择");
     }
+  }
+}
+
+function validateRunMetrics(metrics: unknown): void {
+  if (!isRecord(metrics)) throw invalidState("缺少 Run 统计");
+  for (const key of ["startedAtMs", "kills", "armorBreaks", "projectileCuts", "bossBreaks", "lastProcessedEventSequence"] as const) {
+    const value = metrics[key];
+    if (!Number.isFinite(value) || Number(value) < 0) throw invalidState(`Run 统计 ${key} 无效`);
+  }
+  if (metrics.deathSourceId !== null && typeof metrics.deathSourceId !== "string") {
+    throw invalidState("死亡来源无效");
+  }
+}
+
+function validateProtocol(protocol: unknown): void {
+  if (!isRecord(protocol)) throw invalidState("缺少 Run Protocol");
+  const mode = protocol.mode;
+  const threatLevel = protocol.threatLevel;
+  const reboots = protocol.assistRebootsRemaining;
+  if (mode !== "standard" && mode !== "assist" && mode !== "threat") throw invalidState("Run Protocol Mode 无效");
+  if (!Number.isInteger(threatLevel) || Number(threatLevel) < 0 || Number(threatLevel) > 5) throw invalidState("Threat Level 无效");
+  if ((mode === "threat") !== (Number(threatLevel) > 0)) throw invalidState("Threat Mode 与等级不一致");
+  if (!Number.isInteger(reboots) || Number(reboots) < 0 || Number(reboots) > ASSIST_PROTOCOL_RULES.rebootPerAct) {
+    throw invalidState("Assist Reboot 计数无效");
+  }
+  if (mode !== "assist" && Number(reboots) !== 0) throw invalidState("非 Assist Run 包含 Reboot");
+  if (typeof protocol.leaderboardEligible !== "boolean" || protocol.leaderboardEligible !== (mode !== "assist")) {
+    throw invalidState("排行榜资格与 Protocol 不一致");
   }
 }
 

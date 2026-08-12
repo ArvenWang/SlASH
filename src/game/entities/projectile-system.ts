@@ -10,6 +10,7 @@ import type {
 } from "../../core/ids";
 import type { EnemyState, GameState, ProjectileState } from "../domain/types";
 import { emitGameEvent } from "../events/event-buffer";
+import { hostileProjectileSpeedScale } from "../difficulty/protocol-system";
 
 export const MAX_ACTIVE_PROJECTILES = 32;
 export const MAX_RETURNED_PROJECTILES_PER_DASH = 8;
@@ -44,16 +45,21 @@ export function spawnProjectile(state: GameState, input: SpawnProjectileInput): 
   if (state.projectiles.filter((projectile) => projectile.alive).length >= MAX_ACTIVE_PROJECTILES) return null;
   const definition = projectileDefinitions.get(input.definitionId);
   const direction = normalized(input.direction, { x: 1, z: 0 });
+  const faction = input.faction ?? "enemy";
+  const speedScale = faction === "enemy" ? hostileProjectileSpeedScale(state) : 1;
   const projectile: ProjectileState = {
     id: input.id,
     definitionId: definition.id,
     position: copyVec2(input.position),
-    velocity: { x: direction.x * definition.speed, z: direction.z * definition.speed },
+    velocity: {
+      x: direction.x * definition.speed * speedScale,
+      z: direction.z * definition.speed * speedScale,
+    },
     radius: definition.radius,
     alive: true,
     spawnedAtMs: state.elapsedMs,
     sourceId: input.sourceId,
-    faction: input.faction ?? "enemy",
+    faction,
     reflectedAtMs: null,
     ageMs: 0,
     returnTargetId: null,

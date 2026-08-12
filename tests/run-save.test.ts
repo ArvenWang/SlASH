@@ -21,6 +21,11 @@ import { createRunSaveRuntime } from "../src/runtime/run-save-runtime";
 describe("safe Run Save", () => {
   test("roundtrips route, draft allocation, resources, and observable state", () => {
     const state = createFullGameGame(7401);
+    expect(dispatchGameCommand(state, {
+      type: "configure-run-protocol",
+      mode: "threat",
+      threatLevel: 4,
+    }).result).toBe("protocol-configured");
     expect(dispatchGameCommand(state, { type: "start-full-game-run" }).result).toBe("run-started");
     const nodeId = state.run.fullGame?.routeProgress.availableNodeIds[0];
     if (!nodeId) throw new Error("Missing route node.");
@@ -43,6 +48,8 @@ describe("safe Run Save", () => {
       actNumber: 1,
       layerNumber: 1,
       committedSkillCount: 0,
+      protocolMode: "threat",
+      threatLevel: 4,
     });
   });
 
@@ -117,6 +124,16 @@ describe("safe Run Save", () => {
       state: invalidState.state,
     });
     expectSaveError(JSON.stringify(invalidState), "invalid-state");
+
+    const invalidProtocol = structuredClone(valid);
+    invalidProtocol.state.run.fullGame.protocol.mode = "assist";
+    invalidProtocol.state.run.fullGame.protocol.leaderboardEligible = true;
+    invalidProtocol.checksum = stableHash({
+      schemaVersion: RUN_SAVE_SCHEMA_VERSION,
+      contentVersion: RUN_SAVE_CONTENT_VERSION,
+      state: invalidProtocol.state,
+    });
+    expectSaveError(JSON.stringify(invalidProtocol), "invalid-state");
     expectSaveError("{not-json", "invalid-json");
   });
 
@@ -135,6 +152,15 @@ describe("safe Run Save", () => {
   test("survives 1,000 deterministic safe-node roundtrips", () => {
     for (let seed = 0; seed < 1_000; seed += 1) {
       const state = createFullGameGame(seed);
+      if (seed % 3 === 1) {
+        dispatchGameCommand(state, { type: "configure-run-protocol", mode: "assist" });
+      } else if (seed % 3 === 2) {
+        dispatchGameCommand(state, {
+          type: "configure-run-protocol",
+          mode: "threat",
+          threatLevel: (seed % 5) + 1,
+        });
+      }
       dispatchGameCommand(state, { type: "start-full-game-run" });
       const available = state.run.fullGame?.routeProgress.availableNodeIds;
       const nodeId = available?.[seed % available.length];

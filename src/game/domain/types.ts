@@ -13,6 +13,7 @@ import type { Vec2 } from "../../core/math/vec2";
 import type { SeededRandomState } from "../../core/random/seeded-random";
 import type { AbilitySlot } from "../../content/abilities/definitions";
 import type { FullGameCampaignState } from "../campaign/types";
+import type { RunProtocolMode } from "../../content/protocols/definitions";
 
 export type { Vec2 } from "../../core/math/vec2";
 
@@ -354,7 +355,7 @@ export type GameEventPayload =
   | { type: "hazard-phase-changed"; hazardId: EntityId; phase: HazardRuntimePhase; position: Vec2 }
   | { type: "hazard-triggered"; hazardId: EntityId; position: Vec2; activatesAtMs: number }
   | { type: "player-died"; enemyId: EntityId; position: Vec2 }
-  | { type: "campaign-started"; seed: number }
+  | { type: "campaign-started"; seed: number; protocolMode: RunProtocolMode; threatLevel: number }
   | { type: "route-node-started"; nodeId: string; encounterId: EncounterId }
   | { type: "encounter-wave-warning"; encounterId: EncounterId; waveId: string; activationAtMs: number }
   | { type: "encounter-wave-started"; encounterId: EncounterId; waveId: string; enemyIds: EntityId[] }
@@ -374,6 +375,8 @@ export type GameEventPayload =
   | { type: "forge-completed"; nodeId: string; movedSkillIds: UpgradeId[] }
   | { type: "route-node-completed"; nodeId: string; result: string }
   | { type: "campaign-victory"; seed: number }
+  | { type: "campaign-returned-to-title"; fromPhase: "victory" | "reward" | "defeat" }
+  | { type: "campaign-abandoned"; fromPhase: string }
   | { type: "stage-cleared" | "game-complete"; stageIndex: number; levelId: LevelId };
 
 type WithEventBase<TPayload> = TPayload extends unknown ? TPayload & BaseGameEvent : never;
@@ -413,6 +416,8 @@ export type GameCommand =
   | { type: "restart-stage" }
   | { type: "advance-stage" }
   | { type: "start-full-game-run" }
+  | { type: "configure-run-protocol"; mode: RunProtocolMode; threatLevel?: number }
+  | { type: "abandon-run" }
   | { type: "start-boss-practice"; bossDefinitionId: string }
   | { type: "return-to-title" }
   | { type: "preview-route-node"; nodeId: string }
@@ -437,6 +442,8 @@ export type GameCommandResult =
   | "restarted"
   | "advanced"
   | "run-started"
+  | "protocol-configured"
+  | "run-abandoned"
   | "boss-practice-started"
   | "returned-to-title"
   | "route-previewed"
@@ -545,6 +552,20 @@ export interface GameSnapshot {
   };
   campaign: null | {
     phase: string;
+    protocol: {
+      mode: RunProtocolMode;
+      threatLevel: number;
+      assistRebootsRemaining: number;
+      leaderboardEligible: boolean;
+    };
+    runMetrics: {
+      durationMs: number;
+      kills: number;
+      armorBreaks: number;
+      projectileCuts: number;
+      bossBreaks: number;
+      deathSourceId: string | null;
+    };
     actIndex: number;
     layerIndex: number;
     currentNodeId: string | null;

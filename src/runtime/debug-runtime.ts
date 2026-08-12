@@ -9,6 +9,7 @@ export interface RuntimeTuning {
   fogDensity: number;
   enemyMotion: boolean;
   dashPreview: boolean;
+  reducedMotion: boolean;
 }
 
 export interface SlashValidationApi {

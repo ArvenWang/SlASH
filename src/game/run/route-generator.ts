@@ -19,10 +19,11 @@ export type {
 export function generateRunRoute(
   seed: number,
   definition: RunDefinition = FULL_GAME_RUN_DEFINITION,
+  threatLevel = 0,
 ): RunRouteGraph {
   const normalizedSeed = Number.isFinite(seed) ? Math.trunc(seed) >>> 0 : 0;
   const random = createSeededRandom(normalizedSeed);
-  const acts = definition.acts.map((act) => generateActRoute(act, random));
+  const acts = definition.acts.map((act) => generateActRoute(act, random, threatLevel));
   const graph: RunRouteGraph = {
     runDefinitionId: definition.id,
     seed: normalizedSeed,
@@ -36,8 +37,14 @@ export function generateRunRoute(
 function generateActRoute(
   act: ActDefinition,
   random: ReturnType<typeof createSeededRandom>,
+  threatLevel: number,
 ): ActRouteGraph {
-  const nodeKindsByLayer = act.layers.map((layer) => createLayerKinds(layer.role, layer.nodeCount, random));
+  const nodeKindsByLayer = act.layers.map((layer) => createLayerKinds(
+    layer.role,
+    layer.nodeCount,
+    random,
+    threatLevel,
+  ));
   const nodeIdsByLayer = act.layers.map((layer) => (
     Array.from({ length: layer.nodeCount }, (_, nodeIndex) => createRouteNodeId(act, layer.index, nodeIndex))
   ));
@@ -82,6 +89,7 @@ function createLayerKinds(
   role: ActDefinition["layers"][number]["role"],
   nodeCount: number,
   random: ReturnType<typeof createSeededRandom>,
+  threatLevel: number,
 ): RouteNodeKind[] {
   if (role === "boss") return ["boss"];
   if (role === "opening-combat" || role === "pre-boss") {
@@ -92,7 +100,12 @@ function createLayerKinds(
     return random.next() < 0.5 ? ["event", optionalSafeKind] : [optionalSafeKind, "event"];
   }
   const eliteIndex = Math.floor(random.next() * nodeCount);
-  return Array.from({ length: nodeCount }, (_, index) => index === eliteIndex ? "elite" : "combat");
+  const additionalEliteIndex = threatLevel >= 1 && nodeCount >= 3
+    ? (eliteIndex + 1 + Math.floor(random.next() * (nodeCount - 1))) % nodeCount
+    : -1;
+  return Array.from({ length: nodeCount }, (_, index) => (
+    index === eliteIndex || index === additionalEliteIndex ? "elite" : "combat"
+  ));
 }
 
 function rewardForNode(act: ActDefinition, layerIndex: number, kind: RouteNodeKind): RouteReward {

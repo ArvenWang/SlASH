@@ -26,6 +26,7 @@ page.on("console", (message) => {
 page.on("pageerror", (error) => browserIssues.push({ type: "pageerror", text: String(error) }));
 
 await openGame(page, null);
+await page.locator('[data-action="title-view"][data-view="practice"]').click();
 const practiceButtons = await page.locator('[data-action="start-boss-practice"]').allTextContents();
 await page.screenshot({ path: path.join(outputDirectory, "00-practice-menu.png"), fullPage: true });
 
@@ -61,8 +62,9 @@ for (const bossId of bossIds) {
 
 await openGame(page, null);
 await page.setViewportSize({ width: 390, height: 844 });
+await page.locator('[data-action="title-view"][data-view="practice"]').click();
 const mobileLayout = await page.evaluate(() => {
-  const panel = document.querySelector(".title-panel");
+  const panel = document.querySelector(".library-panel");
   return {
     viewportWidth: document.documentElement.clientWidth,
     documentScrollWidth: document.documentElement.scrollWidth,
@@ -73,7 +75,7 @@ const mobileLayout = await page.evaluate(() => {
 await page.screenshot({ path: path.join(outputDirectory, "05-practice-menu-mobile.png"), fullPage: true });
 
 const gates = {
-  practiceMenuListsFourBosses: practiceButtons.length === 4 && bossIds.every((id, index) => practiceButtons[index]?.includes(`ACT ${index + 1}`)),
+  practiceMenuListsFourBosses: practiceButtons.length === 4 && practiceButtons.every((text) => text.includes("开始练习")),
   allBossesCompleted: results.length === 4 && results.every((result) => result.completed && result.finalPhase === "victory"),
   allPlayersSurvived: results.every((result) => result.playerAlive),
   liveBossHudVisible: results.every((result) => result.hud.includes("·") && !result.hud.includes("HOSTILES")),

@@ -4,6 +4,10 @@ import { shapesIntersect } from "../collision/shapes";
 import type { GameState, HazardRuntimePhase, HazardState } from "../domain/types";
 import { emitGameEvent } from "../events/event-buffer";
 import { hazardWorldShape } from "./entity-shapes";
+import {
+  hazardActiveDurationScale,
+  telegraphDurationScale,
+} from "../difficulty/protocol-system";
 
 export const MAX_ACTIVE_HAZARDS = 8;
 const EPSILON = 1e-6;
@@ -55,7 +59,10 @@ export function advanceHazards(state: GameState, deltaMs: number): string | null
     hazard.phaseElapsedMs += safeDelta;
 
     if (definition.lifecycle === "triggered-mine") {
-      if (hazard.phase === "telegraph" && hazard.phaseElapsedMs + EPSILON >= definition.telegraphMs) {
+      if (
+        hazard.phase === "telegraph" &&
+        hazard.phaseElapsedMs + EPSILON >= definition.telegraphMs * telegraphDurationScale(state)
+      ) {
         setPhase(state, hazard, "armed");
       }
       if (hazard.phase === "armed" && playerInsideTrigger(state, hazard, definition.triggerRadius)) {
@@ -65,13 +72,19 @@ export function advanceHazards(state: GameState, deltaMs: number): string | null
           type: "hazard-triggered",
           hazardId: hazard.id,
           position: copyVec2(hazard.position),
-          activatesAtMs: state.elapsedMs + definition.triggerDelayMs,
+          activatesAtMs: state.elapsedMs + definition.triggerDelayMs * telegraphDurationScale(state),
         });
       }
-      if (hazard.phase === "triggered" && hazard.phaseElapsedMs + EPSILON >= definition.triggerDelayMs) {
+      if (
+        hazard.phase === "triggered" &&
+        hazard.phaseElapsedMs + EPSILON >= definition.triggerDelayMs * telegraphDurationScale(state)
+      ) {
         setPhase(state, hazard, "active");
       }
-    } else if (hazard.phase === "telegraph" && hazard.phaseElapsedMs + EPSILON >= definition.telegraphMs) {
+    } else if (
+      hazard.phase === "telegraph" &&
+      hazard.phaseElapsedMs + EPSILON >= definition.telegraphMs * telegraphDurationScale(state)
+    ) {
       setPhase(state, hazard, "active");
     }
 
@@ -85,7 +98,9 @@ export function advanceHazards(state: GameState, deltaMs: number): string | null
           hazardWorldShape(hazard),
         )
       ) lethalSource ??= hazard.id;
-      if (hazard.phaseElapsedMs + EPSILON >= definition.activeMs) setPhase(state, hazard, "expired");
+      if (
+        hazard.phaseElapsedMs + EPSILON >= definition.activeMs * hazardActiveDurationScale(state)
+      ) setPhase(state, hazard, "expired");
     }
 
     if (hazard.phase !== "expired") survivors.push(hazard);

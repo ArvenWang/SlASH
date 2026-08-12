@@ -11,6 +11,7 @@ export interface InputRuntimeOptions {
   readonly onPrimaryPointerCancel: () => void;
   readonly onSecondaryPointer: (coordinates: PointerCoordinates) => void;
   readonly onUltimate: () => void;
+  readonly onPause: () => void;
   readonly onPointerLeave: () => void;
   readonly onRestart: () => void;
   readonly onToggleAudio: () => void;
@@ -62,7 +63,7 @@ export function createInputRuntime(options: InputRuntimeOptions): InputRuntime {
       event.preventDefault();
       options.onUltimate();
     } else if (event.key === "Escape") {
-      options.onPrimaryPointerCancel();
+      options.onPause();
     }
   };
 
