@@ -380,7 +380,7 @@ Elite 额外奖励：最多 +2 点 / Run
 
 阶段：
 
-1. Boss 用 800ms Telegraph 沿锁定线冲锋；冲锋结束有 900ms Recovery，侧面核心暴露。
+1. Boss 用 800ms Telegraph 沿锁定线冲锋；冲锋结束有 1.5s Recovery，侧面核心暴露；冲锋终点必须保留两侧可达空间。
 2. 玩家在暴露窗口斩中核心，完成 1 次 Break；Boss 改用两段冲锋。
 3. 完成 3 次 Core Break 后 Boss 被处决。
 

@@ -55,4 +55,4 @@ Hash 用来检测回放结果分歧，不是密码学签名，也不用于防作
 
 当前除 Legacy Stage 外，Full-game Replay 已覆盖 Route Choice、Skill Draft / Commit、Event、Forge、Charged Hold / Release 与 Ultimate Planning。代表性 Campaign 路径会从全新 Title State 重放并要求最终 Hash 完全一致。
 
-尚未完成 FG-R01 的 `100 Seed × 4 Build` 完整 Run 矩阵，因为 4 Boss 仍在生产；49 个非 Boss Encounter 已接入，但也尚未提供玩家可见的 Replay 管理 UI、跨版本模拟器、联网同步或反作弊。这些不能因为 v2 日志存在就宣称完成。
+Boss Practice 现已覆盖“先失败 → Restart → 完整击破 → 从全新 GameState 回放 → 最终 Hash Match”。尚未完成 FG-R01 的 `100 Seed × 4 Build` 完整 Run 矩阵，也尚未提供玩家可见的 Replay 管理 UI、跨版本模拟器、联网同步或反作弊；这些不能因为 Boss Replay 已通过就宣称完成。

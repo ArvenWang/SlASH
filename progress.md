@@ -206,4 +206,17 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 自动化全量当前为 26 files / 160 tests；新增 Encounter / Challenge 专项 14 项。TypeScript、Build、设计清单、100 Seed 内容报告和 whitespace 均通过。
 - 浏览器 Challenge 闭环通过：Planning 显示条件/奖励/精确威胁，战斗 HUD 实时显示条件，真实无 Ultimate 清场后 Reward 发放 Intel +1；390×844 无横向溢出，Console 0。
 - 浏览器 Route Matrix 使用真实 Canvas pointer click / hold / release 完成 4 Act × 3 条不同路线；Act III / IV 装甲路线真实执行 Charged 卸甲。Conductor Debut 在朴素自动玩家下发生 2 次死亡重试后完成，作为后续 P10 难度调优观察项保留，不隐去失败。
-- 当前边界：4 Boss 尚未实现，Boss 路线明确不可选，不以普通 Encounter 占位。下一步进入 P7 机制型 Boss。
+- 当前边界（P6 结束时）：当时 4 Boss 尚未实现；现已由下方 P7 记录取代。
+
+## 2026-08-12 — Four Mechanic Bosses / Practice
+
+- 4 个 Boss 现已全部接入正式 Route 与 Encounter Registry；Boss 节点不再锁定。统一 Runtime 保存 Definition、Phase、Action Phase、Objective、Break、Core Window、Mechanics State 与 Victory，并完整进入 JSON Snapshot / Replay Hash。
+- Rail Hound 使用 800ms 锁定线、单段后双段冲锋和 1.5s 侧核窗口；冲锋终点被限制在双侧均可进入的安全内框，修复了靠墙后侧核不可达的真实死锁风险；3 次 Core Break 结束。
+- Siege Choir 使用前 / 左 / 右三块独立 Coverage、两座可击杀 Gunner 炮台和周期 Barrier；Charged 实际卸掉任意两块后开放 1.5s 背核，连续完成两轮。
+- Mirror Regent 同屏为 1 真 + 3 假，真实体有独立尺寸 / 节拍；只读取已经完成的 Dash Path Segments，先显示 800ms 路径再回放致命 Mirror Slash，命中真实体 3 次结束。
+- Last Conductor 依序执行 Barrage、Rail Grid、Armor Shell、Vector Finale；最终阶段将 Energy 强制设为 100，只有用基础 Vector Focus 按顺序经过 3 个可见节点才完成，失败尝试会重置目标并重新补能，避免软锁。
+- Title 新增 4 个真实 Boss Practice 入口和返回 Title 流程；Practice 使用同一生产输入、Simulation、Presentation、Restart 和 Replay，不是独立假场景。
+- 自动门：`verify:bosses` 在固定 Seed、0 Skill 下完成 4 × 100 = 400 次，死亡 0、死锁 0；测试覆盖阶段事件、破核事件、胜利事件，以及失败 → Restart → 完整战斗 → Replay Hash Match。
+- 真实浏览器：4 / 4 Boss 由 Playwright 在生产 Canvas 上真实点击、长按松开和按 Space 选择三点完成；HUD、Rail 锁定线、Siege 背核环、Mirror Path、Rail Grid / Finale 三节点均有截图；390×844 无横向溢出，Console 0。
+- 当前边界：自动 FG-B01–B03 已通过；每个 Boss 至少 3 次真人完成、失败原因复述与 120–300s 节奏目标仍属于最终人工体验门，不能用 400 次全知状态机代替。
+- 下一步：P8 Profile / Dossier / Threat / Assist / Settings / Statistics，再进入完整 Run Replay Matrix 与最终质量门。

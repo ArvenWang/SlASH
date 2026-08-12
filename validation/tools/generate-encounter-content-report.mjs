@@ -21,13 +21,16 @@ try {
     const selectedIds = [];
     for (const layer of graph.acts.flatMap((act) => act.layers)) {
       const layerIds = layer
-        .map((node) => definitionsModule.encounterForRouteNode(node, seed)?.id ?? null)
+        .map((node) => {
+          const encounter = definitionsModule.encounterForRouteNode(node, seed);
+          return encounter?.category === "boss" ? null : encounter?.id ?? null;
+        })
         .filter((id) => id !== null);
       duplicateChoiceOptions += layerIds.length - new Set(layerIds).size;
     }
     for (const node of graph.acts.flatMap((act) => act.layers.flatMap((layer) => layer))) {
       const encounter = definitionsModule.encounterForRouteNode(node, seed);
-      if (!encounter) continue;
+      if (!encounter || encounter.category === "boss") continue;
       selectedIds.push(encounter.id);
       selectionCounts[encounter.id] += 1;
     }

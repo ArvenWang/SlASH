@@ -15,7 +15,7 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 已增加 `FULL_GAME_CONTENT_MANIFEST.json`、统一术语表和 `npm run verify:full-game-design`；机器门已确认 4 Act、28 Skill、10+4 Enemy、4 Boss、3/4/2 Entity、53 个 Encounter 目标和 12/28 点数上限一致。
 - 技能经济已改为完整 Run：开局 2 点、每 Act 保证 2 点、Elite 最多补 2 点；保证 10、上限 12，只能购买 28 节点中的 42.86%。
 - Charged Dash 正式规则锁定为：整条路线贯穿敌群；命中真实 Armor Coverage 就卸对应甲；命中裸露区就击杀；无甲背部可直接处决，后背有甲则先卸后甲。
-- 当前已完成根战斗、28 个被动 Hook、Projectile / Obstacle / Hazard、Event / Forge、Safe Save / Continue、Replay v2、10+4 Enemy 与 49 个非 Boss Encounter；默认产品入口可在战斗、挑战和非战斗节点间持续推进。4 Boss、Profile / Practice / Difficulty 与后续系统仍按计划推进，不把 49 / 53 冒充完整内容齐全。
+- 当前已完成根战斗、28 个被动 Hook、Projectile / Obstacle / Hazard、Event / Forge、Safe Save / Continue、Replay v2、10+4 Enemy、49 个非 Boss Encounter 与 4 个机制型 Boss；53 / 53 Encounter 已有真实 Definition 和生命周期。Profile、Dossier、Threat / Assist、完整 Run 矩阵、性能与真人体验门仍按计划推进，不把 P7 冒充整款游戏完成。
 
 ## Full Game 已完成内容
 
@@ -85,20 +85,28 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - [x] 精确 Threat Preview：敌人数、Wave、Armor、Projectile、Obstacle、Hazard 与 Pressure 全部从实际 Definition 计算；100 Seed 覆盖 49 / 49，任一选择层重复 Encounter 卡为 0。
 - [x] Challenge 生命周期：Clean Line、Projectile Cuts、Charged Multi-Break、No Ultimate 四类规则进入运行状态、HUD、Reward 与确定资源；失败不挡正常过关，成功发放 Reroute / 25 Energy / Intel。
 - [x] P6 真实浏览器：Challenge Planning / HUD / Reward / 390×844 全通过；4 Act × 3 条不同路线均由真实 Canvas 点击 / 长按完成，装甲路线确实先蓄力卸甲再处决，Console 0。
+- [x] P7 通用 Boss Runtime：稳定 Definition、显式 Phase / Objective / Telegraph / Active / Recovery / Core Window、Break / Victory Event、Snapshot、Restart 与 Replay 均接入正式 Campaign。
+- [x] Rail Hound：800ms 锁定冲锋；第一次后升级为二段冲锋；终点保留双侧可达空间，1.5s 侧核窗口，3 次 Core Break 结束。
+- [x] Siege Choir：中央三块独立 Coverage、两座可击杀炮台和周期 Barrier；Charged 卸任意 2 块甲后开放 1.5s 背核，完成 2 轮。
+- [x] Mirror Regent：1 个真实体 + 3 镜像，真实体具有不同尺寸 / 节拍；记录实际 Dash Segments，800ms Telegraph 后回放致命 Mirror Slash，真实体命中 3 次结束。
+- [x] Last Conductor：Barrage、Rail Grid、Armor Shell、Vector Finale 四阶段严格顺序；Finale 强制 Energy 100，只有按序通过 3 个可见节点的 Vector Focus 才结束。
+- [x] Boss Practice：Title 可直接进入 4 个零技能练习，完成后可返回 Title；自动门 4 Boss × 100 次，共 400 次，死亡 / 死锁 0；Boss 失败重开后的 Replay 最终 Hash Match。
+- [x] P7 真实浏览器：4 / 4 Boss 使用真实 Canvas 点击、长按松开和 Space 三点选取完成；Boss HUD、锁定线、背核、Mirror Path、Rail / Finale 节点均可见；390×844 无横向溢出，Console 0。
+- [x] P7 全量自动化：27 个测试文件 / 168 项通过；TypeScript、Production Build、53 项 Design Manifest、49 Encounter 报告、400 次 Boss 报告与 whitespace 全通过；构建仅保留已知 Three core 605.52kB 警告。
 
 ## Full Game 下一步计划
 
-1. 进入 P7：完成 Rail Hound、Siege Choir、Mirror Regent、Last Conductor 四个机制型 Boss 与 Practice Direct Entry。
-2. 之后按 P8 完成 Profile / Practice / Difficulty 与全 Run 内容，不把非 Boss 内容齐全误报成完整游戏齐全。
-3. 内容完成后执行 100 Seed × 4 Build Replay Matrix、完整 Run、性能与真人体验门。
-4. 每个有意义变更继续执行自动化、截图、`render_game_to_text` 和 Console 检查，再依 P7–P11 推进。
+1. 进入 P8：完成 Profile Schema、Dossier / 解锁式 Practice、Assist Protocol、Threat Protocol 1–5、本地统计与 Settings 持久化；现有 Boss Direct Practice 作为真实基础继续扩展。
+2. 随后完成 P9 UI / Touch / Accessibility，把 Boss Objective、死亡原因、Run Summary 和全部输入做成最终产品流程。
+3. 内容与元系统完成后执行 100 Seed × 4 Build Replay Matrix、完整 Run、性能与真人体验门。
+4. 每个有意义变更继续执行自动化、截图、`render_game_to_text` 和 Console 检查，再依 P8–P11 推进。
 
 ## Full Game 当前问题与边界
 
 - 视觉 Agent 的大量角色 / 动画 / Asset 修改尚未提交，本分支不会从其脏工作树复制文件；最终只合并稳定 Commit。
-- 49 个非 Boss Encounter 已完成；Boss 节点当前明确锁定，不用普通敌人模板冒充。P7 完成前仍无法从产品入口打通完整 4 Act Run。
-- Run Save 已覆盖当前正式 Campaign 字段，但 Threat Protocol、Assist、Boss 边界与 Profile 尚未实现；这些字段加入时必须同步升级 Save Schema 测试，当前不能宣称 FG-SV01–SV03 全部门完成。
-- Replay v2 已通过代表性 Campaign 路径 Hash Match，但 FG-R01 要求的 100 Seed × 4 Build 完整回放必须等完整 Enemy / Boss / Encounter 内容接入后执行。
+- 53 / 53 Encounter 已接入，Boss 路线不再锁定；但尚未完成真实完整 4 Act Run 的 100 Seed × 4 Build、P95 时长和真人 3 次 / Boss 门，当前仍不能宣称 Hard Gate FG-H01 已关闭。
+- Run Save 已覆盖当前正式 Campaign 字段与 Boss 前后安全边界，但 Threat Protocol、Assist 与 Profile 尚未实现；这些字段加入时必须同步升级 Save Schema 测试，当前不能宣称 FG-SV01–SV03 全部门完成。
+- Replay v2 已通过代表性 Campaign 路径与 Boss 失败重开 Hash Match，但 FG-R01 要求的 100 Seed × 4 Build 完整回放仍未执行。
 - 现有 `game.ts` 仍承担较多编排；新增系统必须进入独立模块，不能继续形成 God Object。
 - Route Graph 第一版曾因错误旋转目标映射造成部分 Seed 节点不可达；已改成旋转源投影，并用 100 Seed 回归锁住该问题。
 - Planning Board 第一版因高内容面板仍采用垂直居中，导致顶部路线卡被推到视口外；真实浏览器已发现并改为顶部展开，普通点击回归通过。
@@ -108,7 +116,7 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 
 ## Full Game 暂勿并行修改
 
-- 本分支将开始修改 `src/game/domain/`、`src/game/run/`、`src/game/encounters/`、`src/content/runs/` 与 Replay。其他 Agent 不应在 `codex/full-game-production` 平行重构这些文件。
+- 本分支下一阶段将修改 Profile / Save / Campaign UI / Difficulty / Settings；其他 Agent 不应在 `codex/full-game-production` 平行重构这些文件。
 - 视觉 Agent 可继续在原工作树修改 Presentation / Character / Asset；不要把 Gameplay 规则写入视觉资产层。
 
 ---

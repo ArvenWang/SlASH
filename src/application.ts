@@ -58,6 +58,11 @@ export async function bootstrapSlashApplication(): Promise<void> {
   const useLegacyValidationFixture = validationMode && pageParameters.get("campaign") !== "1";
   const gameRuntime = useLegacyValidationFixture ? createGameRuntime(0) : createFullGameRuntime();
   const gameState = gameRuntime.state;
+  const validationBossId = validationMode ? pageParameters.get("boss") : null;
+  if (validationBossId) {
+    const result = gameRuntime.dispatch({ type: "start-boss-practice", bossDefinitionId: validationBossId });
+    if (result.result !== "boss-practice-started") throw new Error(`Unknown validation Boss: ${validationBossId}`);
+  }
   const runSaveRuntime = createRunSaveRuntime({
     getItem(key) {
       return window.localStorage.getItem(key);
@@ -118,6 +123,8 @@ export async function bootstrapSlashApplication(): Promise<void> {
         result === "reward-acknowledged" ||
         result === "restarted" ||
         result === "run-started" ||
+        result === "boss-practice-started" ||
+        result === "returned-to-title" ||
         result === "run-continued"
       ) {
         presentationRuntime.resetStage();

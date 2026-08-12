@@ -63,7 +63,7 @@ assert(manifest.implementedCounts.eliteEnemies === 4, "all 4 elite enemies must 
 assert(manifest.implementedCounts.standardEncounters === 28, "all 28 standard encounters must be implemented");
 assert(manifest.implementedCounts.eliteEncounters === 12, "all 12 elite encounters must be implemented");
 assert(manifest.implementedCounts.challengeEncounters === 9, "all 9 challenge encounters must be implemented");
-assert(manifest.implementedCounts.bossEncounters === 0, "P6 must not claim the P7 boss encounters");
+assert(manifest.implementedCounts.bossEncounters === 4, "all four P7 Boss encounters must be implemented");
 
 const uniqueIds = new Set(allIds);
 assert(uniqueIds.size === allIds.length, `duplicate stable IDs detected (${allIds.length - uniqueIds.size})`);

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { FULL_GAME_BOSS_ENCOUNTERS } from "../src/content/bosses/definitions";
 import {
   encounterForRouteNode,
   encounterPool,
@@ -28,7 +29,7 @@ import { generateRunRoute } from "../src/game/run/route-generator";
 describe("full-game encounter library", () => {
   test("contains the exact 28 Standard / 12 Elite / 9 Challenge inventory by Act", () => {
     expect(FULL_GAME_NON_BOSS_ENCOUNTERS).toHaveLength(49);
-    expect(fullGameEncounterDefinitions.list()).toHaveLength(49);
+    expect(fullGameEncounterDefinitions.list()).toHaveLength(53);
     expect(new Set(FULL_GAME_NON_BOSS_ENCOUNTERS.map((definition) => definition.id)).size).toBe(49);
     expect(inventoryMatrix()).toEqual([
       { standard: 6, elite: 2, challenge: 2 },
@@ -104,7 +105,7 @@ describe("full-game encounter library", () => {
     expect(checked).toBeGreaterThanOrEqual(3_000);
   });
 
-  test("exposes every one of the 49 templates through deterministic route mapping across representative seeds", () => {
+  test("exposes all 49 non-boss encounters and four Boss encounters through deterministic route mapping", () => {
     const selected = new Set<string>();
     for (let seed = 0; seed < 1_000; seed += 1) {
       for (const act of generateRunRoute(seed).acts) {
@@ -114,8 +115,12 @@ describe("full-game encounter library", () => {
         }
       }
     }
-    expect(selected.size).toBe(49);
-    expect([...selected].sort()).toEqual(FULL_GAME_NON_BOSS_ENCOUNTERS.map((definition) => definition.id).sort());
+    expect(selected.size).toBe(53);
+    expect([...selected].sort()).toEqual(
+      [...FULL_GAME_NON_BOSS_ENCOUNTERS, ...FULL_GAME_BOSS_ENCOUNTERS]
+        .map((definition) => definition.id)
+        .sort(),
+    );
   });
 
   test("never presents duplicate encounter choices inside the same route layer", () => {

@@ -1,8 +1,9 @@
-import type { EncounterTemplateId, RouteNodeId } from "../../core/ids";
+import type { BossDefinitionId, EncounterTemplateId, RouteNodeId } from "../../core/ids";
 import type { RunResourceId } from "../../content/events/definitions";
 import type { EncounterRuntimeState } from "../encounters/types";
 import type { FullGameRunProgressState, RouteReward } from "../run/types";
 import type { SkillAllocationState } from "../upgrades/types";
+import type { BossRuntimeState } from "../bosses/types";
 
 export type CampaignPhase = "title" | "planning" | "event" | "forge" | "combat" | "reward" | "defeat" | "victory";
 
@@ -49,6 +50,8 @@ export interface FullGameCampaignState {
   activeEncounterTemplateId: EncounterTemplateId | null;
   encounterRuntime: EncounterRuntimeState | null;
   activeChallenge: CampaignChallengeRuntimeState | null;
+  activeBoss: BossRuntimeState | null;
+  practiceBossDefinitionId: BossDefinitionId | null;
   activeTriggerIds: string[];
   pendingReward: CampaignRewardState | null;
   eliteSkillPointRewardsGranted: number;

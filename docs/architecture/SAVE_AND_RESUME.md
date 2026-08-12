@@ -33,4 +33,4 @@ Planning 中每次合法路线预选或技能草案变化都会覆盖安全存�
 
 ## 当前边界
 
-Threat Protocol、Assist、Boss Boundary、Profile、Practice、Settings 与统计尚未实现。它们进入正式 State 时必须同步升级 Save 测试；因此当前实现不能单独视为 FG-SV01–SV03 全部门完成。
+四个 Boss 与 Practice 已实现，但战斗中间状态明确不保存；Boss 前 Planning Safe Save 与 Boss 后 Reward / Victory 仍沿用同一安全边界。Threat Protocol、Assist、Profile、Settings 与统计尚未实现，它们进入正式 State 时必须同步升级 Save 测试；因此当前实现不能单独视为 FG-SV01–SV03 全部门完成。

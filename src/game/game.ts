@@ -114,6 +114,8 @@ import {
   previewCampaignSkillRefund,
   resolveCampaignEventChoice,
   restartCampaignEncounter,
+  returnCampaignToTitle,
+  startBossPractice,
   startFullGameRun,
   synchronizeCampaignChallenge,
   useCampaignForgeToken,
@@ -127,6 +129,13 @@ import {
 } from "./enemies/enemy-attack-system";
 import { enemyAttackProfiles } from "../content/enemies/attack-definitions";
 import { encounterForRouteNode } from "../content/encounters/definitions";
+import {
+  advanceBossSystem,
+  isBossControlledEnemy,
+  recordBossCompletedDash,
+  resolveBossDashContact,
+} from "./bosses/boss-system";
+import type { BossRuntimeState } from "./bosses/types";
 
 export type {
   ArenaBounds,
@@ -889,6 +898,7 @@ function resolveEnemiesAlongSegment(
       continue;
     }
     dash.resolvedEnemyIds.push(enemy.id);
+    if (resolveBossDashContact(state, enemy, dash, segmentStart, segmentEnd)) continue;
     const contact = resolveArmorContact(
       enemy,
       dash.from,
@@ -963,6 +973,7 @@ function killEnemy(
   rearExecution: boolean,
 ): void {
   if (!enemy.alive) return;
+  if (isBossControlledEnemy(enemy)) return;
   enemy.alive = false;
   enemy.state = "dead";
   enemy.killedAtMs = state.elapsedMs;
@@ -1124,6 +1135,7 @@ function resolveCrossExecution(state: GameState, position: Vec2): void {
   const purgeEnabled = state.run.selectedUpgrades.includes("skill-cross-purge-v1");
   for (const enemy of state.enemies) {
     if (!enemy.alive || squaredDistance(enemy.position, position) > (2.5 + enemy.radius) ** 2) continue;
+    if (isBossControlledEnemy(enemy)) continue;
     if (hasIntactArmor(enemy)) {
       const definition = enemyDefinitions.get(enemy.definitionId);
       if (purgeEnabled && !definition.tags.includes("boss")) {
@@ -1160,6 +1172,7 @@ function resolveImpactBurst(state: GameState, dash: NonNullable<GameState["playe
   let killedCount = 0;
   for (const enemy of state.enemies) {
     if (!enemy.alive || squaredDistance(enemy.position, endpoint) > (2.2 + enemy.radius) ** 2) continue;
+    if (isBossControlledEnemy(enemy)) continue;
     const armor = enemy.armorParts.find((part) => part.intact);
     if (armor) {
       emitGameEvent(state, {
@@ -1260,6 +1273,7 @@ function completeDash(state: GameState): void {
     });
   }
   resolveImpactBurst(state, dash);
+  recordBossCompletedDash(state, dash);
   finalizeRegularDashPathEffects(state, dash);
   if (
     state.run.selectedUpgrades.includes("skill-kill-momentum-v1") &&
@@ -1448,6 +1462,8 @@ function simulateFixedStep(state: GameState): void {
   if (projectileResult.playerHitBy) killPlayer(state, projectileResult.playerHitBy);
   const lethalHazardId = advanceHazards(state, worldDeltaMs);
   if (lethalHazardId) killPlayer(state, lethalHazardId);
+  const lethalBossSourceId = advanceBossSystem(state, worldDeltaMs);
+  if (lethalBossSourceId) killPlayer(state, lethalBossSourceId);
 
   if (state.stage.phase !== "playing") return;
 
@@ -1481,6 +1497,10 @@ export function dispatchGameCommand(
     result = "advanced";
   } else if (command.type === "start-full-game-run") {
     result = startFullGameRun(state);
+  } else if (command.type === "start-boss-practice") {
+    result = startBossPractice(state, command.bossDefinitionId);
+  } else if (command.type === "return-to-title") {
+    result = returnCampaignToTitle(state);
   } else if (command.type === "preview-route-node") {
     result = previewCampaignRouteNode(state, command.nodeId);
   } else if (command.type === "preview-skill-purchase") {
@@ -1586,6 +1606,36 @@ export function advanceGame(
 
 function roundForSnapshot(value: number): number {
   return Math.round(value * 1000) / 1000;
+}
+
+function bossDetailsForSnapshot(runtime: BossRuntimeState): NonNullable<NonNullable<GameSnapshot["campaign"]>["boss"]>["details"] {
+  const mechanics = runtime.mechanics;
+  return {
+    chargeIndex: mechanics.kind === "rail-hound" ? mechanics.chargeIndex : null,
+    chargesThisCycle: mechanics.kind === "rail-hound" ? mechanics.chargesThisCycle : null,
+    round: mechanics.kind === "siege-choir" ? mechanics.round : null,
+    armorBreaks: mechanics.kind === "siege-choir"
+      ? mechanics.armorBreaksThisRound
+      : mechanics.kind === "last-conductor" ? mechanics.armorBreakCount : null,
+    realEntityId: mechanics.kind === "mirror-regent" ? mechanics.realEntityId : null,
+    cloneEntityIds: mechanics.kind === "mirror-regent" ? [...mechanics.cloneEntityIds] : [],
+    supportEntityIds: mechanics.kind === "siege-choir"
+      ? [...mechanics.turretEntityIds]
+      : mechanics.kind === "last-conductor" ? [...mechanics.barrageSupportEntityIds] : [],
+    mirrorSlash: mechanics.kind === "mirror-regent" && mechanics.mirrorSlash ? {
+      phase: mechanics.mirrorSlash.phase,
+      remainingMs: roundForSnapshot(Math.max(0, mechanics.mirrorSlash.durationMs - mechanics.mirrorSlash.elapsedMs)),
+      segments: mechanics.mirrorSlash.segments.map((segment) => ({
+        from: copyPoint(segment.from),
+        to: copyPoint(segment.to),
+      })),
+    } : null,
+    objectiveNodes: mechanics.kind === "last-conductor"
+      ? (runtime.phaseIndex === 1 ? mechanics.railNodes : runtime.phaseIndex === 3 ? mechanics.finaleNodes : [])
+        .map((node) => ({ id: node.id, position: copyPoint(node.position), reached: node.reached }))
+      : [],
+    finaleAttemptInvalid: mechanics.kind === "last-conductor" && mechanics.finaleAttemptInvalid,
+  };
 }
 
 /** Compact, stable state intended for renderGameToText and browser QA agents. */
@@ -1819,6 +1869,27 @@ export function getGameSnapshot(state: GameState): GameSnapshot {
         ),
         ultimateExecuted: campaign.activeChallenge.ultimateExecuted,
         failureReason: campaign.activeChallenge.failureReason,
+      },
+      boss: campaign.activeBoss === null ? null : {
+        definitionId: campaign.activeBoss.definitionId,
+        entityId: campaign.activeBoss.entityId,
+        phaseId: campaign.activeBoss.phaseId,
+        phaseIndex: campaign.activeBoss.phaseIndex,
+        actionPhase: campaign.activeBoss.actionPhase,
+        actionRemainingMs: roundForSnapshot(Math.max(
+          0,
+          campaign.activeBoss.phaseDurationMs - campaign.activeBoss.phaseElapsedMs,
+        )),
+        lockedDirection: copyPoint(campaign.activeBoss.lockedDirection),
+        lockedTarget: campaign.activeBoss.lockedTarget ? copyPoint(campaign.activeBoss.lockedTarget) : null,
+        objectiveCurrent: campaign.activeBoss.objectiveCurrent,
+        objectiveTarget: campaign.activeBoss.objectiveTarget,
+        breakCount: campaign.activeBoss.breakCount,
+        attackSequence: campaign.activeBoss.attackSequence,
+        coreExposed: campaign.activeBoss.coreExposed,
+        completed: campaign.activeBoss.completed,
+        mechanic: campaign.activeBoss.mechanics.kind,
+        details: bossDetailsForSnapshot(campaign.activeBoss),
       },
       encounter: campaign.encounterRuntime === null ? null : {
         id: campaign.encounterRuntime.encounterId,

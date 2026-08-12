@@ -294,6 +294,31 @@ kbd {
   line-height: 1.5;
 }
 
+.practice-selector {
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(213, 232, 234, 0.14);
+}
+
+.practice-selector > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.practice-selector .secondary-action {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  letter-spacing: 0.04em;
+}
+
+.practice-selector .secondary-action b {
+  color: #91a5a8;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+}
+
 .primary-action,
 .secondary-action,
 .route-card,

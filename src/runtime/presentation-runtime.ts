@@ -39,8 +39,27 @@ import {
 import { STORED_PATH_DURATION_MS } from "../game/abilities/path-passives";
 import { fullGameEncounterDefinitions } from "../content/encounters/definitions";
 import { challengeProgressLabel } from "../game/campaign/challenge-system";
+import { bossDefinitions } from "../content/bosses/definitions";
+import type { BossRuntimeState } from "../game/bosses/types";
 
 const EPSILON_PRESENTATION = 1e-6;
+
+function bossHudLabel(runtime: BossRuntimeState, actionRemainingMs: number): string {
+  const seconds = actionRemainingMs > 0 ? ` ${(actionRemainingMs / 1_000).toFixed(1)}s` : "";
+  if (runtime.mechanics.kind === "rail-hound") {
+    return `RAIL HOUND · CORE ${runtime.breakCount}/3 · ${runtime.actionPhase.toUpperCase()}${seconds}`;
+  }
+  if (runtime.mechanics.kind === "siege-choir") {
+    const objective = runtime.coreExposed
+      ? "REAR CORE OPEN"
+      : `ARMOR ${runtime.mechanics.armorBreaksThisRound}/2`;
+    return `SIEGE ${runtime.mechanics.round}/2 · ${objective} · ${runtime.actionPhase.toUpperCase()}${seconds}`;
+  }
+  if (runtime.mechanics.kind === "mirror-regent") {
+    return `MIRROR · TRUE HIT ${runtime.objectiveCurrent}/3 · ${runtime.actionPhase.toUpperCase()}${seconds}`;
+  }
+  return `CONDUCTOR ${runtime.phaseIndex + 1}/4 · ${runtime.phaseId.toUpperCase()} · ${runtime.objectiveCurrent}/${runtime.objectiveTarget}`;
+}
 
 interface EnemyVisualRuntime {
   actor: CharacterRuntime;
@@ -101,6 +120,7 @@ export interface PresentationRuntime {
     postFx: ReturnType<RendererRuntime["postFx"]["snapshot"]>;
     environment: ReturnType<RendererRuntime["environment"]["snapshot"]>;
     enemyTelegraphs: { visibleEnemyIds: string[] };
+    bossMechanics: { pathVisible: boolean; objectiveNodeCount: number };
   };
   dispose(): void;
 }
@@ -192,6 +212,23 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   ultimatePlanLine.renderOrder = 5;
   scene.add(ultimatePlanLine);
 
+  const bossPathGeometry = new THREE.BufferGeometry();
+  bossPathGeometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(new Float32Array(64 * 3), 3),
+  );
+  bossPathGeometry.setDrawRange(0, 0);
+  const bossPathMaterial = new THREE.LineBasicMaterial({
+    color: 0xff765f,
+    transparent: true,
+    opacity: 0.62,
+    depthWrite: false,
+  });
+  const bossPathLine = new THREE.LineSegments(bossPathGeometry, bossPathMaterial);
+  bossPathLine.visible = false;
+  bossPathLine.renderOrder = 5;
+  scene.add(bossPathLine);
+
   const playerActor = playerProvider.create({ role: "hero" });
   scene.add(playerActor.root);
   vfx.setDensity(tuning.vfxDensity);
@@ -282,6 +319,26 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   hazardRingGeometry.rotateX(-Math.PI / 2);
   const hazardPlaneGeometry = new THREE.PlaneGeometry(2, 2);
   hazardPlaneGeometry.rotateX(-Math.PI / 2);
+  const bossObjectiveGeometry = new THREE.RingGeometry(0.72, 1, 40);
+  bossObjectiveGeometry.rotateX(-Math.PI / 2);
+  const bossObjectiveRoot = new THREE.Group();
+  bossObjectiveRoot.name = "boss-objective-nodes";
+  const bossObjectiveMeshes = Array.from({ length: 3 }, (_, index) => {
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xdffcff,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(bossObjectiveGeometry, material);
+    mesh.name = `boss-objective-node/${index + 1}`;
+    mesh.visible = false;
+    mesh.renderOrder = 4;
+    bossObjectiveRoot.add(mesh);
+    return mesh;
+  });
+  scene.add(bossObjectiveRoot);
   const enemyVisuals = new Map<string, EnemyVisualRuntime>();
   const projectileVisuals = new Map<string, SimpleEntityVisualRuntime>();
   const obstacleVisuals = new Map<string, SimpleEntityVisualRuntime>();
@@ -308,6 +365,10 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   let pendingAbilityInputId: number | null = null;
   let waveWarningLabel: string | null = null;
   let waveWarningRemaining = 0;
+  let bossBannerRemaining = 0;
+  let bossBannerEyebrow = "";
+  let bossBannerTitle = "";
+  let bossBannerSubtitle = "";
 
   function createEnemyVisual(enemy: EnemyState, index: number): void {
     const enemyPresentation = enemyPresentationRegistry.get(enemy.definitionId);
@@ -315,6 +376,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     const provider = characterProviders.get(characterPresentation.providerId);
     if (!provider.ready) throw new Error(`${provider.id} is not prepared.`);
     const actor = provider.create({ role: "enemy", variant: index });
+    if (enemyDefinitions.get(enemy.definitionId).tags.includes("boss")) actor.root.scale.setScalar(1.38);
     actor.root.position.set(enemy.position.x, 0, enemy.position.z);
     const heading = (index * 2.399) % (Math.PI * 2);
     actor.root.rotation.y = heading;
@@ -561,8 +623,13 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     }
     if (renderedStageIndex !== gameState.stage.index || renderedStageName !== gameState.stage.name) {
       const campaign = gameState.run.fullGame;
+      const practiceBoss = campaign?.practiceBossDefinitionId
+        ? bossDefinitions.get(campaign.practiceBossDefinitionId)
+        : null;
       shell.stageLabel.textContent = campaign
-        ? `ACT ${campaign.routeProgress.actIndex + 1} / LAYER ${campaign.routeProgress.layerIndex + 1}`
+        ? practiceBoss
+          ? `BOSS PRACTICE / ACT ${practiceBoss.actIndex + 1}`
+          : `ACT ${campaign.routeProgress.actIndex + 1} / LAYER ${campaign.routeProgress.layerIndex + 1}`
         : `STAGE ${String(gameState.stage.index + 1).padStart(2, "0")} / ${gameState.stage.name}`;
       renderedStageIndex = gameState.stage.index;
       renderedStageName = gameState.stage.name;
@@ -574,7 +641,10 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     const challengeStatus = campaign?.activeChallenge && activeDefinition?.challenge
       ? ` · ${activeDefinition.challenge.title} ${challengeProgressLabel(campaign.activeChallenge, activeDefinition.challenge)}`
       : "";
-    const enemyStatus = `${String(alive).padStart(2, "0")} HOSTILES${challengeStatus}`;
+    const boss = campaign?.activeBoss;
+    const enemyStatus = boss && !boss.completed
+      ? bossHudLabel(boss, Math.max(0, boss.phaseDurationMs - boss.phaseElapsedMs))
+      : `${String(alive).padStart(2, "0")} HOSTILES${challengeStatus}`;
     if (renderedEnemyStatus !== enemyStatus) {
       shell.enemyLabel.textContent = enemyStatus;
       renderedEnemyStatus = enemyStatus;
@@ -619,7 +689,13 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     let title = gameState.stage.name;
     let subtitle = `ELIMINATE ${String(gameState.combat.totalEnemies).padStart(2, "0")} HOSTILES`;
     if (gameState.stage.phase === "playing") {
-      if (waveWarningRemaining > 0 && waveWarningLabel) {
+      if (bossBannerRemaining > 0) {
+        visible = true;
+        tone = "danger";
+        eyebrow = bossBannerEyebrow;
+        title = bossBannerTitle;
+        subtitle = bossBannerSubtitle;
+      } else if (waveWarningRemaining > 0 && waveWarningLabel) {
         visible = true;
         tone = "danger";
         eyebrow = "HOSTILE SIGNAL";
@@ -747,6 +823,46 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     ultimatePlanGeometry.computeBoundingSphere();
   }
 
+  function updateBossMechanicVisuals(): void {
+    const runtime = gameState.run.fullGame?.activeBoss;
+    const mechanics = runtime?.mechanics;
+    const mirrorSlash = mechanics?.kind === "mirror-regent" ? mechanics.mirrorSlash : null;
+    bossPathLine.visible = mirrorSlash !== null;
+    if (mirrorSlash) {
+      const positions = bossPathGeometry.getAttribute("position") as THREE.BufferAttribute;
+      mirrorSlash.segments.slice(0, 32).forEach((segment, index) => {
+        positions.setXYZ(index * 2, segment.from.x, 0.12, segment.from.z);
+        positions.setXYZ(index * 2 + 1, segment.to.x, 0.12, segment.to.z);
+      });
+      positions.needsUpdate = true;
+      bossPathGeometry.setDrawRange(0, Math.min(64, mirrorSlash.segments.length * 2));
+      bossPathGeometry.computeBoundingSphere();
+      bossPathMaterial.color.setHex(mirrorSlash.phase === "active" ? 0xfff4df : 0xff765f);
+      bossPathMaterial.opacity = mirrorSlash.phase === "active"
+        ? 0.96
+        : 0.38 + Math.sin(worldTime * 16) * 0.12;
+    } else {
+      bossPathGeometry.setDrawRange(0, 0);
+    }
+
+    const nodes = runtime && mechanics?.kind === "last-conductor"
+      ? runtime.phaseIndex === 1
+        ? mechanics.railNodes
+        : runtime.phaseIndex === 3 ? mechanics.finaleNodes : null
+      : null;
+    bossObjectiveMeshes.forEach((mesh, index) => {
+      const node = nodes?.[index];
+      mesh.visible = Boolean(node && !runtime?.completed);
+      if (!node || !(mesh.material instanceof THREE.MeshBasicMaterial)) return;
+      mesh.position.set(node.position.x, 0.07, node.position.z);
+      const expected = runtime?.objectiveCurrent === index;
+      const pulse = expected ? 1.35 + Math.sin(worldTime * 9) * 0.08 : 1.05;
+      mesh.scale.setScalar(pulse);
+      mesh.material.color.setHex(node.reached ? 0x5d7377 : expected ? 0xf0feff : 0x79a7ad);
+      mesh.material.opacity = node.reached ? 0.18 : expected ? 0.78 : 0.38;
+    });
+  }
+
   function triggerDashVisual(event: Extract<GameEvent, { type: "dash-started" | "dash-reflected" | "dash-path-segment-started" }>): void {
     const presentation = abilityPresentationRegistry.get(event.abilityId);
     const cameraProfile = cameraProfileRegistry.get(presentation.cameraProfileId);
@@ -797,6 +913,18 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
 
   function updateEnemyVisual(enemy: EnemyState, visual: EnemyVisualRuntime, dt: number): void {
     const root = visual.actor.root;
+    const definition = enemyDefinitions.get(enemy.definitionId);
+    const bossRuntime = gameState.run.fullGame?.activeBoss;
+    if (definition.tags.includes("boss")) {
+      const isMirrorReal = bossRuntime?.mechanics.kind === "mirror-regent" &&
+        enemy.id === bossRuntime.mechanics.realEntityId;
+      const isMirrorClone = bossRuntime?.mechanics.kind === "mirror-regent" &&
+        bossRuntime.mechanics.cloneEntityIds.includes(enemy.id);
+      const rhythm = isMirrorReal
+        ? 1 + Math.sin(worldTime * 7.2) * 0.055
+        : isMirrorClone ? 1 + Math.sin(worldTime * 3.1 + visual.phase) * 0.018 : 1;
+      root.scale.setScalar((isMirrorClone ? 1.18 : 1.38) * rhythm);
+    }
     updateEnemyTelegraph(enemy, visual);
     visual.armorRoot.position.copy(root.position);
     visual.armorRoot.rotation.copy(root.rotation);
@@ -879,8 +1007,15 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     );
     const threat = 1 - THREE.MathUtils.smoothstep(distanceToPlayer, 1.2, 3.1);
     const attackPhase = enemy.tactical?.attackPhase;
+    const bossAction = bossRuntime?.entityId === enemy.id ? bossRuntime.actionPhase : null;
     visual.actor.animation.update({
-      state: attackPhase === "telegraph"
+      state: bossAction === "telegraph" || bossAction === "transition"
+        ? "anticipation"
+        : bossAction === "active"
+          ? "action"
+          : bossAction === "recovery" || bossAction === "vulnerable"
+            ? "recovery"
+      : attackPhase === "telegraph"
         ? "anticipation"
         : attackPhase === "active"
           ? "action"
@@ -893,39 +1028,53 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       speedNormalized,
       turn: THREE.MathUtils.clamp(turnDelta / 0.72, -1, 1),
       threat,
-      sourceProgress: enemy.tactical && enemy.tactical.phaseDurationMs > 0
-        ? THREE.MathUtils.clamp(enemy.tactical.phaseElapsedMs / enemy.tactical.phaseDurationMs, 0, 1)
-        : 0,
+      sourceProgress: bossRuntime?.entityId === enemy.id && bossRuntime.phaseDurationMs > 0
+        ? THREE.MathUtils.clamp(bossRuntime.phaseElapsedMs / bossRuntime.phaseDurationMs, 0, 1)
+        : enemy.tactical && enemy.tactical.phaseDurationMs > 0
+          ? THREE.MathUtils.clamp(enemy.tactical.phaseElapsedMs / enemy.tactical.phaseDurationMs, 0, 1)
+          : 0,
     });
   }
 
   function updateEnemyTelegraph(enemy: EnemyState, visual: EnemyVisualRuntime): void {
     const tactical = enemy.tactical;
-    const visible = enemy.alive && tactical !== undefined && (
-      tactical.attackPhase === "telegraph" || tactical.attackPhase === "active"
+    const boss = gameState.run.fullGame?.activeBoss;
+    const isBossSubject = boss?.entityId === enemy.id;
+    const bossVisible = isBossSubject && (
+      boss.actionPhase === "telegraph" ||
+      boss.actionPhase === "active" ||
+      boss.actionPhase === "vulnerable"
     );
+    const visible = enemy.alive && (bossVisible || (tactical !== undefined && (
+      tactical.attackPhase === "telegraph" || tactical.attackPhase === "active"
+    )));
     visual.telegraphRoot.visible = visible;
-    if (!visible || !tactical) return;
+    if (!visible) return;
     visual.telegraphRoot.position.set(enemy.position.x, 0, enemy.position.z);
-    const target = tactical.lockedTarget ?? {
-      x: enemy.position.x + tactical.lockedDirection.x * 5,
-      z: enemy.position.z + tactical.lockedDirection.z * 5,
+    const direction = isBossSubject ? boss.lockedDirection : tactical?.lockedDirection ?? enemy.facing;
+    const target = (isBossSubject ? boss.lockedTarget : tactical?.lockedTarget) ?? {
+      x: enemy.position.x + direction.x * 5,
+      z: enemy.position.z + direction.z * 5,
     };
     const positions = visual.telegraphLineGeometry.getAttribute("position") as THREE.BufferAttribute;
     positions.setXYZ(0, 0, 0.08, 0);
     positions.setXYZ(1, target.x - enemy.position.x, 0.08, target.z - enemy.position.z);
     positions.needsUpdate = true;
     visual.telegraphLineGeometry.computeBoundingSphere();
-    const active = tactical.attackPhase === "active";
-    const progress = tactical.phaseDurationMs <= 0
+    const active = isBossSubject ? boss.actionPhase === "active" : tactical?.attackPhase === "active";
+    const vulnerable = isBossSubject && boss.actionPhase === "vulnerable";
+    const durationMs = isBossSubject ? boss.phaseDurationMs : tactical?.phaseDurationMs ?? 0;
+    const elapsedMs = isBossSubject ? boss.phaseElapsedMs : tactical?.phaseElapsedMs ?? 0;
+    const progress = durationMs <= 0
       ? 1
-      : THREE.MathUtils.clamp(tactical.phaseElapsedMs / tactical.phaseDurationMs, 0, 1);
+      : THREE.MathUtils.clamp(elapsedMs / durationMs, 0, 1);
     const pulse = active ? 1.25 : 1 + Math.sin(worldTime * 18) * 0.08;
     visual.telegraphRing.scale.setScalar((enemy.radius + 0.6) * pulse);
-    visual.telegraphLineMaterial.color.setHex(active ? 0xfff2dd : 0xffa65c);
-    visual.telegraphRingMaterial.color.setHex(active ? 0xfff2dd : 0xffa65c);
-    visual.telegraphLineMaterial.opacity = active ? 0.92 : 0.42 + progress * 0.46;
-    visual.telegraphRingMaterial.opacity = active ? 0.68 : 0.24 + progress * 0.28;
+    const color = vulnerable ? 0x9ffcff : active ? 0xfff2dd : 0xffa65c;
+    visual.telegraphLineMaterial.color.setHex(color);
+    visual.telegraphRingMaterial.color.setHex(color);
+    visual.telegraphLineMaterial.opacity = vulnerable ? 0.18 : active ? 0.92 : 0.42 + progress * 0.46;
+    visual.telegraphRingMaterial.opacity = vulnerable ? 0.62 : active ? 0.68 : 0.24 + progress * 0.28;
   }
 
   function updateEnemyContactShadows(): void {
@@ -963,6 +1112,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     stageIntroAge = 0;
     waveWarningLabel = null;
     waveWarningRemaining = 0;
+    bossBannerRemaining = 0;
     updateHud();
   }
 
@@ -1032,6 +1182,20 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       } else if (event.type === "encounter-wave-started") {
         waveWarningLabel = null;
         waveWarningRemaining = 0;
+      } else if (event.type === "boss-phase-started") {
+        const definition = bossDefinitions.get(event.bossDefinitionId);
+        const phase = definition.phases[event.phaseIndex];
+        bossBannerRemaining = 1.35;
+        bossBannerEyebrow = definition.title;
+        bossBannerTitle = phase?.title ?? event.phaseId.toUpperCase();
+        bossBannerSubtitle = phase?.objective ?? `OBJECTIVE ${event.objectiveTarget}`;
+      } else if (event.type === "boss-break") {
+        vfx.spawnCutContact("enemy-cut-contact-v1", {
+          position: new THREE.Vector3(event.position.x, 1.2, event.position.z),
+          direction: new THREE.Vector3(gameState.player.facing.x, 0, gameState.player.facing.z),
+          intensity: 1.55,
+        });
+        postFx.triggerImpact("dash-impact-current-v1", 0.32);
       }
     }
   }
@@ -1040,6 +1204,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     worldTime += dt;
     stageIntroAge += dt;
     waveWarningRemaining = Math.max(0, waveWarningRemaining - dt);
+    bossBannerRemaining = Math.max(0, bossBannerRemaining - dt);
     syncEnemyVisuals();
     syncWorldEntityVisuals();
     environment.update(worldTime, dt);
@@ -1131,6 +1296,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     updatePreview();
     updateStoredPath();
     updateUltimatePlan();
+    updateBossMechanicVisuals();
     updateHud();
     updatePhaseBanner();
     return lifecycleAction;
@@ -1179,6 +1345,10 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
             .filter(([, visual]) => visual.telegraphRoot.visible)
             .map(([enemyId]) => enemyId),
         },
+        bossMechanics: {
+          pathVisible: bossPathLine.visible,
+          objectiveNodeCount: bossObjectiveMeshes.filter((mesh) => mesh.visible).length,
+        },
       };
     },
     dispose() {
@@ -1186,13 +1356,19 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       enemyVisuals.clear();
       clearWorldEntityVisuals();
       playerActor.dispose();
-      scene.remove(previewLine, storedPathLine, ultimatePlanLine, enemyContactShadows);
+      scene.remove(previewLine, storedPathLine, ultimatePlanLine, bossPathLine, bossObjectiveRoot, enemyContactShadows);
       previewGeometry.dispose();
       previewMaterial.dispose();
       storedPathGeometry.dispose();
       storedPathMaterial.dispose();
       ultimatePlanGeometry.dispose();
       ultimatePlanMaterial.dispose();
+      bossPathGeometry.dispose();
+      bossPathMaterial.dispose();
+      bossObjectiveGeometry.dispose();
+      bossObjectiveMeshes.forEach((mesh) => {
+        if (mesh.material instanceof THREE.Material) mesh.material.dispose();
+      });
       enemyContactShadowGeometry.dispose();
       enemyContactShadowMaterial.dispose();
       enemyContactShadowTexture.dispose();

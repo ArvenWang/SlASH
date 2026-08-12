@@ -57,6 +57,8 @@ export function isRunSaveSafe(state: GameState): boolean {
     SAFE_STAGE_PHASES.has(state.stage.phase) &&
     campaign.encounterRuntime === null &&
     campaign.activeEncounterTemplateId === null &&
+    campaign.activeBoss === null &&
+    campaign.practiceBossDefinitionId === null &&
     state.player.dash === null &&
     state.player.charge === null &&
     state.player.ultimatePlanning === null &&
@@ -142,7 +144,11 @@ function normalizedSafeState(state: GameState): GameState {
   clone.combat.scheduledSlashes = [];
   clone.combat.storedPath = null;
   clone.combat.gravityPulls = [];
-  if (clone.run.fullGame) clone.run.fullGame.activeTriggerIds = [];
+  if (clone.run.fullGame) {
+    clone.run.fullGame.activeTriggerIds = [];
+    clone.run.fullGame.activeBoss = null;
+    clone.run.fullGame.practiceBossDefinitionId = null;
+  }
   return clone;
 }
 

@@ -1,4 +1,4 @@
-import type { EntityId, RouteNodeId } from "../../core/ids";
+import type { BossDefinitionId, EntityId, RouteNodeId } from "../../core/ids";
 import { copyVec2, vec2 } from "../../core/math/vec2";
 import { createSeededRandom } from "../../core/random/seeded-random";
 import {
@@ -44,9 +44,16 @@ import {
 } from "./challenge-system";
 import { createArmorPartStates } from "../combat/armor";
 import { createEnemyTacticalState } from "../enemies/enemy-attack-system";
+import {
+  bossDefinitions,
+  bossDefinitionForEncounter,
+} from "../../content/bosses/definitions";
+import { ensureCampaignBossRuntime } from "../bosses/boss-system";
 
 export type CampaignCommandResult =
   | "run-started"
+  | "boss-practice-started"
+  | "returned-to-title"
   | "route-previewed"
   | "skill-drafted"
   | "skill-refunded"
@@ -69,6 +76,8 @@ export function createFullGameCampaignState(seed: number): FullGameCampaignState
     activeEncounterTemplateId: null,
     encounterRuntime: null,
     activeChallenge: null,
+    activeBoss: null,
+    practiceBossDefinitionId: null,
     activeTriggerIds: [],
     pendingReward: null,
     eliteSkillPointRewardsGranted: 0,
@@ -118,6 +127,13 @@ export function startFullGameRun(state: GameState): CampaignCommandResult {
   openSkillAllocationVisit(campaign.skills, "planning");
   emitGameEvent(state, { type: "campaign-started", seed: state.run.seed });
   return "run-started";
+}
+
+export function returnCampaignToTitle(state: GameState): CampaignCommandResult {
+  const campaign = state.run.fullGame;
+  if (!campaign || (campaign.phase !== "victory" && campaign.phase !== "reward")) return "ignored";
+  initializeFullGameCampaign(state, state.run.seed);
+  return "returned-to-title";
 }
 
 export function previewCampaignRouteNode(
@@ -177,6 +193,8 @@ export function confirmCampaignPlanning(state: GameState): CampaignCommandResult
   campaign.activeEncounterTemplateId = null;
   campaign.encounterRuntime = null;
   campaign.activeChallenge = null;
+  campaign.activeBoss = null;
+  campaign.practiceBossDefinitionId = null;
   campaign.activeTriggerIds = [];
   campaign.pendingReward = null;
   state.run.selectedUpgrades = [...campaign.skills.committedSkillIds];
@@ -211,6 +229,39 @@ export function confirmCampaignPlanning(state: GameState): CampaignCommandResult
   // rather than one simulation tick later.
   advanceCampaignEncounterScheduler(state);
   return "planning-confirmed";
+}
+
+export function startBossPractice(
+  state: GameState,
+  bossDefinitionId: BossDefinitionId,
+): CampaignCommandResult {
+  const campaign = state.run.fullGame;
+  if (!campaign || campaign.phase !== "title" || !bossDefinitions.has(bossDefinitionId)) return "ignored";
+  const boss = bossDefinitions.get(bossDefinitionId);
+  const encounter = fullGameEncounterDefinitions.get(boss.encounterId);
+  campaign.phase = "combat";
+  campaign.practiceBossDefinitionId = boss.id;
+  campaign.activeEncounterTemplateId = encounter.id;
+  campaign.encounterRuntime = createEncounterRuntime(encounter, state.tick, state.elapsedMs);
+  campaign.activeChallenge = null;
+  campaign.activeBoss = null;
+  campaign.activeTriggerIds = [];
+  campaign.pendingReward = null;
+  prepareEncounterState(
+    state,
+    `practice:${boss.id}`,
+    encounter.id,
+    boss.actIndex,
+    `PRACTICE / ${boss.title}`,
+    false,
+  );
+  emitGameEvent(state, {
+    type: "route-node-started",
+    nodeId: `practice:${boss.id}`,
+    encounterId: encounter.id,
+  });
+  advanceCampaignEncounterScheduler(state);
+  return "boss-practice-started";
 }
 
 export function advanceCampaignEncounterScheduler(state: GameState): void {
@@ -254,6 +305,7 @@ export function advanceCampaignEncounterScheduler(state: GameState): void {
     });
   }
   advanceCampaignChallengeRuntime(state, definition);
+  if (definition.category === "boss") ensureCampaignBossRuntime(state, bossDefinitionForEncounter(definition.id));
 }
 
 /** Command handlers may emit gameplay events that Presentation drains before
@@ -275,14 +327,28 @@ export function synchronizeCampaignChallenge(state: GameState): void {
 
 export function campaignEncounterCanComplete(state: GameState): boolean {
   const campaign = state.run.fullGame;
-  return campaign !== null &&
-    campaign.phase === "combat" &&
-    campaign.encounterRuntime?.completed === true;
+  if (
+    !campaign ||
+    campaign.phase !== "combat" ||
+    campaign.encounterRuntime?.completed !== true ||
+    campaign.activeEncounterTemplateId === null
+  ) return false;
+  const definition = fullGameEncounterDefinitions.get(campaign.activeEncounterTemplateId);
+  return definition.category !== "boss" || campaign.activeBoss?.completed === true;
 }
 
 export function completeCampaignEncounter(state: GameState): boolean {
   const campaign = state.run.fullGame;
   if (!campaign || !campaignEncounterCanComplete(state)) return false;
+  if (campaign.practiceBossDefinitionId !== null) {
+    campaign.phase = "victory";
+    campaign.activeEncounterTemplateId = null;
+    campaign.encounterRuntime = null;
+    campaign.activeChallenge = null;
+    state.player.bufferedAbility = null;
+    state.stage.phase = "victory";
+    return true;
+  }
   const node = currentRouteNode(campaign.routeProgress);
   if (!node) return false;
   return completeCampaignNode(state, node.id);
@@ -320,6 +386,8 @@ function completeCampaignNode(state: GameState, nodeId: RouteNodeId): boolean {
   campaign.encounterRuntime = null;
   campaign.activeEncounterTemplateId = null;
   campaign.activeChallenge = null;
+  campaign.activeBoss = null;
+  campaign.practiceBossDefinitionId = null;
   campaign.activeEventDefinitionId = null;
   campaign.activeTriggerIds = [];
   state.player.bufferedAbility = null;
@@ -438,17 +506,26 @@ export function markCampaignDefeat(state: GameState): void {
 export function restartCampaignEncounter(state: GameState): CampaignCommandResult {
   const campaign = state.run.fullGame;
   const node = campaign ? currentRouteNode(campaign.routeProgress) : null;
-  if (!campaign || !node || (campaign.phase !== "defeat" && state.stage.phase !== "dead")) return "ignored";
-  const encounter = encounterForRouteNode(node, state.run.seed);
+  if (!campaign || (campaign.phase !== "defeat" && state.stage.phase !== "dead")) return "ignored";
+  const practiceBoss = campaign.practiceBossDefinitionId === null
+    ? null
+    : bossDefinitions.get(campaign.practiceBossDefinitionId);
+  const encounter = practiceBoss
+    ? fullGameEncounterDefinitions.get(practiceBoss.encounterId)
+    : node ? encounterForRouteNode(node, state.run.seed) : null;
   if (!encounter) return "ignored";
   const nextAttempt = state.stage.attempt + 1;
   campaign.phase = "combat";
   campaign.activeEncounterTemplateId = encounter.id;
   campaign.encounterRuntime = createEncounterRuntime(encounter, state.tick, state.elapsedMs);
   campaign.activeChallenge = createCampaignChallengeRuntime(encounter, state);
+  campaign.activeBoss = null;
   campaign.activeTriggerIds = [];
-  prepareEncounterState(state, node.id, encounter.id, node.actIndex, node.kind.toUpperCase(), true);
-  spawnEncounterEnvironment(state, node.id, encounter);
+  const ownerId = practiceBoss ? `practice:${practiceBoss.id}` : node!.id;
+  const actIndex = practiceBoss?.actIndex ?? node!.actIndex;
+  const label = practiceBoss ? `PRACTICE / ${practiceBoss.title}` : node!.kind.toUpperCase();
+  prepareEncounterState(state, ownerId, encounter.id, actIndex, label, true);
+  spawnEncounterEnvironment(state, ownerId, encounter);
   state.stage.attempt = nextAttempt;
   advanceCampaignEncounterScheduler(state);
   return "restarted";
@@ -552,11 +629,13 @@ function spawnEncounterWave(
   authoredMoveSpeed: number,
 ): EntityId[] {
   const node = state.run.fullGame ? currentRouteNode(state.run.fullGame.routeProgress) : null;
-  if (!node) throw new Error("Cannot spawn a campaign wave without a current route node.");
+  const practiceId = state.run.fullGame?.practiceBossDefinitionId;
+  if (!node && !practiceId) throw new Error("Cannot spawn a campaign wave without an encounter owner.");
+  const ownerId = node?.id ?? `practice:${practiceId!}`;
   const ids: EntityId[] = [];
   for (const { spawn, position } of resolveSafeEncounterSpawns(state, spawns)) {
     const definition = enemyDefinitions.get(spawn.enemyDefinitionId);
-    const id = `${node.id}:${spawn.id}`;
+    const id = `${ownerId}:${spawn.id}`;
     if (state.enemies.some((enemy) => enemy.id === id)) throw new Error(`Duplicate campaign enemy id ${id}.`);
     state.enemies.push({
       id,

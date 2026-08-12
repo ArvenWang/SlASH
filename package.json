@@ -25,7 +25,9 @@
     "verify:labs": "node validation/tools/verify-presentation-labs.mjs",
     "verify:assets": "node validation/tools/audit-runtime-assets.mjs",
     "verify:full-game-design": "node validation/tools/verify-full-game-design.mjs",
-    "verify:encounters": "node validation/tools/generate-encounter-content-report.mjs"
+    "verify:encounters": "node validation/tools/generate-encounter-content-report.mjs",
+    "verify:bosses": "node validation/tools/generate-boss-report.mjs",
+    "verify:bosses:browser": "node validation/tools/verify-boss-practice.mjs"
   },
   "dependencies": {
     "lil-gui": "0.21.0",

@@ -1,4 +1,8 @@
 import type { RouteNodeState } from "../../game/run/types";
+import {
+  FULL_GAME_BOSS_ENCOUNTERS,
+  bossDefinitionForAct,
+} from "../bosses/definitions";
 import { enemyDefinitions } from "../enemies/definitions";
 import { eventForRouteNode } from "../events/definitions";
 import { DefinitionRegistry } from "../registry";
@@ -10,7 +14,7 @@ import {
 import type { FullGameEncounterCategory, FullGameEncounterDefinition } from "./types";
 
 export const fullGameEncounterDefinitions = new DefinitionRegistry<FullGameEncounterDefinition>(
-  FULL_GAME_NON_BOSS_ENCOUNTERS,
+  [...FULL_GAME_NON_BOSS_ENCOUNTERS, ...FULL_GAME_BOSS_ENCOUNTERS],
 );
 
 export const ARRIVAL_PINCER_ENCOUNTER = fullGameEncounterDefinitions.get(
@@ -49,7 +53,10 @@ export function encounterForRouteNode(
   node: RouteNodeState,
   runSeed = 0,
 ): FullGameEncounterDefinition | null {
-  if (node.kind === "event" || node.kind === "forge" || node.kind === "boss") return null;
+  if (node.kind === "event" || node.kind === "forge") return null;
+  if (node.kind === "boss") {
+    return fullGameEncounterDefinitions.get(bossDefinitionForAct(node.actIndex).encounterId);
+  }
   const category = node.kind === "combat" ? "standard" : node.kind;
   const pool = encounterPool(node.actIndex, category);
   if (pool.length === 0) throw new Error(`No ${category} encounter content for Act ${node.actIndex + 1}.`);
@@ -80,13 +87,25 @@ export function threatPreviewForRouteNode(node: RouteNodeState, runSeed = 0): Ro
         ["EVENT", "2 CHOICES", "NO COMBAT"],
       );
     }
+    throw new Error(`Missing route content for ${node.id}.`);
+  }
+
+  if (node.kind === "boss") {
+    const boss = bossDefinitionForAct(node.actIndex);
     return {
-      ...nonCombatPreview(
-        "BOSS CONTACT / 首领接触",
-        "Boss 路线将在对应机制型 Boss Definition 接入后开放；不会用普通敌人模板冒充首领战。",
-        ["BOSS", "LOCKED DURING P6"],
-      ),
-      available: false,
+      title: boss.title,
+      summary: boss.summary,
+      tags: [...boss.tags, `${boss.phases.length} PHASES`],
+      waveCount: encounter.waves.length,
+      hostileCount: boss.threatPreview.maximumConcurrentHostiles,
+      armoredHostileCount: boss.threatPreview.armorPartCount > 0 ? 1 : 0,
+      projectileSourceCount: boss.threatPreview.projectileSourceCount,
+      obstacleSourceCount: boss.threatPreview.obstacleSourceCount,
+      hazardSourceCount: boss.threatPreview.hazardSourceCount,
+      pressure: 0,
+      challengeCondition: boss.phases.map((phase) => phase.objective).join(" → "),
+      challengeReward: node.reward === "run-victory" ? "完成本次 Run" : "进入下一幕",
+      available: true,
     };
   }
 

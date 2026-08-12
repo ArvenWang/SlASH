@@ -109,7 +109,7 @@
     "standardEncounters": 28,
     "eliteEncounters": 12,
     "challengeEncounters": 9,
-    "bossEncounters": 0
+    "bossEncounters": 4
   },
   "requiredDocuments": [
     "docs/FULL_GAME_DESIGN.md",

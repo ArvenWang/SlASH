@@ -360,6 +360,14 @@ export type GameEventPayload =
   | { type: "encounter-wave-started"; encounterId: EncounterId; waveId: string; enemyIds: EntityId[] }
   | { type: "encounter-wave-completed"; encounterId: EncounterId; waveId: string }
   | { type: "challenge-resolved"; challengeDefinitionId: string; status: "succeeded" | "failed"; rewardResourceId: string; rewardAmount: number }
+  | { type: "boss-phase-started"; bossDefinitionId: string; phaseId: string; phaseIndex: number; objectiveTarget: number }
+  | { type: "boss-action-phase-changed"; bossDefinitionId: string; phaseId: string; actionPhase: string; durationMs: number; target: Vec2 | null }
+  | { type: "boss-core-window"; bossDefinitionId: string; exposed: boolean; durationMs: number }
+  | { type: "boss-break"; bossDefinitionId: string; phaseId: string; breakIndex: number; objectiveCurrent: number; objectiveTarget: number; position: Vec2 }
+  | { type: "boss-objective-progress"; bossDefinitionId: string; phaseId: string; objectiveCurrent: number; objectiveTarget: number; source: string }
+  | { type: "boss-clone-state"; bossDefinitionId: string; entityId: EntityId; isReal: boolean; active: boolean }
+  | { type: "boss-mirror-slash"; bossDefinitionId: string; phase: "telegraph" | "active" | "expired"; segments: UltimatePathSegment[]; durationMs: number }
+  | { type: "boss-victory"; bossDefinitionId: string; breakCount: number; durationMs: number }
   | { type: "skill-points-granted"; amount: number; total: number; source: string }
   | { type: "event-choice-resolved"; nodeId: string; eventDefinitionId: string; choiceId: string; resourceChanges: Array<{ resourceId: string; before: number; after: number }> }
   | { type: "forge-token-used"; nodeId: string; remainingTokens: number; moveLimit: number }
@@ -405,6 +413,8 @@ export type GameCommand =
   | { type: "restart-stage" }
   | { type: "advance-stage" }
   | { type: "start-full-game-run" }
+  | { type: "start-boss-practice"; bossDefinitionId: string }
+  | { type: "return-to-title" }
   | { type: "preview-route-node"; nodeId: string }
   | { type: "preview-skill-purchase"; skillId: UpgradeId }
   | { type: "preview-skill-refund"; skillId: UpgradeId }
@@ -427,6 +437,8 @@ export type GameCommandResult =
   | "restarted"
   | "advanced"
   | "run-started"
+  | "boss-practice-started"
+  | "returned-to-title"
   | "route-previewed"
   | "skill-drafted"
   | "skill-refunded"
@@ -564,6 +576,39 @@ export interface GameSnapshot {
       maximumChargedArmorBreaks: number;
       ultimateExecuted: boolean;
       failureReason: string | null;
+    };
+    boss: null | {
+      definitionId: string;
+      entityId: EntityId;
+      phaseId: string;
+      phaseIndex: number;
+      actionPhase: string;
+      actionRemainingMs: number;
+      lockedDirection: Vec2;
+      lockedTarget: Vec2 | null;
+      objectiveCurrent: number;
+      objectiveTarget: number;
+      breakCount: number;
+      attackSequence: number;
+      coreExposed: boolean;
+      completed: boolean;
+      mechanic: string;
+      details: {
+        chargeIndex: number | null;
+        chargesThisCycle: number | null;
+        round: number | null;
+        armorBreaks: number | null;
+        realEntityId: EntityId | null;
+        cloneEntityIds: EntityId[];
+        supportEntityIds: EntityId[];
+        mirrorSlash: null | {
+          phase: "telegraph" | "active";
+          remainingMs: number;
+          segments: UltimatePathSegment[];
+        };
+        objectiveNodes: Array<{ id: string; position: Vec2; reached: boolean }>;
+        finaleAttemptInvalid: boolean;
+      };
     };
     encounter: null | {
       id: EncounterId;

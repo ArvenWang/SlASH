@@ -4,6 +4,7 @@ import {
   BASTION_TRIPLE_ARMOR_PROFILE_ID,
   FORTRESS_QUAD_ARMOR_PROFILE_ID,
   VANGUARD_FRONT_ARMOR_PROFILE_ID,
+  SIEGE_CHOIR_TRIPLE_ARMOR_PROFILE_ID,
 } from "./armor-definitions";
 
 export interface EnemyDefinition {
@@ -34,6 +35,10 @@ export const REDLINE_LANCER_ELITE_ID: EnemyDefinitionId = "elite-redline-lancer-
 export const TWIN_GUNNER_ELITE_ID: EnemyDefinitionId = "elite-twin-gunner-v1";
 export const ARCHITECT_ELITE_ID: EnemyDefinitionId = "elite-architect-v1";
 export const FORTRESS_ELITE_ID: EnemyDefinitionId = "elite-fortress-v1";
+export const RAIL_HOUND_BOSS_ENEMY_ID: EnemyDefinitionId = "boss-enemy-rail-hound-v1";
+export const SIEGE_CHOIR_BOSS_ENEMY_ID: EnemyDefinitionId = "boss-enemy-siege-choir-v1";
+export const MIRROR_REGENT_BOSS_ENEMY_ID: EnemyDefinitionId = "boss-enemy-mirror-regent-v1";
+export const LAST_CONDUCTOR_BOSS_ENEMY_ID: EnemyDefinitionId = "boss-enemy-last-conductor-v1";
 
 export const enemyDefinitions = new DefinitionRegistry<EnemyDefinition>([
   {
@@ -215,5 +220,53 @@ export const enemyDefinitions = new DefinitionRegistry<EnemyDefinition>([
     armorProfileId: FORTRESS_QUAD_ARMOR_PROFILE_ID,
     energyReward: 12,
     tags: ["enemy", "elite", "humanoid", "melee", "armored", "multi-armor", "act-4"],
+  },
+  {
+    id: RAIL_HOUND_BOSS_ENEMY_ID,
+    archetype: "rail-hound",
+    radius: 1.05,
+    baseMoveSpeed: 0,
+    turnSpeedRadiansPerSecond: 0,
+    movementProfile: "slow-chase",
+    attackProfile: "boss-controlled-v1",
+    armorProfileId: null,
+    energyReward: 0,
+    tags: ["enemy", "boss", "melee", "charge", "core-window", "act-1"],
+  },
+  {
+    id: SIEGE_CHOIR_BOSS_ENEMY_ID,
+    archetype: "siege-choir",
+    radius: 1.15,
+    baseMoveSpeed: 0,
+    turnSpeedRadiansPerSecond: 0,
+    movementProfile: "slow-chase",
+    attackProfile: "boss-controlled-v1",
+    armorProfileId: SIEGE_CHOIR_TRIPLE_ARMOR_PROFILE_ID,
+    energyReward: 0,
+    tags: ["enemy", "boss", "armored", "multi-armor", "projectile", "obstacle", "act-2"],
+  },
+  {
+    id: MIRROR_REGENT_BOSS_ENEMY_ID,
+    archetype: "mirror-regent",
+    radius: 0.92,
+    baseMoveSpeed: 0,
+    turnSpeedRadiansPerSecond: 0,
+    movementProfile: "slow-chase",
+    attackProfile: "boss-controlled-v1",
+    armorProfileId: null,
+    energyReward: 0,
+    tags: ["enemy", "boss", "clone", "delayed-slash", "act-3"],
+  },
+  {
+    id: LAST_CONDUCTOR_BOSS_ENEMY_ID,
+    archetype: "last-conductor",
+    radius: 1.2,
+    baseMoveSpeed: 0,
+    turnSpeedRadiansPerSecond: 0,
+    movementProfile: "slow-chase",
+    attackProfile: "boss-controlled-v1",
+    armorProfileId: FORTRESS_QUAD_ARMOR_PROFILE_ID,
+    energyReward: 0,
+    tags: ["enemy", "boss", "armored", "projectile", "obstacle", "hazard", "vector-objective", "act-4"],
   },
 ]);

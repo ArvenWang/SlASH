@@ -14,6 +14,7 @@ import type {
 import { availableRouteNodes, routeNodeById } from "../game/run/run-system";
 import { skillAllocationSnapshot } from "../game/upgrades/skill-system";
 import type { RunSaveStatus } from "./run-save-runtime";
+import { BOSS_DEFINITIONS } from "../content/bosses/definitions";
 
 export interface CampaignUiRuntimeOptions {
   readonly root: HTMLDivElement;
@@ -76,6 +77,11 @@ export function createCampaignUiRuntime(options: CampaignUiRuntimeOptions): Camp
     } else if (action === "start-run") {
       continueError = "";
       result = dispatch({ type: "start-full-game-run" });
+    } else if (action === "start-boss-practice" && target.dataset.bossId) {
+      continueError = "";
+      result = dispatch({ type: "start-boss-practice", bossDefinitionId: target.dataset.bossId });
+    } else if (action === "return-to-title") {
+      result = dispatch({ type: "return-to-title" });
     } else if (action === "select-route" && target.dataset.nodeId) {
       result = dispatch({ type: "preview-route-node", nodeId: target.dataset.nodeId });
     } else if (action === "skill" && target.dataset.skillId) {
@@ -183,6 +189,13 @@ function renderTitle(continueStatus: RunSaveStatus, continueError: string): stri
       </div>
       ${continueSummary}
       ${statusMessage ? `<p class="save-error" role="alert">${escapeHtml(statusMessage)}</p>` : ""}
+      <section class="practice-selector" aria-labelledby="practice-title">
+        <p class="panel-kicker" id="practice-title">BOSS PRACTICE / 零构筑练习</p>
+        <div>${BOSS_DEFINITIONS.map((boss) => `
+          <button class="secondary-action" type="button" data-action="start-boss-practice" data-boss-id="${escapeHtml(boss.id)}">
+            <b>ACT ${boss.actIndex + 1}</b>${escapeHtml(boss.title)}
+          </button>`).join("")}</div>
+      </section>
     </section>`;
 }
 
@@ -456,11 +469,15 @@ function renderReward(state: GameState): string {
 
 function renderVictory(state: GameState): string {
   const campaign = state.run.fullGame;
+  const practice = campaign?.practiceBossDefinitionId
+    ? BOSS_DEFINITIONS.find((boss) => boss.id === campaign.practiceBossDefinitionId)
+    : null;
   return `
     <section class="campaign-panel reward-panel" aria-labelledby="victory-title">
-      <p class="panel-kicker">RUN COMPLETE</p>
-      <h1 id="victory-title">REDLINE CLEARED</h1>
-      <p>${campaign?.routeProgress.completedNodeIds.length ?? 0} 节点 · ${campaign?.skills.committedSkillIds.length ?? 0} 个已锁定技能 · Seed ${state.run.seed}</p>
+      <p class="panel-kicker">${practice ? "BOSS PRACTICE COMPLETE" : "RUN COMPLETE"}</p>
+      <h1 id="victory-title">${practice ? escapeHtml(practice.title) : "REDLINE CLEARED"}</h1>
+      <p>${practice ? "零技能基础模组验证完成。" : `${campaign?.routeProgress.completedNodeIds.length ?? 0} 节点 · ${campaign?.skills.committedSkillIds.length ?? 0} 个已锁定技能 · Seed ${state.run.seed}`}</p>
+      <button class="primary-action" type="button" data-action="return-to-title">RETURN TO TITLE / 返回标题</button>
     </section>`;
 }
 

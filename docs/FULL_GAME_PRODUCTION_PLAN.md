@@ -292,17 +292,19 @@ P11 Visual Branch Integration Contract + Git Push
 
 ### 任务
 
-- [ ] 通用 Boss Phase / Objective State 与 Event。
-- [ ] Rail Hound：3 Core Break。
-- [ ] Siege Choir：Armor Part + Turret + Barrier。
-- [ ] Mirror Regent：Clone + Recorded Path + Delayed Slash。
-- [ ] Last Conductor：Barrage / Rail Grid / Armor Shell / Vector Finale。
-- [ ] Practice Stage Direct Entry。
-- [ ] 0 Skill 自动可解、真人可解、Restart / Replay。
+- [x] 通用 Boss Phase / Objective State 与 Event。
+- [x] Rail Hound：3 Core Break。
+- [x] Siege Choir：Armor Part + Turret + Barrier。
+- [x] Mirror Regent：Clone + Recorded Path + Delayed Slash。
+- [x] Last Conductor：Barrage / Rail Grid / Armor Shell / Vector Finale。
+- [x] Practice Stage Direct Entry。
+- [x] 0 Skill 自动可解、Restart / Replay；真人 3 次 / Boss 仍属于最终体验门，不能用自动化代替。
 
 ### 完成门
 
 - FG-B01–B03 全部通过。
+
+自动完成证据：固定 Seed、0 Skill 下每个 Boss 100 次，共 400 次，死亡 / 死锁均为 0；真实浏览器以 Canvas 点击、长按松开和 Space 三点选取完成 4 / 4 Practice，Console 0。Rail Hound 侧核窗口、Siege 1.5s 背核、Mirror 0.8s 路径回放、Last Conductor 四阶段均进入 Snapshot、HUD 和截图。FG-B01–B03 的自动门已通过；每 Boss 3 次真人完成仍留在 P10 / 最终人工体验门。
 
 ## 10. P8 — Save、Profile、Practice、Difficulty
 
