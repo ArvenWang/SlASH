@@ -32,6 +32,7 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - [x] Title 首轮简化、三选一短卡、极简胜负页、中文战斗状态和可见能量条。
 - [x] V2 Save Schema 3 与 Replay v4；旧存档原文保留并明确拒绝近似迁移。
 - [x] 定向 6 文件 / 32 项、Production Build、whitespace 和一次真实浏览器短流程通过。
+- [x] 生产 Campaign UI 死代码清理：正式路径仅保留主页、设置、暂停、三选一、胜负；旧流程和约 480 行死 CSS 已移除。
 
 ## Redesign V2 当前问题
 

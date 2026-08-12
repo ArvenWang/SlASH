@@ -708,9 +708,9 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     const planning = gameState.player.ultimatePlanning;
     const execution = gameState.player.ultimateExecution;
     const vectorLabel = planning
-      ? `VECTOR PLAN ${planning.points.length} / ${planning.requiredPointCount} · ${Math.max(0, (planning.durationMs - planning.elapsedMs) / 1000).toFixed(1)}s`
+      ? `大招规划 ${planning.points.length} / ${planning.requiredPointCount} · ${Math.max(0, (planning.durationMs - planning.elapsedMs) / 1000).toFixed(1)}秒`
       : execution
-        ? `VECTOR EXECUTE ${execution.segmentIndex + 1} / ${execution.points.length}`
+        ? `大招执行 ${execution.segmentIndex + 1} / ${execution.points.length}`
       : energy >= 100 ? "空格 · 大招就绪" : "大招未就绪";
     if (renderedVectorLabel !== vectorLabel) {
       shell.vectorLabel.textContent = vectorLabel;
@@ -722,9 +722,9 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     const campaign = gameState.run.fullGame;
     let visible = false;
     let tone = "clear";
-    let eyebrow = `STAGE ${String(gameState.stage.index + 1).padStart(2, "0")}`;
+    let eyebrow = `第 ${gameState.stage.index + 1} 关`;
     let title = gameState.stage.name;
-    let subtitle = `ELIMINATE ${String(gameState.combat.totalEnemies).padStart(2, "0")} HOSTILES`;
+    let subtitle = `清除 ${String(gameState.combat.totalEnemies).padStart(2, "0")} 名敌人`;
     if (gameState.stage.phase === "playing") {
       if (bossBannerRemaining > 0) {
         visible = true;
@@ -740,20 +740,20 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     } else if (gameState.stage.phase === "dead") {
       visible = true;
       tone = "danger";
-      eyebrow = "COMBAT LINK";
-      title = "SIGNAL LOST";
-      subtitle = `REBOOTING // ATTEMPT ${String(gameState.stage.attempt + 1).padStart(2, "0")}`;
+      eyebrow = "战斗中断";
+      title = "本局结束";
+      subtitle = `第 ${gameState.stage.attempt + 1} 次尝试`;
     } else if (gameState.stage.phase === "stage-cleared") {
       visible = true;
-      title = "SECTOR CLEARED";
-      subtitle = "NEXT STAGE INBOUND";
+      title = "区域完成";
+      subtitle = "即将进入下一关";
     } else if (campaign !== null) {
       visible = false;
     } else {
       visible = true;
-      eyebrow = "COMBAT SEQUENCE";
-      title = "SEQUENCE COMPLETE";
-      subtitle = "ALL HOSTILES ELIMINATED";
+      eyebrow = "战斗完成";
+      title = "通关";
+      subtitle = "敌人已清除";
     }
     if (renderedBannerTone !== tone) {
       shell.phaseBanner.dataset.tone = tone;
@@ -1247,9 +1247,9 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
         const definition = bossDefinitions.get(event.bossDefinitionId);
         const phase = definition.phases[event.phaseIndex];
         bossBannerRemaining = 1.35;
-        bossBannerEyebrow = definition.title;
-        bossBannerTitle = phase?.title ?? event.phaseId.toUpperCase();
-        bossBannerSubtitle = phase?.objective ?? `OBJECTIVE ${event.objectiveTarget}`;
+        bossBannerEyebrow = "首领战";
+        bossBannerTitle = definition.title.split("/").at(-1)?.trim() ?? "首领";
+        bossBannerSubtitle = phase?.objective ?? `目标 ${event.objectiveTarget}`;
       } else if (event.type === "boss-break") {
         vfx.spawnCutContact("enemy-cut-contact-v1", {
           position: new THREE.Vector3(event.position.x, 1.2, event.position.z),

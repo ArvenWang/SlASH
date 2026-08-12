@@ -34,6 +34,16 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 本小节没有重跑敌人全矩阵、Boss 400 次、长时性能或全浏览器矩阵。
 - 下一小节：删除剩余旧 Campaign UI 死代码与 CSS，并开始 Clean Arena / 远景镜头。
 
+## 2026-08-13 — Redesign V2 UI 正式路径清理
+
+- `campaign-ui-runtime.ts` 从 838 行缩减为 336 行，生产 UI 仅保留主页、设置、暂停、三选一、胜利和失败。
+- 已删除 Practice、Dossier、Protocol、Planning、Run Map、Route Card、完整 Skill Tree、Event、Forge、旧 Reward 的渲染与点击路径。
+- 暂停页只保留继续和返回主页，不再展示操作教程或完整构筑。
+- `styles.css` 从 974 行缩减为 494 行，移除旧流程对应的 Route/Tree/Event/Forge/Protocol/Library/Dossier/统计及移动端死样式。
+- Boss / Challenge / Vector Focus 的常驻 HUD 文案已进一步改为单语言中文；内部 Wave ID 不再通过 Banner 暴露。
+- 定向验证：TypeScript、whitespace 和一次 V2 浏览器短流程通过；三选一、桌面/移动、Console 继续保持通过。未重跑玩法、Boss、性能和浏览器全矩阵。
+- 下一小节：Clean Arena Environment Provider 与自适应远景镜头。
+
 # Project Slash — Agent Progress
 
 更新时间：2026-08-10
