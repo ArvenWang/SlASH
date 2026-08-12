@@ -407,8 +407,8 @@ P11 Visual Branch Integration Contract + Git Push
 - [x] `git diff --check`。
 - [x] 无密钥、缓存、大型录像。
 - [x] 工作树干净；最终进展提交后核对。
-- [ ] 推送 `origin/codex/full-game-production`。
-- [ ] 核对 Local / Remote SHA。
+- [x] 推送 `origin/codex/full-game-production`。
+- [x] 核对 Local / Remote SHA。
 - [x] 更新 `AGENT_PROGRESS.md`。
 
 ## 14. 当前风险与处理

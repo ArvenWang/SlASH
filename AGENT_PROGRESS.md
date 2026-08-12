@@ -104,12 +104,12 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - [x] P10 浏览器与性能：Chrome 三分辨率、Firefox、WebKit、兼容模式、390×844 触控共 7 / 7 通过；Resize / 全屏 / 冻结恢复 / WebGL 恢复通过；1080p 与 1440p 60 秒压力场景均通过；5 分钟 retained heap 仅增长 320,792 bytes，Geometry / Texture 数量稳定。
 - [x] P11 视觉整合：稳定视觉提交 `b5229ec` 已在临时分支合并为 `d60d02b`；玩法 / Content / Replay 文件保持玩法分支版本，V5R 角色、语义骨架动画、武器、角色 LOD、尸体分离和场景视觉配置已进入正式运行时。
 - [x] P11 合并后回归：30 文件 / 178 项通过；固定 Seed 911 的完整局为 24 节点 / 4 首领 / 回放一致；7 / 7 浏览器、生命周期、100 次输入、角色 Provider 与资产许可通过；1080p 60 秒为 59.82 FPS、P95 17.1ms、P99 18.3ms、Worst 66.8ms，1440p 为 59.80 FPS、P95 17.8ms、P99 18.5ms、Worst 83.3ms，均满足 Full Game 门。
+- [x] Git 交付：`codex/full-game-production` 已推送到 `origin`；首次同步核对本地与远端均为 `1cf2678`，最终进展提交后再次执行 SHA 核对。
 
 ## Full Game 下一步计划
 
-1. 执行最终 Git 审计并推送 `origin/codex/full-game-production`。
-2. 核对本地 / 远端提交一致。
-3. 真人体验门、30 分钟可见完整局和灰度辨识继续作为外部门，不冒充自动完成。
+1. 真人体验门、30 分钟可见完整局和灰度辨识由真实测试者执行，不冒充自动完成。
+2. 根据真人测试结果继续做平衡与可读性调整。
 
 ## Full Game 当前问题与边界
 
