@@ -1,12 +1,11 @@
 import { describe, expect, test } from "vitest";
-import { eventForRouteNode } from "../src/content/events/definitions";
-import { encounterForRouteNode } from "../src/content/encounters/definitions";
 import {
   createFullGameGame,
   dispatchGameCommand,
   drainGameEvents,
   getPlayerAction,
   stepGame,
+  type GameCommand,
   type GameState,
   type Vec2,
 } from "../src/game/game";
@@ -15,255 +14,195 @@ import {
   REPLAY_VERSION,
   createReplayRecorder,
   playReplay,
+  type ReplayLog,
   type ReplayRecorder,
 } from "../src/game/replay/replay";
-import type { RouteNodeState } from "../src/game/run/types";
 
-describe("full-game replay v3", () => {
-  test("records the selected Run Protocol before route generation", () => {
+const RETIRED_V1_COMMAND_TYPES = new Set<GameCommand["type"]>([
+  "preview-route-node",
+  "confirm-planning",
+  "preview-skill-purchase",
+  "preview-skill-refund",
+  "discard-skill-draft",
+  "acknowledge-reward",
+  "resolve-event-choice",
+  "use-forge-token",
+  "confirm-forge",
+]);
+
+describe("full-game replay v4", () => {
+  test("starts V2 directly in combat and replays the selected Run Protocol", () => {
     const state = createFullGameGame(601);
     const recorder = createReplayRecorder(state);
+
     expect(recorder.dispatch({
       type: "configure-run-protocol",
       mode: "threat",
       threatLevel: 3,
     }).result).toBe("protocol-configured");
     expect(recorder.dispatch({ type: "start-full-game-run" }).result).toBe("run-started");
+    expect(state.run.fullGame?.phase).toBe("combat");
+    expect(state.stage.phase).toBe("playing");
+    expect(state.run.fullGame?.activeEncounterTemplateId).not.toBeNull();
+
     const log = recorder.finish();
-    expect(log.entries[0]?.command).toEqual({
-      type: "configure-run-protocol",
-      mode: "threat",
-      threatLevel: 3,
-    });
     const replay = playReplay(log);
     expect(replay.matched).toBe(true);
+    expect(replay.state.run.fullGame?.phase).toBe("combat");
     expect(replay.state.run.fullGame?.protocol).toMatchObject({ mode: "threat", threatLevel: 3 });
   });
-  test("replays route, allocation, Charged, Ultimate, and Event commands to the same hash", () => {
-    const { state, target } = stateWithReplayFriendlyEvent();
+
+  test("replays clear -> three choices -> selection -> automatic next combat to the same hash", () => {
+    const state = createFullGameGame(601, { recoveryMs: 35 });
     const recorder = createReplayRecorder(state);
 
-    beginRunWithBuild(state, recorder);
-    enterNextNodeToward(state, recorder, target.id);
-    playCurrentEncounter(state, recorder, { useCharged: true, useUltimate: false });
-    recorder.dispatch({ type: "acknowledge-reward" });
-    enterNextNodeToward(state, recorder, target.id);
-    playCurrentEncounter(state, recorder, { useCharged: false, useUltimate: false });
-    recorder.dispatch({ type: "acknowledge-reward" });
-    enterNextNodeToward(state, recorder, target.id);
-    expect(state.run.fullGame?.phase).toBe("event");
-    const event = eventForRouteNode(target, state.run.seed);
-    const energyChoice = event.choices.find((choice) => (
-      choice.effects.some((effect) => effect.resourceId === "next-combat-energy")
-    ));
-    if (!energyChoice) throw new Error("Replay Event must provide next-combat energy.");
-    expect(recorder.dispatch({ type: "resolve-event-choice", choiceId: energyChoice.id }).result).toBe("event-resolved");
-    recorder.dispatch({ type: "acknowledge-reward" });
-    enterFirstAvailableNode(state, recorder);
-    playCurrentEncounter(state, recorder, { useCharged: false, useUltimate: true });
+    expect(recorder.dispatch({ type: "configure-run-protocol", mode: "assist" }).result).toBe("protocol-configured");
+    expect(recorder.dispatch({ type: "start-full-game-run" }).result).toBe("run-started");
+    expect(state.run.fullGame?.phase).toBe("combat");
+    const firstNodeId = state.run.fullGame?.routeProgress.currentNodeId;
+    if (!firstNodeId) throw new Error("V2 start did not select the first encounter.");
+
+    clearCurrentEncounter(state, recorder);
+
+    const draft = state.run.fullGame?.activeRewardDraft;
+    expect(state.run.fullGame?.phase).toBe("upgrade-choice");
+    expect(state.stage.phase).toBe("upgrade-choice");
+    expect(draft?.candidateSkillIds).toHaveLength(3);
+    expect(new Set(draft?.candidateSkillIds).size).toBe(3);
+    if (!draft) throw new Error("Cleared encounter did not create a V2 reward draft.");
+
+    const selectedSkillId = draft.candidateSkillIds[0];
+    const selectionCommand = {
+      type: "select-reward-skill",
+      offerId: draft.offerId,
+      skillId: selectedSkillId,
+    } as const;
+    expect(recorder.dispatch(selectionCommand).result).toBe("reward-skill-selected");
+    expect(state.run.fullGame?.phase).toBe("combat");
+    expect(state.stage.phase).toBe("playing");
+    expect(state.run.fullGame?.routeProgress.completedNodeIds).toContain(firstNodeId);
+    expect(state.run.fullGame?.routeProgress.currentNodeId).not.toBe(firstNodeId);
+    expect(state.run.fullGame?.skills.committedSkillIds).toContain(selectedSkillId);
+    expect(state.run.selectedUpgrades).toContain(selectedSkillId);
 
     const log = recorder.finish();
     expect(log.mode).toBe("full-game");
     expect(log.version).toBe(REPLAY_VERSION);
     expect(log.contentVersion).toBe(REPLAY_CONTENT_VERSION);
-    expect(log.entries.some((entry) => entry.command.type === "begin-charge")).toBe(true);
-    expect(log.entries.some((entry) => entry.command.type === "release-charge")).toBe(true);
-    expect(log.entries.some((entry) => entry.command.type === "start-ultimate")).toBe(true);
-    expect(log.entries.filter((entry) => entry.command.type === "add-ultimate-point")).toHaveLength(3);
-    expect(log.entries.some((entry) => entry.command.type === "resolve-event-choice")).toBe(true);
+    expect(log.entries.some((entry) => (
+      entry.command.type === "select-reward-skill"
+      && entry.command.offerId === draft.offerId
+      && entry.command.skillId === selectedSkillId
+    ))).toBe(true);
+    expect(log.entries.filter((entry) => RETIRED_V1_COMMAND_TYPES.has(entry.command.type))).toEqual([]);
 
     const replay = playReplay(log);
     expect(replay.matched).toBe(true);
-    expect(replay.state.run.fullGame?.phase).toBe("reward");
-    expect(replay.state.run.fullGame?.eventHistory).toHaveLength(1);
+    expect(replay.actualStateHash).toBe(log.expectedStateHash);
+    expect(replay.state.run.fullGame?.phase).toBe("combat");
+    expect(replay.state.run.fullGame?.routeProgress.currentNodeId).toBe(
+      state.run.fullGame?.routeProgress.currentNodeId,
+    );
+    expect(replay.state.run.fullGame?.skills.committedSkillIds).toContain(selectedSkillId);
   });
 
-  test("replays a real Forge cascade and replacement allocation", () => {
-    const { state, target } = stateWithReachableForge();
-    const recorder = createReplayRecorder(state);
-    beginRunWithBuild(state, recorder);
-    enterNextNodeToward(state, recorder, target.id);
-    playCurrentEncounter(state, recorder, { useCharged: false, useUltimate: false });
-    recorder.dispatch({ type: "acknowledge-reward" });
-    enterNextNodeToward(state, recorder, target.id);
-    playCurrentEncounter(state, recorder, { useCharged: false, useUltimate: false });
-    recorder.dispatch({ type: "acknowledge-reward" });
-    enterNextNodeToward(state, recorder, target.id);
+  test("keeps retired V1 route, skill draft, Event, and Forge commands out of the V2 success path", () => {
+    const state = createFullGameGame(602);
+    expect(dispatchGameCommand(state, { type: "start-full-game-run" }).result).toBe("run-started");
+    const currentNodeId = state.run.fullGame?.routeProgress.currentNodeId;
+    if (!currentNodeId) throw new Error("V2 start did not select an encounter.");
 
-    expect(state.run.fullGame?.phase).toBe("forge");
-    expect(recorder.dispatch({ type: "preview-skill-refund", skillId: "skill-wide-slash-v1" }).result).toBe("skill-refunded");
-    expect(recorder.dispatch({ type: "preview-skill-purchase", skillId: "skill-curve-dash-v1" }).result).toBe("skill-drafted");
-    expect(recorder.dispatch({ type: "preview-skill-purchase", skillId: "skill-cross-execution-v1" }).result).toBe("skill-drafted");
-    expect(recorder.dispatch({ type: "confirm-forge" }).result).toBe("forge-confirmed");
+    const retiredCommands: GameCommand[] = [
+      { type: "preview-route-node", nodeId: currentNodeId },
+      { type: "confirm-planning" },
+      { type: "preview-skill-purchase", skillId: "skill-wide-slash-v1" },
+      { type: "preview-skill-refund", skillId: "skill-wide-slash-v1" },
+      { type: "discard-skill-draft" },
+      { type: "acknowledge-reward" },
+      { type: "resolve-event-choice", choiceId: "retired-event-choice" },
+      { type: "use-forge-token" },
+      { type: "confirm-forge" },
+    ];
 
-    const log = recorder.finish();
-    expect(log.entries.some((entry) => entry.command.type === "confirm-forge")).toBe(true);
-    const replay = playReplay(log);
-    expect(replay.matched).toBe(true);
-    expect(replay.state.run.fullGame?.skills.committedSkillIds).toEqual([
-      "skill-curve-dash-v1",
-      "skill-cross-execution-v1",
-    ]);
+    for (const command of retiredCommands) {
+      expect(dispatchGameCommand(state, command).result, command.type).toBe("ignored");
+    }
+    expect(state.run.fullGame?.phase).toBe("combat");
+    expect(state.run.fullGame?.routeProgress.currentNodeId).toBe(currentNodeId);
+    expect(state.run.fullGame?.skills.committedSkillIds).toEqual([]);
   });
 
-  test("rejects unsupported schema, content, and mode instead of approximate playback", () => {
+  test("rejects unsupported versions and damaged replay logs", () => {
     const state = createFullGameGame(1);
-    const log = createReplayRecorder(state).finish();
+    const recorder = createReplayRecorder(state);
+    recorder.dispatch({ type: "configure-run-protocol", mode: "standard" });
+    recorder.dispatch({ type: "start-full-game-run" });
+    const log = recorder.finish();
+
     expect(() => playReplay({ ...log, version: 999 as typeof REPLAY_VERSION })).toThrow(/Unsupported replay version/);
-    expect(() => playReplay({ ...log, contentVersion: "future" as typeof REPLAY_CONTENT_VERSION })).toThrow(/Unsupported replay version/);
+    expect(() => playReplay({
+      ...log,
+      contentVersion: "future" as typeof REPLAY_CONTENT_VERSION,
+    })).toThrow(/Unsupported replay version/);
     expect(() => playReplay({ ...log, mode: "unknown" as typeof log.mode })).toThrow(/Unsupported replay mode/);
+    expect(() => playReplay({ ...log, finalRunTick: -1 })).toThrow(/Invalid replay final tick/);
+    expect(() => playReplay({ ...log, expectedStateHash: "damaged" })).toThrow(/expected state hash is invalid/);
+
+    const firstEntry = log.entries[0];
+    const secondEntry = log.entries[1];
+    if (!firstEntry || !secondEntry) throw new Error("Replay fixture is missing command entries.");
+    const outOfOrderLog: ReplayLog = {
+      ...log,
+      finalRunTick: 1,
+      entries: [
+        { ...firstEntry, runTick: 1 },
+        { ...secondEntry, runTick: 0 },
+      ],
+    };
+    expect(() => playReplay(outOfOrderLog)).toThrow(/Replay entries are not ordered/);
+    expect(() => playReplay({
+      ...log,
+      entries: [{ ...firstEntry, sequence: 2 }, secondEntry],
+    })).toThrow(/Invalid replay command sequence/);
   });
 });
 
-function beginRunWithBuild(state: GameState, recorder: ReplayRecorder): void {
-  expect(recorder.dispatch({ type: "start-full-game-run" }).result).toBe("run-started");
-  expect(recorder.dispatch({ type: "preview-skill-purchase", skillId: "skill-wide-slash-v1" }).result).toBe("skill-drafted");
-  expect(recorder.dispatch({ type: "preview-skill-purchase", skillId: "skill-gravity-slash-v1" }).result).toBe("skill-drafted");
-}
-
-function enterNextNodeToward(state: GameState, recorder: ReplayRecorder, targetId: string): void {
-  const campaign = state.run.fullGame;
-  if (!campaign || campaign.phase !== "planning") throw new Error("Expected Planning before route selection.");
-  const node = campaign.routeProgress.availableNodeIds
-    .map((id) => routeNode(state, id))
-    .filter((candidate) => reachesNode(state, candidate, targetId))
-    .sort((first, second) => encounterGeometryScore(state, first) - encounterGeometryScore(state, second))[0];
-  if (!node) throw new Error(`No available route reaches ${targetId}.`);
-  expect(recorder.dispatch({ type: "preview-route-node", nodeId: node.id }).result).toBe("route-previewed");
-  expect(recorder.dispatch({ type: "confirm-planning" }).result).toBe("planning-confirmed");
-}
-
-function encounterGeometryScore(state: GameState, node: RouteNodeState): number {
-  const definition = encounterForRouteNode(node, state.run.seed);
-  return definition ? definition.initialObstacles.length * 10 + definition.initialHazards.length : 0;
-}
-
-function enterFirstAvailableNode(state: GameState, recorder: ReplayRecorder): void {
-  const nodeId = state.run.fullGame?.routeProgress.availableNodeIds[0];
-  if (!nodeId) throw new Error("Missing available route node.");
-  expect(recorder.dispatch({ type: "preview-route-node", nodeId }).result).toBe("route-previewed");
-  expect(recorder.dispatch({ type: "confirm-planning" }).result).toBe("planning-confirmed");
-}
-
-function playCurrentEncounter(
-  state: GameState,
-  recorder: ReplayRecorder,
-  options: { useCharged: boolean; useUltimate: boolean },
-): void {
-  let chargedUsed = false;
-  let ultimateUsed = false;
+function clearCurrentEncounter(state: GameState, recorder: ReplayRecorder): void {
   let retries = 0;
   for (
     let guard = 0;
-    guard < 12_000 && (state.run.fullGame?.phase === "combat" || state.run.fullGame?.phase === "defeat");
+    guard < 20_000 && (state.run.fullGame?.phase === "combat" || state.run.fullGame?.phase === "defeat");
     guard += 1
   ) {
     if (state.stage.phase === "dead") {
-      if (retries >= 4) {
-        throw new Error(`Replay test autoplayer exceeded four deterministic retries in ${state.run.fullGame?.activeEncounterTemplateId}.`);
-      }
+      if (retries >= 1) throw new Error("V2 replay autoplayer exhausted the Assist reboot.");
       expect(recorder.dispatch({ type: "restart-stage" }).result).toBe("restarted");
       retries += 1;
       continue;
     }
-    if (state.stage.phase !== "playing") throw new Error(`Encounter left Playing in ${state.stage.phase}.`);
+    if (state.stage.phase !== "playing") {
+      throw new Error(`V2 encounter left Playing in ${state.stage.phase}.`);
+    }
     if (getPlayerAction(state) === "ready" && state.enemies.some((enemy) => enemy.alive)) {
-      if (options.useCharged && !chargedUsed) {
-        const target = chooseDashTarget(state);
+      const target = chooseDashTarget(state);
+      const armored = state.enemies.some((enemy) => (
+        enemy.alive && enemy.armorParts.some((part) => part.intact)
+      ));
+      if (armored) {
         expect(recorder.dispatch({ type: "begin-charge", target }).result).toBe("charge-started");
         for (let tick = 0; tick < 80 && state.player.charge !== null; tick += 1) {
           stepGame(state);
           drainGameEvents(state);
         }
         expect(recorder.dispatch({ type: "release-charge", target }).result).toBe("charged-released");
-        chargedUsed = true;
-      } else if (options.useUltimate && !ultimateUsed && state.player.ultimateEnergy >= 100) {
-        expect(recorder.dispatch({ type: "start-ultimate" }).result).toBe("ultimate-planning-started");
-        const points = ultimatePoints(state);
-        expect(recorder.dispatch({ type: "add-ultimate-point", target: points[0]! }).result).toBe("ultimate-point-added");
-        expect(recorder.dispatch({ type: "add-ultimate-point", target: points[1]! }).result).toBe("ultimate-point-added");
-        expect(recorder.dispatch({ type: "add-ultimate-point", target: points[2]! }).result).toBe("ultimate-executing");
-        ultimateUsed = true;
       } else {
-        recorder.dispatch({ type: "activate-ability", slot: "primary", target: chooseDashTarget(state) });
+        expect(recorder.dispatch({ type: "activate-ability", slot: "primary", target }).result).toBe("started");
       }
     }
     stepGame(state);
     drainGameEvents(state);
   }
-  expect(state.run.fullGame?.phase).toBe("reward");
-  if (options.useCharged) expect(chargedUsed).toBe(true);
-  if (options.useUltimate) expect(ultimateUsed).toBe(true);
-}
-
-function ultimatePoints(state: GameState): [Vec2, Vec2, Vec2] {
-  const alive = state.enemies.filter((enemy) => enemy.alive).map((enemy) => ({ ...enemy.position }));
-  const fallback: Vec2[] = [
-    { x: state.stage.arena.minX + 2, z: state.stage.arena.minZ + 2 },
-    { x: state.stage.arena.maxX - 2, z: 0 },
-    { x: 0, z: state.stage.arena.maxZ - 2 },
-  ];
-  return [alive[0] ?? fallback[0]!, alive[1] ?? fallback[1]!, alive[2] ?? fallback[2]!];
-}
-
-function safeNode(state: GameState, kind: "event" | "forge"): RouteNodeState {
-  const node = state.run.fullGame?.routeProgress.route.acts[0]?.layers[2]
-    ?.find((candidate) => candidate.kind === kind);
-  if (!node) throw new Error(`Missing ${kind} safe node.`);
-  return node;
-}
-
-function stateWithReachableForge(): { state: GameState; target: RouteNodeState } {
-  for (let seed = 0; seed < 1_000; seed += 1) {
-    const state = createFullGameGame(seed);
-    const target = state.run.fullGame?.routeProgress.route.acts[0]?.layers[2]
-      ?.find((node) => node.kind === "forge");
-    if (target) return { state, target };
-  }
-  throw new Error("No Forge seed found.");
-}
-
-function stateWithReplayFriendlyEvent(): { state: GameState; target: RouteNodeState } {
-  for (let seed = 0; seed < 2_000; seed += 1) {
-    const state = createFullGameGame(seed);
-    const target = state.run.fullGame?.routeProgress.route.acts[0]?.layers[2]
-      ?.find((node) => node.kind === "event");
-    if (!target) continue;
-    const event = eventForRouteNode(target, seed);
-    if (!event.choices.some((choice) => choice.effects.some((effect) => effect.resourceId === "next-combat-energy"))) {
-      continue;
-    }
-    const entries = state.run.fullGame?.routeProgress.route.acts[0]?.layers[0] ?? [];
-    const hasClearPath = entries.some((entry) => {
-      if (!reachesNode(state, entry, target.id) || encounterGeometryScore(state, entry) !== 0) return false;
-      return entry.nextNodeIds
-        .map((id) => routeNode(state, id))
-        .some((next) => reachesNode(state, next, target.id) && encounterGeometryScore(state, next) === 0);
-    });
-    if (hasClearPath) return { state, target };
-  }
-  throw new Error("No replay-friendly deterministic Event path found.");
-}
-
-function routeNode(state: GameState, id: string): RouteNodeState {
-  const nodes = state.run.fullGame?.routeProgress.route.acts
-    .flatMap((act) => act.layers.flatMap((layer) => layer));
-  const node = nodes?.find((candidate) => candidate.id === id);
-  if (!node) throw new Error(`Unknown route node ${id}.`);
-  return node;
-}
-
-function reachesNode(state: GameState, start: RouteNodeState, targetId: string): boolean {
-  const pending = [start.id];
-  const visited = new Set<string>();
-  while (pending.length > 0) {
-    const id = pending.pop();
-    if (!id || visited.has(id)) continue;
-    if (id === targetId) return true;
-    visited.add(id);
-    pending.push(...routeNode(state, id).nextNodeIds);
-  }
-  return false;
+  expect(state.run.fullGame?.phase).toBe("upgrade-choice");
 }
 
 function chooseDashTarget(state: GameState): Vec2 {
@@ -274,7 +213,12 @@ function chooseDashTarget(state: GameState): Vec2 {
     const target = extendToArenaBoundary(player, enemy.position, state.stage.arena);
     if (!target) continue;
     const score = state.enemies.reduce((count, candidate) => (
-      count + (candidate.alive && distanceSquaredPointToSegment(candidate.position, player, target) <= 1.02 ** 2 ? 1 : 0)
+      count + (
+        candidate.alive
+        && distanceSquaredPointToSegment(candidate.position, player, target) <= (candidate.radius + 1.15) ** 2
+          ? 1
+          : 0
+      )
     ), 0);
     const travel = Math.hypot(target.x - player.x, target.z - player.z);
     if (!best || score > best.score || (score === best.score && travel > best.travel)) {
@@ -284,7 +228,11 @@ function chooseDashTarget(state: GameState): Vec2 {
   return best?.target ?? { x: -player.x, z: -player.z };
 }
 
-function extendToArenaBoundary(player: Vec2, enemy: Vec2, arena: GameState["stage"]["arena"]): Vec2 | null {
+function extendToArenaBoundary(
+  player: Vec2,
+  enemy: Vec2,
+  arena: GameState["stage"]["arena"],
+): Vec2 | null {
   const dx = enemy.x - player.x;
   const dz = enemy.z - player.z;
   const length = Math.hypot(dx, dz);
@@ -308,7 +256,9 @@ function distanceSquaredPointToSegment(point: Vec2, start: Vec2, end: Vec2): num
   const dz = end.z - start.z;
   const lengthSquared = dx * dx + dz * dz;
   if (lengthSquared <= 1e-8) return Number.POSITIVE_INFINITY;
-  const ratio = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.z - start.z) * dz) / lengthSquared));
+  const ratio = Math.max(0, Math.min(1, (
+    (point.x - start.x) * dx + (point.z - start.z) * dz
+  ) / lengthSquared));
   const x = start.x + dx * ratio;
   const z = start.z + dz * ratio;
   return (point.x - x) ** 2 + (point.z - z) ** 2;

@@ -33,6 +33,7 @@ export async function bootstrapSlashApplication(): Promise<void> {
     chargeLabel: requiredElement<HTMLSpanElement>("#charge-label"),
     chargeFill: requiredElement<HTMLElement>("#charge-fill"),
     energyLabel: requiredElement<HTMLSpanElement>("#energy-label"),
+    energyFill: requiredElement<HTMLElement>("#energy-fill"),
     vectorLabel: requiredElement<HTMLSpanElement>("#vector-label"),
     phaseBanner: requiredElement<HTMLDivElement>("#phase-banner"),
     phaseEyebrow: requiredElement<HTMLSpanElement>("#phase-eyebrow"),
@@ -374,6 +375,23 @@ export async function bootstrapSlashApplication(): Promise<void> {
         gameRuntime.loadEnemyAttackScenario(definitionId);
         tuning.enemyMotion = false;
         resetPresentationStage();
+      },
+      clearCampaignEncounter() {
+        const campaign = gameState.run.fullGame;
+        if (!campaign || campaign.phase !== "combat") return;
+        for (const wave of campaign.encounterRuntime?.waves ?? []) wave.status = "completed";
+        if (campaign.encounterRuntime) campaign.encounterRuntime.completed = true;
+        for (const enemy of gameState.enemies) {
+          enemy.alive = false;
+          enemy.state = "dead";
+          enemy.killedAtMs = gameState.elapsedMs;
+        }
+        gameState.enemies = [];
+        gameState.projectiles = [];
+        gameState.obstacles = [];
+        gameState.hazards = [];
+        if (campaign.activeBoss) campaign.activeBoss.completed = true;
+        window.advanceTime(17);
       },
       dashTo: (x, z) => dispatchPrimaryAbility({ x, z }),
       beginChargeTo(x, z) {

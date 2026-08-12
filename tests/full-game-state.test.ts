@@ -1,16 +1,27 @@
 import { describe, expect, test } from "vitest";
+import { fullGameEncounterDefinitions } from "../src/content/encounters/definitions";
+import { markCampaignDefeat } from "../src/game/campaign/campaign-system";
+import type { GameState } from "../src/game/domain/types";
 import {
   createFullGameGame,
   dispatchGameCommand,
   getGameSnapshot,
   stepGame,
 } from "../src/game/game";
-import { markCampaignDefeat } from "../src/game/campaign/campaign-system";
-import type { GameState } from "../src/game/domain/types";
-import { fullGameEncounterDefinitions } from "../src/content/encounters/definitions";
 
 function advanceTicks(state: GameState, ticks: number): void {
   for (let tick = 0; tick < ticks; tick += 1) stepGame(state);
+}
+
+function advanceUntil(
+  state: GameState,
+  predicate: () => boolean,
+  maximumTicks = 2_400,
+): void {
+  for (let tick = 0; tick < maximumTicks && !predicate(); tick += 1) {
+    stepGame(state);
+  }
+  expect(predicate()).toBe(true);
 }
 
 function killAliveEnemies(state: GameState): void {
@@ -23,51 +34,88 @@ function killAliveEnemies(state: GameState): void {
   }
 }
 
-function startFirstEncounter(state: GameState): void {
+function startRun(state: GameState): void {
   expect(dispatchGameCommand(state, { type: "start-full-game-run" }).result).toBe("run-started");
-  const firstNode = state.run.fullGame?.routeProgress.availableNodeIds[0];
-  if (!firstNode) throw new Error("Missing first route node.");
-  expect(dispatchGameCommand(state, { type: "preview-route-node", nodeId: firstNode }).result).toBe("route-previewed");
-  expect(dispatchGameCommand(state, { type: "preview-skill-purchase", skillId: "skill-wide-slash-v1" }).result).toBe("skill-drafted");
-  expect(dispatchGameCommand(state, { type: "confirm-planning" }).result).toBe("planning-confirmed");
+  expect(state.stage.phase).toBe("playing");
+  expect(state.run.fullGame?.phase).toBe("combat");
+  expect(state.run.fullGame?.activeEncounterTemplateId).not.toBeNull();
+  expect(state.run.fullGame?.encounterRuntime).not.toBeNull();
+  expect(state.run.selectedUpgrades).toEqual([]);
 }
 
-describe("full-game campaign state", () => {
-  test("runs Title -> Planning -> two-wave Combat -> Reward with stable observable state", () => {
+function clearActiveEncounter(state: GameState): void {
+  for (let tick = 0; tick < 2_400 && state.stage.phase === "playing"; tick += 1) {
+    killAliveEnemies(state);
+    stepGame(state);
+  }
+  expect(state.stage.phase).toBe("upgrade-choice");
+  expect(state.run.fullGame?.phase).toBe("upgrade-choice");
+}
+
+describe("full-game V2 campaign state", () => {
+  test("runs Title -> Combat -> three-skill choice -> next Combat", () => {
     const state = createFullGameGame(3108);
     expect(state.stage.phase).toBe("title");
-    expect(getGameSnapshot(state).campaign?.skillPoints).toEqual({ earned: 2, spent: 0, unspent: 2 });
+    expect(state.run.fullGame?.phase).toBe("title");
 
-    startFirstEncounter(state);
-    expect(state.stage.phase).toBe("playing");
-    expect(state.run.selectedUpgrades).toEqual(["skill-wide-slash-v1"]);
-    expect(getGameSnapshot(state).campaign?.encounter?.waves.map((wave) => wave.status)).toEqual(["warning", "pending"]);
-    const encounterId = state.run.fullGame?.activeEncounterTemplateId;
-    if (!encounterId) throw new Error("Missing active encounter template.");
-    const definition = fullGameEncounterDefinitions.get(encounterId);
+    startRun(state);
+    const firstEncounterId = state.run.fullGame?.activeEncounterTemplateId;
+    if (!firstEncounterId) throw new Error("Missing first directed encounter.");
+    const firstEncounter = fullGameEncounterDefinitions.get(firstEncounterId);
+    expect(getGameSnapshot(state).campaign?.encounter?.waves).toHaveLength(firstEncounter.waves.length);
 
-    advanceTicks(state, 90);
-    expect(state.enemies).toHaveLength(definition.waves[0]?.spawns.length ?? 0);
+    advanceUntil(state, () => state.enemies.some((enemy) => enemy.alive));
     expect(state.enemies.map((enemy) => enemy.definitionId)).toEqual(
-      definition.waves[0]?.spawns.map((spawn) => spawn.enemyDefinitionId),
+      firstEncounter.waves[0]?.spawns.map((spawn) => spawn.enemyDefinitionId),
     );
-    expect(getGameSnapshot(state).campaign?.encounter?.waves[0]?.status).toBe("active");
 
-    killAliveEnemies(state);
-    stepGame(state);
-    expect(getGameSnapshot(state).campaign?.encounter?.waves.map((wave) => wave.status)).toEqual(["completed", "warning"]);
-    advanceTicks(state, 90);
-    expect(state.enemies.filter((enemy) => enemy.alive)).toHaveLength(definition.waves[1]?.spawns.length ?? 0);
+    clearActiveEncounter(state);
+    const campaign = state.run.fullGame;
+    const draft = campaign?.activeRewardDraft;
+    if (!campaign || !draft) throw new Error("Missing V2 reward draft after encounter clear.");
 
-    killAliveEnemies(state);
-    stepGame(state);
-    expect(state.run.fullGame?.phase).toBe("reward");
-    expect(state.stage.phase).toBe("reward");
-    expect(state.run.fullGame?.routeProgress.completedNodeIds).toHaveLength(1);
-    expect(state.run.fullGame?.skills.totalEarnedPoints).toBe(3);
-    expect(dispatchGameCommand(state, { type: "acknowledge-reward" }).result).toBe("reward-acknowledged");
-    expect(state.stage.phase).toBe("planning");
-    expect(getGameSnapshot(state).campaign?.availableNodes.length).toBeGreaterThan(0);
+    expect(campaign.routeProgress.completedNodeIds).toHaveLength(1);
+    expect(draft.candidateSkillIds).toHaveLength(3);
+    expect(new Set(draft.candidateSkillIds).size).toBe(3);
+    expect(draft.candidateSkillIds.every((skillId) => !state.run.selectedUpgrades.includes(skillId))).toBe(true);
+    expect(getGameSnapshot(state).campaign?.rewardDraft).toEqual({
+      offerId: draft.offerId,
+      rewardIndex: 0,
+      candidateSkillIds: [...draft.candidateSkillIds],
+    });
+
+    const selectedSkillId = draft.candidateSkillIds[0];
+    const completedNodeId = campaign.routeProgress.completedNodeIds[0];
+    expect(dispatchGameCommand(state, {
+      type: "select-reward-skill",
+      offerId: draft.offerId,
+      skillId: selectedSkillId,
+    }).result).toBe("reward-skill-selected");
+
+    expect(state.run.selectedUpgrades).toContain(selectedSkillId);
+    expect(state.run.selectedUpgrades.filter((skillId) => skillId === selectedSkillId)).toHaveLength(1);
+    expect(state.run.fullGame?.skills.committedSkillIds).toContain(selectedSkillId);
+    expect(state.run.fullGame?.rewardIndex).toBe(1);
+    expect(state.run.fullGame?.activeRewardDraft).toBeNull();
+    expect(state.run.fullGame?.pendingReward).toBeNull();
+    expect(state.run.fullGame?.phase).toBe("combat");
+    expect(state.stage.phase).toBe("playing");
+    expect(state.run.fullGame?.activeEncounterTemplateId).not.toBeNull();
+    expect(state.run.fullGame?.routeProgress.currentNodeId).not.toBe(completedNodeId);
+
+    if (selectedSkillId === "skill-additional-ultimate-slash-v1") {
+      state.player.ultimateEnergy = 100;
+      expect(dispatchGameCommand(state, { type: "start-ultimate" }).result).toBe("ultimate-planning-started");
+      expect(state.player.ultimatePlanning?.requiredPointCount).toBe(4);
+      expect(dispatchGameCommand(state, { type: "cancel-ultimate" }).result).toBe("ultimate-cancelled");
+    }
+
+    expect(dispatchGameCommand(state, {
+      type: "select-reward-skill",
+      offerId: draft.offerId,
+      skillId: selectedSkillId,
+    }).result).toBe("ignored");
+    expect(state.run.selectedUpgrades.filter((skillId) => skillId === selectedSkillId)).toHaveLength(1);
   });
 
   test("uses the one-per-Act Assist Reboot and preserves deterministic enemy IDs", () => {
@@ -76,16 +124,18 @@ describe("full-game campaign state", () => {
       type: "configure-run-protocol",
       mode: "assist",
     }).result).toBe("protocol-configured");
-    startFirstEncounter(state);
-    advanceTicks(state, 90);
+    startRun(state);
+    advanceUntil(state, () => state.enemies.some((enemy) => enemy.alive));
     const firstIds = state.enemies.map((enemy) => enemy.id);
+
     state.stage.phase = "dead";
     markCampaignDefeat(state);
     expect(dispatchGameCommand(state, { type: "restart-stage" }).result).toBe("restarted");
-    advanceTicks(state, 90);
+    advanceUntil(state, () => state.enemies.some((enemy) => enemy.alive));
     expect(state.enemies.map((enemy) => enemy.id)).toEqual(firstIds);
     expect(state.stage.attempt).toBe(2);
     expect(state.run.fullGame?.protocol.assistRebootsRemaining).toBe(0);
+
     state.stage.phase = "dead";
     markCampaignDefeat(state);
     expect(dispatchGameCommand(state, { type: "restart-stage" }).result).toBe("ignored");
@@ -93,21 +143,28 @@ describe("full-game campaign state", () => {
 
   test("ends a Standard Run on death instead of silently restarting", () => {
     const state = createFullGameGame(45);
-    startFirstEncounter(state);
+    startRun(state);
     state.stage.phase = "dead";
     markCampaignDefeat(state);
+
     expect(dispatchGameCommand(state, { type: "restart-stage" }).result).toBe("ignored");
     expect(state.run.fullGame?.phase).toBe("defeat");
     expect(dispatchGameCommand(state, { type: "return-to-title" }).result).toBe("returned-to-title");
     expect(state.run.fullGame?.phase).toBe("title");
+    expect(state.stage.phase).toBe("title");
   });
 
-  test("is deterministic and JSON-safe before and during combat", () => {
+  test("is deterministic and JSON-safe before and during V2 combat", () => {
     const first = createFullGameGame(901);
     const second = createFullGameGame(901);
     expect(second).toEqual(first);
-    startFirstEncounter(first);
+
+    startRun(first);
+    startRun(second);
+    expect(second).toEqual(first);
     advanceTicks(first, 25);
+    advanceTicks(second, 25);
+    expect(second).toEqual(first);
     expect(JSON.parse(JSON.stringify(first))).toEqual(first);
   });
 });

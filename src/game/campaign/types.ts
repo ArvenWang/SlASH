@@ -5,8 +5,9 @@ import type { FullGameRunProgressState, RouteReward } from "../run/types";
 import type { SkillAllocationState } from "../upgrades/types";
 import type { BossRuntimeState } from "../bosses/types";
 import type { RunProtocolState } from "../difficulty/types";
+import type { RewardDraftState } from "../rewards/types";
 
-export type CampaignPhase = "title" | "planning" | "event" | "forge" | "combat" | "reward" | "defeat" | "victory";
+export type CampaignPhase = "title" | "planning" | "event" | "forge" | "combat" | "reward" | "upgrade-choice" | "defeat" | "victory";
 
 export type CampaignChallengeStatus = "active" | "succeeded" | "failed";
 
@@ -54,7 +55,7 @@ export interface CampaignRunMetricsState {
 }
 
 export interface FullGameCampaignState {
-  readonly contentVersion: "full-game-v1";
+  readonly contentVersion: "full-game-v2";
   protocol: RunProtocolState;
   runMetrics: CampaignRunMetricsState;
   phase: CampaignPhase;
@@ -68,6 +69,8 @@ export interface FullGameCampaignState {
   practiceBossDefinitionId: BossDefinitionId | null;
   activeTriggerIds: string[];
   pendingReward: CampaignRewardState | null;
+  rewardIndex: number;
+  activeRewardDraft: RewardDraftState | null;
   eliteSkillPointRewardsGranted: number;
   activeEventDefinitionId: string | null;
   eventHistory: Array<{ nodeId: RouteNodeId; eventDefinitionId: string; choiceId: string }>;

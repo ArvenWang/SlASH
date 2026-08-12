@@ -7,11 +7,17 @@ import { stableHash } from "../serialization/stable";
 import { MAXIMUM_SKILL_POINTS, FORGE_MOVE_LIMIT } from "../upgrades/skill-system";
 import type { RunProtocolMode } from "../../content/protocols/definitions";
 import { ASSIST_PROTOCOL_RULES } from "../../content/protocols/definitions";
+import {
+  REWARD_POOL_V2_ENABLED_IDS,
+  REWARD_POOL_V2_POOL_VERSION,
+  rewardPoolV2SkillDefinitionById,
+} from "../../content/upgrades/reward-pool-v2";
+import { createRewardDraft } from "../rewards/reward-draft-system";
 
-export const RUN_SAVE_SCHEMA_VERSION = 2 as const;
-export const RUN_SAVE_CONTENT_VERSION = "full-game-v1" as const;
-export const RUN_SAVE_STORAGE_KEY = "project-slash:run-save:v2" as const;
-export const RUN_SAVE_LEGACY_STORAGE_KEYS = ["project-slash:run-save:v1"] as const;
+export const RUN_SAVE_SCHEMA_VERSION = 3 as const;
+export const RUN_SAVE_CONTENT_VERSION = "full-game-v2" as const;
+export const RUN_SAVE_STORAGE_KEY = "project-slash:run-save:v3" as const;
+export const RUN_SAVE_LEGACY_STORAGE_KEYS = ["project-slash:run-save:v2", "project-slash:run-save:v1"] as const;
 
 export type RunSaveFailureCode =
   | "unsafe-phase"
@@ -50,8 +56,8 @@ export interface RunSaveSummary {
   readonly threatLevel: number;
 }
 
-const SAFE_CAMPAIGN_PHASES = new Set(["title", "planning", "event", "forge", "reward", "victory"]);
-const SAFE_STAGE_PHASES = new Set(["title", "planning", "event", "forge", "reward", "victory"]);
+const SAFE_CAMPAIGN_PHASES = new Set(["title", "upgrade-choice", "victory"]);
+const SAFE_STAGE_PHASES = new Set(["title", "upgrade-choice", "victory"]);
 const skillDefinitionById = new Map(FULL_GAME_SKILL_DEFINITIONS.map((definition) => [definition.id, definition]));
 
 export function isRunSaveSafe(state: GameState): boolean {
@@ -194,7 +200,7 @@ function validateSavedState(state: unknown): asserts state is GameState {
   const candidate = state as unknown as GameState;
   const campaign = candidate.run.fullGame;
   if (!campaign || campaign.contentVersion !== RUN_SAVE_CONTENT_VERSION) {
-    throw invalidState("缺少 full-game-v1 Campaign State");
+    throw invalidState("缺少 full-game-v2 Campaign State");
   }
   validateProtocol(campaign.protocol);
   validateRunMetrics(campaign.runMetrics);
@@ -279,11 +285,7 @@ function validateProtocol(protocol: unknown): void {
 function validateCampaignSafePhase(state: GameState): void {
   const campaign = state.run.fullGame;
   if (!campaign) throw invalidState("缺少 Campaign State");
-  const expectedVisitMode = campaign.phase === "planning"
-    ? "planning"
-    : campaign.phase === "forge"
-      ? "forge"
-      : "closed";
+  const expectedVisitMode = "closed";
   if (campaign.skills.visitMode !== expectedVisitMode) {
     throw invalidState(`技能访问模式与阶段不一致：${campaign.skills.visitMode}/${campaign.phase}`);
   }
@@ -296,24 +298,18 @@ function validateCampaignSafePhase(state: GameState): void {
   if (!("activeChallenge" in campaign) || campaign.activeChallenge !== null) {
     throw invalidState("安全存档包含进行中的 Challenge");
   }
-  if (campaign.phase === "planning" || campaign.phase === "title") {
+  if (!Number.isInteger(campaign.rewardIndex) || campaign.rewardIndex < 0) {
+    throw invalidState("奖励序号无效");
+  }
+  if (campaign.phase === "title" || campaign.phase === "upgrade-choice") {
     if (campaign.routeProgress.phase !== "route-map" || campaign.routeProgress.currentNodeId !== null) {
-      throw invalidState("Planning / Title 路线进度不是 Route Map");
+      throw invalidState("安全阶段路线进度不是 Route Map");
     }
   }
-  if (campaign.phase === "event" || campaign.phase === "forge") {
-    if (campaign.routeProgress.phase !== "encounter" || campaign.routeProgress.currentNodeId === null) {
-      throw invalidState("Event / Forge 缺少当前路线节点");
-    }
-  }
-  if (campaign.phase === "event" && !campaign.activeEventDefinitionId) {
-    throw invalidState("Event 阶段缺少事件定义");
-  }
-  if (campaign.phase !== "event" && campaign.activeEventDefinitionId !== null) {
-    throw invalidState("非 Event 阶段残留事件定义");
-  }
-  if (campaign.phase === "reward" && campaign.pendingReward === null) {
-    throw invalidState("Reward 阶段缺少结算数据");
+  if (campaign.activeEventDefinitionId !== null) throw invalidState("V2 安全阶段残留事件定义");
+  if (campaign.phase === "upgrade-choice") validateRewardDraft(campaign, state.run.seed);
+  if (campaign.phase !== "upgrade-choice" && campaign.activeRewardDraft !== null) {
+    throw invalidState("非三选一阶段残留奖励候选");
   }
   if (campaign.pendingReward !== null) {
     const challenge = campaign.pendingReward.challenge;
@@ -331,6 +327,24 @@ function validateCampaignSafePhase(state: GameState): void {
   }
   if (campaign.phase === "victory" && campaign.routeProgress.phase !== "victory") {
     throw invalidState("Victory 阶段路线尚未完成");
+  }
+}
+
+function validateRewardDraft(campaign: NonNullable<GameState["run"]["fullGame"]>, seed: number): void {
+  const draft = campaign.activeRewardDraft;
+  if (!draft || draft.selectedSkillId !== null) throw invalidState("三选一阶段缺少有效候选");
+  if (draft.rewardIndex !== campaign.rewardIndex || draft.seed !== seed || draft.poolVersion !== REWARD_POOL_V2_POOL_VERSION) {
+    throw invalidState("奖励候选版本或序号无效");
+  }
+  const regenerated = createRewardDraft({
+    seed,
+    rewardIndex: campaign.rewardIndex,
+    ownedSkillIds: campaign.skills.committedSkillIds,
+    candidateDefinitions: REWARD_POOL_V2_ENABLED_IDS.map(rewardPoolV2SkillDefinitionById),
+    poolVersion: REWARD_POOL_V2_POOL_VERSION,
+  });
+  if (!regenerated.ok || regenerated.state.offerId !== draft.offerId || !sameIdSet(regenerated.state.candidateSkillIds, draft.candidateSkillIds)) {
+    throw invalidState("奖励候选无法由当前状态重建");
   }
 }
 

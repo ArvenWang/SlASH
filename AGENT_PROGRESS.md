@@ -19,11 +19,19 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 
 ## Redesign V2 下一步
 
-1. 新增确定性三候选 Reward Draft 与后台 Run Director。
-2. 让真实主流程变成 Title → Combat → 三选一 → 自动下一关。
-3. 删除玩家可见的完整 Skill Tree、Run Map、Route Choice、独立 Reward 和冗余统计。
-4. 接入 Clean Arena Environment Provider 和自适应远景镜头。
-5. 后续接入 Primitive Character Provider 与真实垂直物理。
+1. 清理剩余旧 Campaign UI 死代码与 CSS，确保生产 Bundle 不再包含玩家可达的 Planning / Tree / Map 页面。
+2. 接入 Clean Arena Environment Provider 和自适应远景镜头。
+3. 后续接入 Primitive Character Provider 与真实垂直物理。
+
+## Redesign V2 已完成
+
+- [x] V2 PRD、验收和架构边界成为唯一事实源。
+- [x] 确定性三候选生成、一次性选择和单语言短文案池。
+- [x] 后台 Run Director 自动选关并跳过 Event / Forge-only 层。
+- [x] Title → Combat → 三选一 → 自动下一 Combat 主流程。
+- [x] Title 首轮简化、三选一短卡、极简胜负页、中文战斗状态和可见能量条。
+- [x] V2 Save Schema 3 与 Replay v4；旧存档原文保留并明确拒绝近似迁移。
+- [x] 定向 6 文件 / 32 项、Production Build、whitespace 和一次真实浏览器短流程通过。
 
 ## Redesign V2 当前问题
 

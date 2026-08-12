@@ -17,6 +17,23 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 下一小节：新增确定性 Reward Draft / Run Director，落地通关后三选一，并开始极简 UI 迁移。
 - 当前编辑锁：V2 文档已完成；下一小节将集中修改 `src/game/rewards/`、`src/game/campaign/`、`src/game/run/` 与 `src/runtime/campaign-ui-runtime.ts`，并同步受影响的 Save / Replay 测试。
 
+## 2026-08-13 — Redesign V2 三选一与首轮 UI 简化
+
+- 已实现确定性 Reward Draft：每次恰好 3 个不同合法候选，同 Seed / 奖励序号 / 构筑 / Pool Version 结果一致；已拥有和未满足前置的技能不会出现，候选不足会明确失败。
+- 已实现一次性选择：只接受当前 Offer 中的技能；选择后原子写入 `selectedUpgrades` 和真实 committed skills，重复或过期命令被拒绝。
+- 已实现后台 Run Director：玩家不再选择路线；Director 自动选择 Combat / Elite / Challenge / Boss，并确定性跳过 Event / Forge-only 层。
+- 玩家流程已改为 Title → Combat → Upgrade Choice → 自动下一场 Combat。开局不再进入 Planning，不再发初始技能点。
+- 已新增 27 项单语言短文案候选池；Gravity / Near-Miss 方向禁用。Cross Execution、Echo Slash、Kill Momentum 标记 confirmed，其余为 implemented-review，不能冒充用户已确认。
+- Title 已缩减为开始、有效存档时继续、设置；默认不再展示协议、威胁、档案、练习和系统说明。
+- 三选一 UI 恰好三张卡，每张只显示中文名称和一行效果。胜负页移除默认统计和 Seed 文案。
+- HUD 已切换为中文关键状态，并新增真实可见的能量进度条；能量满后空格大招链路保持。
+- V2 Save 升级到 Schema 3 / `full-game-v2`，只允许 title / upgrade-choice / victory；旧 V1/V2 存档不近似迁移、不静默删除原文。
+- Replay 升级到 v4 / `full-game-v2`，记录 `select-reward-skill` 并验证最终 Hash。
+- 旧 `capture-full-game-ui.mjs` 已反向改写为 V2 短流程门，不再要求 28 节点或 Run Map。
+- 定向验证：6 个相关测试文件 / 32 项通过；Production Build 与 whitespace 通过。真实浏览器 V2 短流程通过：Title 停留、直接 Combat、三选一、选择后下一 Combat、中文能量条、桌面/移动无横向溢出、Console 0。
+- 本小节没有重跑敌人全矩阵、Boss 400 次、长时性能或全浏览器矩阵。
+- 下一小节：删除剩余旧 Campaign UI 死代码与 CSS，并开始 Clean Arena / 远景镜头。
+
 # Project Slash — Agent Progress
 
 更新时间：2026-08-10

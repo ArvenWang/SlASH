@@ -72,17 +72,17 @@ export function challengeProgressLabel(
   runtime: CampaignChallengeRuntimeState,
   rule: ChallengeRuleDefinition,
 ): string {
-  if (runtime.status === "succeeded") return "SUCCESS";
-  if (runtime.status === "failed") return `FAILED · ${runtime.failureReason ?? "CONDITION LOST"}`;
+  if (runtime.status === "succeeded") return "完成";
+  if (runtime.status === "failed") return "失败";
   if (rule.kind === "clean-line") {
     const remaining = Math.max(0, (rule.timeLimitMs ?? 0) - runtime.elapsedMs);
-    return `${(remaining / 1000).toFixed(1)}s · ${runtime.obstacleImpacts} IMPACTS`;
+    return `${(remaining / 1000).toFixed(1)}秒 · 撞击 ${runtime.obstacleImpacts}`;
   }
-  if (rule.kind === "projectile-cuts") return `${runtime.projectileCuts} / ${rule.target} PROJECTILES`;
+  if (rule.kind === "projectile-cuts") return `切弹 ${runtime.projectileCuts} / ${rule.target}`;
   if (rule.kind === "charged-multi-break") {
-    return `${Math.max(runtime.maximumChargedArmorBreaks, runtime.currentChargedArmorBreaks)} / ${rule.target} ARMOR`;
+    return `破甲 ${Math.max(runtime.maximumChargedArmorBreaks, runtime.currentChargedArmorBreaks)} / ${rule.target}`;
   }
-  return runtime.ultimateExecuted ? "ULTIMATE USED" : "ULTIMATE UNUSED";
+  return runtime.ultimateExecuted ? "已使用大招" : "未使用大招";
 }
 
 function applyImmediateFailure(
@@ -126,4 +126,3 @@ function failureReason(
   if (rule.kind === "no-ultimate") return "ULTIMATE EXECUTED";
   return runtime.obstacleImpacts > 0 ? "OBSTACLE IMPACT" : "TIME LIMIT";
 }
-

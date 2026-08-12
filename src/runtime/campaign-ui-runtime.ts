@@ -15,15 +15,12 @@ import { availableRouteNodes, routeNodeById } from "../game/run/run-system";
 import { skillAllocationSnapshot } from "../game/upgrades/skill-system";
 import type { RunSaveStatus } from "./run-save-runtime";
 import { BOSS_DEFINITIONS } from "../content/bosses/definitions";
-import {
-  ASSIST_PROTOCOL_RULES,
-  THREAT_PROTOCOL_DEFINITIONS,
-  type RunProtocolMode,
-} from "../content/protocols/definitions";
+import type { RunProtocolMode } from "../content/protocols/definitions";
 import { ENEMY_DOSSIER_DEFINITIONS } from "../content/profile/dossier";
 import { effectiveIntelDepth } from "../game/difficulty/protocol-system";
 import type { ProfileSettings } from "../game/profile/types";
 import type { ProfileRuntime } from "./profile-runtime";
+import { rewardPoolV2EntryById } from "../content/upgrades/reward-pool-v2";
 
 export interface CampaignUiRuntimeOptions {
   readonly root: HTMLDivElement;
@@ -165,6 +162,12 @@ export function createCampaignUiRuntime(options: CampaignUiRuntimeOptions): Camp
       result = dispatch({ type: "use-forge-token" });
     } else if (action === "confirm-forge") {
       result = dispatch({ type: "confirm-forge" });
+    } else if (action === "select-reward-skill" && target.dataset.offerId && target.dataset.skillId) {
+      result = dispatch({
+        type: "select-reward-skill",
+        offerId: target.dataset.offerId,
+        skillId: target.dataset.skillId,
+      });
     }
       if (result) {
       renderedSignature = "";
@@ -186,6 +189,7 @@ export function createCampaignUiRuntime(options: CampaignUiRuntimeOptions): Camp
       provisional: campaign.provisionalRouteNodeId,
       available: campaign.routeProgress.availableNodeIds,
       reward: campaign.pendingReward,
+      rewardDraft: campaign.activeRewardDraft,
       skills: skillAllocationSnapshot(campaign.skills),
       event: campaign.activeEventDefinitionId,
       eventHistory: campaign.eventHistory.length,
@@ -220,6 +224,8 @@ export function createCampaignUiRuntime(options: CampaignUiRuntimeOptions): Camp
       root.innerHTML = renderForge(gameState);
     } else if (campaign.phase === "reward") {
       root.innerHTML = renderReward(gameState);
+    } else if (campaign.phase === "upgrade-choice") {
+      root.innerHTML = renderUpgradeChoice(gameState);
     } else if (campaign.phase === "defeat") {
       root.innerHTML = renderDefeat(gameState);
     } else {
@@ -258,68 +264,21 @@ function renderTitle(
   if (view === "settings") return renderSettings(options, continueError);
   const campaign = state.run.fullGame;
   if (!campaign) return "";
-  const profile = options.profile.profile();
   const profileStatus = options.profile.status();
   const statusMessage = continueError || (continueStatus.kind === "error" ? continueStatus.message : "");
-  const continueButton = continueStatus.kind === "empty" ? "" : `
-    <button class="secondary-action" type="button" data-action="continue-run">继续上次游戏</button>`;
-  const continueSummary = continueStatus.kind === "ready" ? `
-    <small class="continue-summary">${protocolLabel(continueStatus.summary.protocolMode, continueStatus.summary.threatLevel)} · 第 ${continueStatus.summary.actNumber} 区 · 第 ${continueStatus.summary.layerNumber} 层 · ${continueStatus.summary.committedSkillCount} 个技能 · 种子 ${continueStatus.summary.seed}</small>` : "";
+  const continueButton = continueStatus.kind === "ready" ? `
+    <button class="secondary-action" type="button" data-action="continue-run">继续游戏</button>` : "";
   return `
     <section class="campaign-panel title-panel" aria-labelledby="campaign-title">
       <p class="panel-kicker">PROJECT SLASH</p>
-      <h1 id="campaign-title">红线上升</h1>
-      <p class="panel-copy">三种主动模组。四个区域。每局最多 12 点，只能完成 28 个被动中的一部分。</p>
-      <div class="base-rules" aria-label="基础战斗规则">
-        <span>普通突进：点击目标位置</span>
-        <span>蓄力突进：整线贯穿；撞甲卸甲，命中裸露区直接击杀</span>
-        <span>终极突进：满能量后规划三段路径</span>
-      </div>
-      ${renderProtocolSelector(campaign.protocol.mode, campaign.protocol.threatLevel, profile.unlocks.maximumThreatLevel)}
+      <h1 id="campaign-title">红线</h1>
       <div class="title-actions">
         ${continueButton}
-        <button class="primary-action" type="button" data-action="start-run">开始新局</button>
+        <button class="primary-action" type="button" data-action="start-run">开始游戏</button>
       </div>
-      ${continueSummary}
       ${statusMessage ? `<p class="save-error" role="alert">${escapeHtml(statusMessage)}</p>` : ""}
       ${profileStatus.kind === "error" ? `<p class="save-error" role="alert">${escapeHtml(profileStatus.message)}</p>` : ""}
-      <nav class="title-nav" aria-label="附加菜单">
-        <button class="secondary-action" type="button" data-action="title-view" data-view="practice">首领练习</button>
-        <button class="secondary-action" type="button" data-action="title-view" data-view="dossier">作战档案</button>
-        <button class="secondary-action" type="button" data-action="title-view" data-view="settings">设置</button>
-      </nav>
-    </section>`;
-}
-
-function renderProtocolSelector(
-  selectedMode: RunProtocolMode,
-  selectedThreatLevel: number,
-  maximumThreatLevel: number,
-): string {
-  const selected = (mode: RunProtocolMode, level = 0) => (
-    selectedMode === mode && (mode !== "threat" || selectedThreatLevel === level) ? "selected" : ""
-  );
-  return `
-    <section class="protocol-selector" aria-labelledby="protocol-title">
-      <p class="panel-kicker" id="protocol-title">本局规则</p>
-      <div class="protocol-primary-options">
-        <button class="protocol-option ${selected("standard")}" type="button" data-action="configure-protocol" data-mode="standard">
-          <b>标准</b><span>死亡后结束本局。</span>
-        </button>
-        <button class="protocol-option ${selected("assist")}" type="button" data-action="configure-protocol" data-mode="assist">
-          <b>辅助</b><span>每区 ${ASSIST_PROTOCOL_RULES.rebootPerAct} 次重启；敌人前摇 +25%；敌弹速度 -15%；单独记录。</span>
-        </button>
-      </div>
-      <div class="threat-levels" aria-label="威胁等级">
-        <span><b>威胁等级</b>${maximumThreatLevel > 0 ? "效果逐级累积" : "标准难度首次通关后解锁"}</span>
-        ${THREAT_PROTOCOL_DEFINITIONS.map((definition) => {
-          const unlocked = definition.level <= maximumThreatLevel;
-          return `<button class="threat-level ${selected("threat", definition.level)}" type="button"
-            data-action="configure-protocol" data-mode="threat" data-threat-level="${definition.level}"
-            title="${escapeHtml(definition.effect)}" ${unlocked ? "" : "disabled"}>${definition.level}</button>`;
-        }).join("")}
-      </div>
-      ${selectedMode === "threat" ? `<ol class="threat-effects">${THREAT_PROTOCOL_DEFINITIONS.slice(0, selectedThreatLevel).map((definition) => `<li><b>${escapeHtml(definition.title)}</b><span>${escapeHtml(definition.effect)}</span></li>`).join("")}</ol>` : ""}
+      <button class="text-action" type="button" data-action="title-view" data-view="settings">设置</button>
     </section>`;
 }
 
@@ -786,6 +745,27 @@ function renderReward(state: GameState): string {
     </section>`;
 }
 
+function renderUpgradeChoice(state: GameState): string {
+  const draft = state.run.fullGame?.activeRewardDraft;
+  if (!draft) return "";
+  return `
+    <section class="campaign-panel upgrade-choice-panel" aria-labelledby="upgrade-choice-title">
+      <h1 id="upgrade-choice-title">选择一项能力</h1>
+      <div class="upgrade-choice-grid">
+        ${draft.candidateSkillIds.map((skillId) => {
+          const entry = rewardPoolV2EntryById(skillId);
+          return `<button class="upgrade-choice-card" type="button"
+            data-action="select-reward-skill"
+            data-offer-id="${escapeHtml(draft.offerId)}"
+            data-skill-id="${escapeHtml(skillId)}">
+            <strong>${escapeHtml(entry.name)}</strong>
+            <span>${escapeHtml(entry.effect)}</span>
+          </button>`;
+        }).join("")}
+      </div>
+    </section>`;
+}
+
 function renderVictory(state: GameState): string {
   const campaign = state.run.fullGame;
   const practice = campaign?.practiceBossDefinitionId
@@ -793,11 +773,11 @@ function renderVictory(state: GameState): string {
     : null;
   return `
     <section class="campaign-panel reward-panel" aria-labelledby="victory-title">
-      <p class="panel-kicker">${practice ? "首领练习完成" : "本局完成"}</p>
-      <h1 id="victory-title">${practice ? escapeHtml(practice.title) : "红线贯通"}</h1>
-      <p>${practice ? "练习完成，不计入正式通关纪录。" : `${protocolLabel(campaign?.protocol.mode ?? "standard", campaign?.protocol.threatLevel ?? 0)} · ${campaign?.routeProgress.completedNodeIds.length ?? 0} 节点 · ${campaign?.skills.committedSkillIds.length ?? 0} 个技能 · ${(campaign ? Math.max(0, state.elapsedMs - campaign.runMetrics.startedAtMs) / 60_000 : 0).toFixed(1)} 分钟 · 种子 ${state.run.seed}`}</p>
-      ${practice || !campaign ? "" : renderRunMetrics(campaign)}
-      <button class="primary-action" type="button" data-action="return-to-title">返回标题</button>
+      <h1 id="victory-title">${practice ? "练习完成" : "通关"}</h1>
+      <div class="defeat-actions">
+        <button class="primary-action" type="button" data-action="return-to-title">再来一次</button>
+        <button class="secondary-action" type="button" data-action="return-to-title">返回主页</button>
+      </div>
     </section>`;
 }
 
@@ -808,55 +788,15 @@ function renderDefeat(state: GameState): string {
   const canReboot = practice || (
     campaign.protocol.mode === "assist" && campaign.protocol.assistRebootsRemaining > 0
   );
-  const title = practice
-    ? "练习失败"
-    : campaign.protocol.mode === "assist" && canReboot
-      ? "可以重启"
-      : "本局结束";
-  const copy = practice
-    ? "练习失败不会影响正式纪录，可以从当前首领起点立即重试。"
-    : canReboot
-      ? `本区还剩 ${campaign.protocol.assistRebootsRemaining} 次重启；重试会消耗 1 次并恢复本节点初始状态。`
-      : `死亡会结束本局。种子 ${state.run.seed}，已完成 ${campaign.routeProgress.completedNodeIds.length} 个节点。`;
-  const deathSource = campaign.runMetrics.deathSourceLabel
-    ? deathSourceName(campaign.runMetrics.deathSourceLabel)
-    : null;
+  const title = practice ? "练习结束" : "本局结束";
   return `
     <section class="campaign-panel reward-panel defeat-panel" aria-labelledby="defeat-title">
-      <p class="panel-kicker">${practice ? "首领练习" : protocolLabel(campaign.protocol.mode, campaign.protocol.threatLevel)}</p>
       <h1 id="defeat-title">${title}</h1>
-      <p>${escapeHtml(copy)}</p>
-      ${practice || !deathSource ? "" : `<p class="death-source"><b>死亡来源</b>${escapeHtml(deathSource)}</p>`}
-      ${practice ? "" : renderRunMetrics(campaign)}
       <div class="defeat-actions">
-        ${canReboot ? `<button class="primary-action" type="button" data-action="restart-encounter">${practice ? "重试" : "使用重启"}</button>` : ""}
-        <button class="secondary-action" type="button" data-action="return-to-title">返回标题</button>
+        ${canReboot ? `<button class="primary-action" type="button" data-action="restart-encounter">再来一次</button>` : `<button class="primary-action" type="button" data-action="return-to-title">再来一次</button>`}
+        <button class="secondary-action" type="button" data-action="return-to-title">返回主页</button>
       </div>
     </section>`;
-}
-
-function deathSourceName(label: string): string {
-  if (label.startsWith("enemy:")) {
-    const definitionId = label.slice("enemy:".length);
-    return ENEMY_DOSSIER_DEFINITIONS.find((entry) => entry.enemyDefinitionId === definitionId)?.title ?? "敌人攻击";
-  }
-  if (label.startsWith("projectile:")) return label.includes("sniper") ? "狙击弹" : "敌方弹体";
-  if (label.startsWith("hazard:")) return label.includes("mine") ? "地雷爆炸" : "电弧轨道";
-  if (label.startsWith("boss:")) {
-    const definitionId = label.slice("boss:".length);
-    return BOSS_DEFINITIONS.find((boss) => boss.id === definitionId)?.title ?? "首领攻击";
-  }
-  return label === "mechanic:mirror-slash" ? "镜像路径回放" : "未知攻击";
-}
-
-function renderRunMetrics(campaign: NonNullable<GameState["run"]["fullGame"]>): string {
-  const metrics = campaign.runMetrics;
-  return `<div class="run-summary-grid" aria-label="本局统计">
-    <span><b>${metrics.kills}</b>击杀</span>
-    <span><b>${metrics.armorBreaks}</b>卸甲</span>
-    <span><b>${metrics.projectileCuts}</b>切弹</span>
-    <span><b>${metrics.bossBreaks}</b>首领破坏</span>
-  </div>`;
 }
 
 function renderPause(state: GameState): string {
@@ -878,12 +818,6 @@ function renderPause(state: GameState): string {
         <button class="secondary-action" type="button" data-action="abandon-run">放弃本局</button>
       </div>
     </section>`;
-}
-
-function protocolLabel(mode: RunProtocolMode, threatLevel: number): string {
-  if (mode === "assist") return "辅助";
-  if (mode === "threat") return `威胁 ${threatLevel}`;
-  return "标准";
 }
 
 function rewardName(reward: string): string {

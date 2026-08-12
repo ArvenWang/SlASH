@@ -32,7 +32,6 @@ import {
   FORGE_MOVE_LIMIT,
   commitSkillDraft,
   createSkillAllocationState,
-  grantSkillPoints,
   openSkillAllocationVisit,
   previewSkillPurchase,
   previewSkillRefund,
@@ -56,6 +55,13 @@ import {
   resetAssistRebootForAct,
 } from "../difficulty/protocol-system";
 import { ARC_RAIL_HAZARD_ID } from "../../content/entities/definitions";
+import {
+  REWARD_POOL_V2_ENABLED_IDS,
+  REWARD_POOL_V2_POOL_VERSION,
+  rewardPoolV2SkillDefinitionById,
+} from "../../content/upgrades/reward-pool-v2";
+import { createRewardDraft, selectRewardCandidate } from "../rewards/reward-draft-system";
+import { autoSelectRunNode } from "../run/run-director";
 
 export type CampaignCommandResult =
   | "run-started"
@@ -72,12 +78,13 @@ export type CampaignCommandResult =
   | "event-resolved"
   | "forge-token-used"
   | "forge-confirmed"
+  | "reward-skill-selected"
   | "restarted"
   | "ignored";
 
 export function createFullGameCampaignState(seed: number): FullGameCampaignState {
   return {
-    contentVersion: "full-game-v1",
+    contentVersion: "full-game-v2",
     protocol: createRunProtocolState(),
     runMetrics: {
       startedAtMs: 0,
@@ -91,7 +98,7 @@ export function createFullGameCampaignState(seed: number): FullGameCampaignState
     },
     phase: "title",
     routeProgress: createFullGameRunProgress(seed),
-    skills: createSkillAllocationState(),
+    skills: createSkillAllocationState(0),
     provisionalRouteNodeId: null,
     activeEncounterTemplateId: null,
     encounterRuntime: null,
@@ -100,6 +107,8 @@ export function createFullGameCampaignState(seed: number): FullGameCampaignState
     practiceBossDefinitionId: null,
     activeTriggerIds: [],
     pendingReward: null,
+    rewardIndex: 0,
+    activeRewardDraft: null,
     eliteSkillPointRewardsGranted: 0,
     activeEventDefinitionId: null,
     eventHistory: [],
@@ -142,17 +151,17 @@ export function initializeFullGameCampaign(state: GameState, seed: number): void
 export function startFullGameRun(state: GameState): CampaignCommandResult {
   const campaign = state.run.fullGame;
   if (!campaign || campaign.phase !== "title") return "ignored";
-  campaign.phase = "planning";
+  const nextEncounter = planNextDirectedEncounter(state);
+  if (!nextEncounter) return "ignored";
   campaign.runMetrics.startedAtMs = state.elapsedMs;
   campaign.runMetrics.lastProcessedEventSequence = state.eventSequence;
-  state.stage.phase = "planning";
-  openSkillAllocationVisit(campaign.skills, "planning");
   emitGameEvent(state, {
     type: "campaign-started",
     seed: state.run.seed,
     protocolMode: campaign.protocol.mode,
     threatLevel: campaign.protocol.threatLevel,
   });
+  startDirectedEncounter(state, nextEncounter);
   return "run-started";
 }
 
@@ -175,8 +184,10 @@ export function configureCampaignProtocol(
 
 export function returnCampaignToTitle(state: GameState): CampaignCommandResult {
   const campaign = state.run.fullGame;
-  if (!campaign || !["victory", "reward", "defeat"].includes(campaign.phase)) return "ignored";
-  const fromPhase = campaign.phase as "victory" | "reward" | "defeat";
+  if (!campaign || !["victory", "reward", "upgrade-choice", "defeat"].includes(campaign.phase)) return "ignored";
+  const fromPhase: "victory" | "reward" | "defeat" = campaign.phase === "upgrade-choice"
+    ? "reward"
+    : campaign.phase as "victory" | "reward" | "defeat";
   initializeFullGameCampaign(state, state.run.seed);
   emitGameEvent(state, { type: "campaign-returned-to-title", fromPhase });
   return "returned-to-title";
@@ -198,7 +209,7 @@ export function previewCampaignRouteNode(
   const campaign = state.run.fullGame;
   if (
     !campaign ||
-    campaign.phase !== "planning" ||
+    (campaign.phase !== "planning" && campaign.phase !== "combat") ||
     !campaign.routeProgress.availableNodeIds.includes(nodeId)
   ) {
     return "ignored";
@@ -230,7 +241,7 @@ export function discardCampaignSkillDraft(state: GameState): CampaignCommandResu
 export function confirmCampaignPlanning(state: GameState): CampaignCommandResult {
   const campaign = state.run.fullGame;
   const provisionalId = campaign?.provisionalRouteNodeId;
-  if (!campaign || campaign.phase !== "planning" || !provisionalId) return "ignored";
+  if (!campaign || (campaign.phase !== "planning" && campaign.phase !== "combat") || !provisionalId) return "ignored";
   const node = routeNodeById(campaign.routeProgress.route, provisionalId);
   const encounter = encounterForRouteNode(node, state.run.seed);
   if (!encounter && node.kind !== "event" && node.kind !== "forge") return "ignored";
@@ -252,6 +263,7 @@ export function confirmCampaignPlanning(state: GameState): CampaignCommandResult
   campaign.practiceBossDefinitionId = null;
   campaign.activeTriggerIds = [];
   campaign.pendingReward = null;
+  campaign.activeRewardDraft = null;
   state.run.selectedUpgrades = [...campaign.skills.committedSkillIds];
   if (node.kind === "event") {
     const event = eventForRouteNode(node, state.run.seed);
@@ -283,6 +295,25 @@ export function confirmCampaignPlanning(state: GameState): CampaignCommandResult
   // Immediate waves begin their warning at the exact planning-confirm tick,
   // rather than one simulation tick later.
   advanceCampaignEncounterScheduler(state);
+  return "planning-confirmed";
+}
+
+/** Validation tools may enter an authored node directly without reviving the
+ * retired player-facing route and Planning flow. */
+export function startCampaignValidationNode(state: GameState, nodeId: RouteNodeId): CampaignCommandResult {
+  const campaign = state.run.fullGame;
+  if (!campaign || campaign.phase === "combat") return "ignored";
+  const node = routeNodeById(campaign.routeProgress.route, nodeId);
+  const encounter = encounterForRouteNode(node, state.run.seed);
+  if (!encounter) return "ignored";
+  const stagedRoute = structuredClone(campaign.routeProgress);
+  stagedRoute.phase = "route-map";
+  stagedRoute.actIndex = node.actIndex;
+  stagedRoute.layerIndex = node.layerIndex;
+  stagedRoute.currentNodeId = null;
+  stagedRoute.availableNodeIds = [node.id];
+  if (selectRouteNode(stagedRoute, node.id) !== "selected") return "ignored";
+  startDirectedEncounter(state, { routeProgress: stagedRoute, node, encounter });
   return "planning-confirmed";
 }
 
@@ -447,25 +478,13 @@ function completeCampaignNode(state: GameState, nodeId: RouteNodeId): boolean {
     ? fullGameEncounterDefinitions.get(campaign.activeEncounterTemplateId)
     : null;
   const challengeReward = completedEncounter ? resolveChallengeReward(state, completedEncounter) : null;
-  let skillPointsGranted = 0;
-  let eliteRewardConverted = false;
-  if (node.reward === "skill-point") {
-    skillPointsGranted = grantSkillPoints(campaign.skills, 1);
-  } else if (node.reward === "elite-bonus") {
-    if (campaign.eliteSkillPointRewardsGranted < 2) {
-      skillPointsGranted = grantSkillPoints(campaign.skills, 1);
-      if (skillPointsGranted > 0) campaign.eliteSkillPointRewardsGranted += 1;
-    } else {
-      eliteRewardConverted = true;
-    }
-  }
   const routeResult = completeCurrentRouteNode(campaign.routeProgress);
   if (routeResult === "act-complete") resetAssistRebootForAct(campaign.protocol);
   campaign.pendingReward = {
     completedNodeId: node.id,
     routeReward: node.reward,
-    skillPointsGranted,
-    eliteRewardConverted,
+    skillPointsGranted: 0,
+    eliteRewardConverted: false,
     challenge: challengeReward,
   };
   campaign.encounterRuntime = null;
@@ -476,24 +495,60 @@ function completeCampaignNode(state: GameState, nodeId: RouteNodeId): boolean {
   campaign.activeEventDefinitionId = null;
   campaign.activeTriggerIds = [];
   state.player.bufferedAbility = null;
-  if (skillPointsGranted > 0) {
-    emitGameEvent(state, {
-      type: "skill-points-granted",
-      amount: skillPointsGranted,
-      total: campaign.skills.totalEarnedPoints,
-      source: node.id,
-    });
-  }
   emitGameEvent(state, { type: "route-node-completed", nodeId: node.id, result: routeResult });
   if (routeResult === "run-complete") {
+    campaign.pendingReward = null;
+    campaign.activeRewardDraft = null;
     campaign.phase = "victory";
     state.stage.phase = "victory";
     emitGameEvent(state, { type: "campaign-victory", seed: state.run.seed });
   } else {
-    campaign.phase = "reward";
-    state.stage.phase = "reward";
+    const draft = createRewardDraft({
+      seed: state.run.seed,
+      rewardIndex: campaign.rewardIndex,
+      ownedSkillIds: campaign.skills.committedSkillIds,
+      candidateDefinitions: REWARD_POOL_V2_ENABLED_IDS.map(rewardPoolV2SkillDefinitionById),
+      poolVersion: REWARD_POOL_V2_POOL_VERSION,
+    });
+    if (!draft.ok) throw new Error(`Cannot create V2 reward draft: ${draft.reason}.`);
+    campaign.activeRewardDraft = draft.state;
+    campaign.phase = "upgrade-choice";
+    state.stage.phase = "upgrade-choice";
   }
   return true;
+}
+
+export function selectCampaignRewardSkill(
+  state: GameState,
+  offerId: string,
+  skillId: string,
+): CampaignCommandResult {
+  const campaign = state.run.fullGame;
+  const activeDraft = campaign?.activeRewardDraft;
+  if (!campaign || campaign.phase !== "upgrade-choice" || !activeDraft) return "ignored";
+  const selection = selectRewardCandidate(activeDraft, { offerId, skillId });
+  if (!selection.ok) return "ignored";
+  const definition = rewardPoolV2SkillDefinitionById(selection.awardedSkillId);
+  if (campaign.skills.committedSkillIds.includes(definition.id)) return "ignored";
+  if (definition.prerequisites.some((id) => !campaign.skills.committedSkillIds.includes(id))) return "ignored";
+  const nextEncounter = planNextDirectedEncounter(state);
+  if (!nextEncounter) return "ignored";
+  campaign.skills.committedSkillIds.push(definition.id);
+  campaign.skills.committedSkillIds.sort();
+  campaign.skills.totalEarnedPoints = Math.max(
+    campaign.skills.totalEarnedPoints,
+    campaign.skills.committedSkillIds.length,
+  );
+  campaign.skills.visitMode = "closed";
+  campaign.skills.draftAddedSkillIds = [];
+  campaign.skills.draftRemovedSkillIds = [];
+  campaign.activeRewardDraft = selection.state;
+  campaign.rewardIndex += 1;
+  state.run.selectedUpgrades = [...campaign.skills.committedSkillIds];
+  startDirectedEncounter(state, nextEncounter);
+  campaign.activeRewardDraft = null;
+  campaign.pendingReward = null;
+  return "reward-skill-selected";
 }
 
 export function resolveCampaignEventChoice(
@@ -581,6 +636,42 @@ export function acknowledgeCampaignReward(state: GameState): CampaignCommandResu
   state.combat.totalEnemies = 0;
   openSkillAllocationVisit(campaign.skills, "planning");
   return "reward-acknowledged";
+}
+
+function planNextDirectedEncounter(state: GameState) {
+  const campaign = state.run.fullGame;
+  if (!campaign) return null;
+  const routeProgress = structuredClone(campaign.routeProgress);
+  const selection = autoSelectRunNode(routeProgress);
+  if (!selection.ok) return null;
+  const node = selection.node;
+  const encounter = encounterForRouteNode(node, state.run.seed);
+  if (!encounter) return null;
+  return { routeProgress, node, encounter };
+}
+
+function startDirectedEncounter(
+  state: GameState,
+  plan: NonNullable<ReturnType<typeof planNextDirectedEncounter>>,
+): void {
+  const campaign = state.run.fullGame;
+  if (!campaign) throw new Error("Cannot start a directed encounter without a campaign.");
+  const { routeProgress, node, encounter } = plan;
+  campaign.routeProgress = routeProgress;
+  campaign.phase = "combat";
+  campaign.provisionalRouteNodeId = null;
+  campaign.activeEncounterTemplateId = encounter.id;
+  campaign.encounterRuntime = createEncounterRuntime(encounter, state.tick, state.elapsedMs);
+  campaign.activeChallenge = createCampaignChallengeRuntime(encounter, state);
+  campaign.activeBoss = null;
+  campaign.practiceBossDefinitionId = null;
+  campaign.activeTriggerIds = [];
+  campaign.activeEventDefinitionId = null;
+  campaign.forgeTokensSpentThisVisit = 0;
+  prepareEncounterState(state, node.id, encounter.id, node.actIndex, node.kind.toUpperCase(), false);
+  spawnEncounterEnvironment(state, node.id, encounter);
+  emitGameEvent(state, { type: "route-node-started", nodeId: node.id, encounterId: encounter.id });
+  advanceCampaignEncounterScheduler(state);
 }
 
 export function markCampaignDefeat(state: GameState): void {

@@ -45,20 +45,20 @@ import type { BossRuntimeState } from "../game/bosses/types";
 const EPSILON_PRESENTATION = 1e-6;
 
 function bossHudLabel(runtime: BossRuntimeState, actionRemainingMs: number): string {
-  const seconds = actionRemainingMs > 0 ? ` ${(actionRemainingMs / 1_000).toFixed(1)}s` : "";
+  const seconds = actionRemainingMs > 0 ? ` ${(actionRemainingMs / 1_000).toFixed(1)}秒` : "";
   if (runtime.mechanics.kind === "rail-hound") {
-    return `RAIL HOUND · CORE ${runtime.breakCount}/3 · ${runtime.actionPhase.toUpperCase()}${seconds}`;
+    return `轨道猎犬 · 核心 ${runtime.breakCount}/3${seconds}`;
   }
   if (runtime.mechanics.kind === "siege-choir") {
     const objective = runtime.coreExposed
-      ? "REAR CORE OPEN"
-      : `ARMOR ${runtime.mechanics.armorBreaksThisRound}/2`;
-    return `SIEGE ${runtime.mechanics.round}/2 · ${objective} · ${runtime.actionPhase.toUpperCase()}${seconds}`;
+      ? "背部核心开放"
+      : `破甲 ${runtime.mechanics.armorBreaksThisRound}/2`;
+    return `围城合唱体 ${runtime.mechanics.round}/2 · ${objective}${seconds}`;
   }
   if (runtime.mechanics.kind === "mirror-regent") {
-    return `MIRROR · TRUE HIT ${runtime.objectiveCurrent}/3 · ${runtime.actionPhase.toUpperCase()}${seconds}`;
+    return `镜像执政官 · 真身 ${runtime.objectiveCurrent}/3${seconds}`;
   }
-  return `CONDUCTOR ${runtime.phaseIndex + 1}/4 · ${runtime.phaseId.toUpperCase()} · ${runtime.objectiveCurrent}/${runtime.objectiveTarget}`;
+  return `末班指挥者 ${runtime.phaseIndex + 1}/4 · ${runtime.objectiveCurrent}/${runtime.objectiveTarget}`;
 }
 
 interface EnemyVisualRuntime {
@@ -100,6 +100,7 @@ export interface PresentationShell {
   readonly chargeLabel: HTMLSpanElement;
   readonly chargeFill: HTMLElement;
   readonly energyLabel: HTMLSpanElement;
+  readonly energyFill: HTMLElement;
   readonly vectorLabel: HTMLSpanElement;
   readonly phaseBanner: HTMLDivElement;
   readonly phaseEyebrow: HTMLSpanElement;
@@ -663,9 +664,9 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
         : null;
       shell.stageLabel.textContent = campaign
         ? practiceBoss
-          ? `BOSS PRACTICE / ACT ${practiceBoss.actIndex + 1}`
-          : `ACT ${campaign.routeProgress.actIndex + 1} / LAYER ${campaign.routeProgress.layerIndex + 1}`
-        : `STAGE ${String(gameState.stage.index + 1).padStart(2, "0")} / ${gameState.stage.name}`;
+          ? `首领练习 · 第 ${practiceBoss.actIndex + 1} 区`
+          : `第 ${campaign.routeProgress.actIndex + 1} 区 · 第 ${campaign.routeProgress.layerIndex + 1} 场`
+        : `第 ${gameState.stage.index + 1} 关`;
       renderedStageIndex = gameState.stage.index;
       renderedStageName = gameState.stage.name;
     }
@@ -679,7 +680,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     const boss = campaign?.activeBoss;
     const enemyStatus = boss && !boss.completed
       ? bossHudLabel(boss, Math.max(0, boss.phaseDurationMs - boss.phaseElapsedMs))
-      : `${String(alive).padStart(2, "0")} HOSTILES${challengeStatus}`;
+      : `敌人 ${String(alive).padStart(2, "0")}${challengeStatus}`;
     if (renderedEnemyStatus !== enemyStatus) {
       shell.enemyLabel.textContent = enemyStatus;
       renderedEnemyStatus = enemyStatus;
@@ -692,15 +693,16 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       renderedChargeProgress = roundedCharge;
     }
     const chargeLabel = charge === null
-      ? "CHARGED READY"
-      : chargeProgress >= 1 ? "CHARGED RELEASE" : `CHARGING ${String(roundedCharge).padStart(3, "0")}%`;
+      ? "蓄力就绪"
+      : chargeProgress >= 1 ? "松开突进" : `蓄力 ${String(roundedCharge).padStart(3, "0")}%`;
     if (renderedChargeLabel !== chargeLabel) {
       shell.chargeLabel.textContent = chargeLabel;
       renderedChargeLabel = chargeLabel;
     }
     const energy = Math.round(gameState.player.ultimateEnergy);
     if (renderedEnergy !== energy) {
-      shell.energyLabel.textContent = `ENERGY ${String(energy).padStart(3, "0")} / 100`;
+      shell.energyLabel.textContent = `能量 ${String(energy).padStart(3, "0")} / 100`;
+      shell.energyFill.style.transform = `scaleX(${energy / 100})`;
       renderedEnergy = energy;
     }
     const planning = gameState.player.ultimatePlanning;
@@ -709,7 +711,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       ? `VECTOR PLAN ${planning.points.length} / ${planning.requiredPointCount} · ${Math.max(0, (planning.durationMs - planning.elapsedMs) / 1000).toFixed(1)}s`
       : execution
         ? `VECTOR EXECUTE ${execution.segmentIndex + 1} / ${execution.points.length}`
-        : energy >= 100 ? "SPACE / VECTOR READY" : "SPACE / VECTOR LOCKED";
+      : energy >= 100 ? "空格 · 大招就绪" : "大招未就绪";
     if (renderedVectorLabel !== vectorLabel) {
       shell.vectorLabel.textContent = vectorLabel;
       renderedVectorLabel = vectorLabel;
@@ -731,13 +733,9 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
         title = bossBannerTitle;
         subtitle = bossBannerSubtitle;
       } else if (waveWarningRemaining > 0 && waveWarningLabel) {
-        visible = true;
-        tone = "danger";
-        eyebrow = "HOSTILE SIGNAL";
-        title = "INBOUND";
-        subtitle = `${waveWarningLabel} // ${Math.ceil(waveWarningRemaining * 10) / 10}s`;
+        visible = false;
       } else {
-        visible = stageIntroAge < 0.86;
+        visible = false;
       }
     } else if (gameState.stage.phase === "dead") {
       visible = true;

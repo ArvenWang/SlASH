@@ -115,10 +115,12 @@ import {
   previewCampaignSkillPurchase,
   previewCampaignSkillRefund,
   resolveCampaignEventChoice,
+  selectCampaignRewardSkill,
   restartCampaignEncounter,
   returnCampaignToTitle,
   startBossPractice,
   startFullGameRun,
+  startCampaignValidationNode,
   synchronizeCampaignChallenge,
   synchronizeCampaignRunMetrics,
   useCampaignForgeToken,
@@ -674,9 +676,7 @@ export function createCampaignEncounterValidationGame(
         encounterForRouteNode(candidate, seed)?.id === encounterId
       ));
     if (!node) continue;
-    dispatchGameCommand(state, { type: "start-full-game-run" });
-    positionCampaignValidationAtNode(state, node);
-    dispatchGameCommand(state, { type: "preview-route-node", nodeId: node.id });
+    startCampaignValidationNode(state, node.id);
     drainGameEvents(state);
     return state;
   }
@@ -1527,6 +1527,8 @@ export function dispatchGameCommand(
     result = useCampaignForgeToken(state);
   } else if (command.type === "confirm-forge") {
     result = confirmCampaignForge(state);
+  } else if (command.type === "select-reward-skill") {
+    result = selectCampaignRewardSkill(state, command.offerId, command.skillId);
   } else if (command.type === "begin-charge") {
     result = beginChargedDash(state, command.target);
   } else if (command.type === "update-charge-target") {
@@ -1874,6 +1876,11 @@ export function getGameSnapshot(state: GameState): GameSnapshot {
       committedSkillIds: [...allocation.committedSkillIds],
       draftAddedSkillIds: [...allocation.draftAddedSkillIds],
       draftRemovedSkillIds: [...allocation.draftRemovedSkillIds],
+      rewardDraft: campaign.activeRewardDraft === null ? null : {
+        offerId: campaign.activeRewardDraft.offerId,
+        rewardIndex: campaign.activeRewardDraft.rewardIndex,
+        candidateSkillIds: [...campaign.activeRewardDraft.candidateSkillIds],
+      },
       activeEventDefinitionId: campaign.activeEventDefinitionId,
       eventHistoryCount: campaign.eventHistory.length,
       resources: {

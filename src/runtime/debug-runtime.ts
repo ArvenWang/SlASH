@@ -24,6 +24,7 @@ export interface SlashValidationApi {
   setCampaignChallengeScenario(encounterId?: string): void;
   setCampaignEncounterScenario(encounterId: string): void;
   setEnemyAttackScenario(definitionId: string): void;
+  clearCampaignEncounter(): void;
   dashTo(x: number, z: number): string;
   beginChargeTo(x: number, z: number): string;
   updateChargeTo(x: number, z: number): string;

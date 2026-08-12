@@ -43,6 +43,7 @@ export type GamePhase =
   | "forge"
   | "playing"
   | "reward"
+  | "upgrade-choice"
   | "dead"
   | "stage-cleared"
   | "game-complete"
@@ -429,6 +430,7 @@ export type GameCommand =
   | { type: "resolve-event-choice"; choiceId: string }
   | { type: "use-forge-token" }
   | { type: "confirm-forge" }
+  | { type: "select-reward-skill"; offerId: string; skillId: UpgradeId }
   | { type: "begin-charge"; target: Vec2 }
   | { type: "update-charge-target"; target: Vec2 }
   | { type: "release-charge"; target: Vec2 }
@@ -455,6 +457,7 @@ export type GameCommandResult =
   | "event-resolved"
   | "forge-token-used"
   | "forge-confirmed"
+  | "reward-skill-selected"
   | "charge-started"
   | "charge-updated"
   | "charge-cancelled"
@@ -574,9 +577,14 @@ export interface GameSnapshot {
     availableNodes: Array<{ id: string; kind: string; reward: string }>;
     completedNodeIds: string[];
     skillPoints: { earned: number; spent: number; unspent: number };
-    committedSkillIds: UpgradeId[];
-    draftAddedSkillIds: UpgradeId[];
-    draftRemovedSkillIds: UpgradeId[];
+      committedSkillIds: UpgradeId[];
+      draftAddedSkillIds: UpgradeId[];
+      draftRemovedSkillIds: UpgradeId[];
+      rewardDraft: null | {
+        offerId: string;
+        rewardIndex: number;
+        candidateSkillIds: UpgradeId[];
+      };
     activeEventDefinitionId: string | null;
     eventHistoryCount: number;
     resources: {
