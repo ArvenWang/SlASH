@@ -88,6 +88,10 @@ interface SimpleEntityVisualRuntime {
   readonly ownedMaterial: THREE.Material | null;
 }
 
+interface ProjectileVisualRuntime extends SimpleEntityVisualRuntime {
+  readonly marker: THREE.Object3D;
+}
+
 export interface PresentationShell {
   readonly canvas: HTMLCanvasElement;
   readonly reticle: HTMLDivElement;
@@ -120,7 +124,13 @@ export interface PresentationRuntime {
     postFx: ReturnType<RendererRuntime["postFx"]["snapshot"]>;
     environment: ReturnType<RendererRuntime["environment"]["snapshot"]>;
     enemyTelegraphs: { visibleEnemyIds: string[] };
-    bossMechanics: { pathVisible: boolean; objectiveNodeCount: number };
+    bossMechanics: { pathVisible: boolean; objectiveNodeCount: number; weakPointVisible: boolean };
+    readability: {
+      projectileMarkerCount: number;
+      obstacleSolidCount: number;
+      hazardGroundMarkerCount: number;
+      armorPlateCount: number;
+    };
   };
   dispose(): void;
 }
@@ -298,6 +308,8 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   const enemyTelegraphRingGeometry = new THREE.RingGeometry(0.72, 1, 36);
   enemyTelegraphRingGeometry.rotateX(-Math.PI / 2);
   const projectileGeometry = new THREE.SphereGeometry(1, 10, 8);
+  const projectileMarkerGeometry = new THREE.ConeGeometry(0.72, 2.4, 3);
+  projectileMarkerGeometry.rotateZ(-Math.PI / 2);
   const hostileProjectileMaterial = new THREE.MeshBasicMaterial({ color: 0xff4c39, toneMapped: false });
   const returnedProjectileMaterial = new THREE.MeshBasicMaterial({ color: 0xc7ffff, toneMapped: false });
   const obstacleBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
@@ -339,8 +351,20 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     return mesh;
   });
   scene.add(bossObjectiveRoot);
+  const bossWeakPointMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.92,
+    depthWrite: false,
+  });
+  const bossWeakPoint = new THREE.Mesh(new THREE.OctahedronGeometry(0.72, 0), bossWeakPointMaterial);
+  bossWeakPoint.name = "boss-weak-point";
+  bossWeakPoint.visible = false;
+  bossWeakPoint.renderOrder = 7;
+  scene.add(bossWeakPoint);
   const enemyVisuals = new Map<string, EnemyVisualRuntime>();
-  const projectileVisuals = new Map<string, SimpleEntityVisualRuntime>();
+  const projectileVisuals = new Map<string, ProjectileVisualRuntime>();
   const obstacleVisuals = new Map<string, SimpleEntityVisualRuntime>();
   const hazardVisuals = new Map<string, SimpleEntityVisualRuntime>();
   let renderedStageIndex = -1;
@@ -487,16 +511,26 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   }
 
   function createProjectileVisual(projectile: ProjectileState): void {
+    const root = new THREE.Group();
+    root.name = `projectile/${projectile.id}`;
     const mesh = new THREE.Mesh(
       projectileGeometry,
       projectile.faction === "player" ? returnedProjectileMaterial : hostileProjectileMaterial,
     );
-    mesh.name = `projectile/${projectile.id}`;
+    mesh.name = "projectile-core";
     mesh.scale.setScalar(projectile.radius);
-    mesh.position.set(projectile.position.x, 0.72, projectile.position.z);
     mesh.renderOrder = 6;
-    scene.add(mesh);
-    projectileVisuals.set(projectile.id, { root: mesh, ownedMaterial: null });
+    const marker = new THREE.Mesh(
+      projectileMarkerGeometry,
+      projectile.faction === "player" ? returnedProjectileMaterial : hostileProjectileMaterial,
+    );
+    marker.name = "projectile-direction-marker";
+    marker.scale.setScalar(Math.max(0.12, projectile.radius * 0.85));
+    marker.renderOrder = 6;
+    root.add(mesh, marker);
+    root.position.set(projectile.position.x, 0.72, projectile.position.z);
+    scene.add(root);
+    projectileVisuals.set(projectile.id, { root, marker, ownedMaterial: null });
   }
 
   function createObstacleVisual(obstacle: ObstacleState): void {
@@ -578,9 +612,9 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       const visual = projectileVisuals.get(projectile.id);
       if (!visual) continue;
       visual.root.position.set(projectile.position.x, 0.72, projectile.position.z);
-      if (visual.root instanceof THREE.Mesh) {
-        visual.root.material = projectile.faction === "player" ? returnedProjectileMaterial : hostileProjectileMaterial;
-      }
+      const heading = Math.atan2(projectile.velocity.z, projectile.velocity.x);
+      visual.marker.rotation.y = -heading;
+      if (visual.marker instanceof THREE.Mesh) visual.marker.material = projectile.faction === "player" ? returnedProjectileMaterial : hostileProjectileMaterial;
     }
 
     const obstacleIds = new Set(gameState.obstacles.map((obstacle) => obstacle.id));
@@ -861,6 +895,14 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       mesh.material.color.setHex(node.reached ? 0x5d7377 : expected ? 0xf0feff : 0x79a7ad);
       mesh.material.opacity = node.reached ? 0.18 : expected ? 0.78 : 0.38;
     });
+    const bossEntity = runtime ? gameState.enemies.find((enemy) => enemy.id === runtime.entityId && enemy.alive) : null;
+    bossWeakPoint.visible = Boolean(runtime?.coreExposed && bossEntity);
+    if (runtime?.coreExposed && bossEntity) {
+      bossWeakPoint.position.set(bossEntity.position.x, 1.8, bossEntity.position.z);
+      const pulse = 1 + Math.sin(worldTime * 11) * 0.16;
+      bossWeakPoint.scale.setScalar(pulse);
+      bossWeakPoint.rotation.y += 0.05;
+    }
   }
 
   function triggerDashVisual(event: Extract<GameEvent, { type: "dash-started" | "dash-reflected" | "dash-path-segment-started" }>): void {
@@ -1352,6 +1394,13 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
         bossMechanics: {
           pathVisible: bossPathLine.visible,
           objectiveNodeCount: bossObjectiveMeshes.filter((mesh) => mesh.visible).length,
+          weakPointVisible: bossWeakPoint.visible,
+        },
+        readability: {
+          projectileMarkerCount: projectileVisuals.size,
+          obstacleSolidCount: obstacleVisuals.size,
+          hazardGroundMarkerCount: hazardVisuals.size,
+          armorPlateCount: [...enemyVisuals.values()].reduce((total, visual) => total + [...visual.armorMeshes.values()].filter((mesh) => mesh.visible).length, 0),
         },
       };
     },
@@ -1360,7 +1409,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       enemyVisuals.clear();
       clearWorldEntityVisuals();
       playerActor.dispose();
-      scene.remove(previewLine, storedPathLine, ultimatePlanLine, bossPathLine, bossObjectiveRoot, enemyContactShadows);
+      scene.remove(previewLine, storedPathLine, ultimatePlanLine, bossPathLine, bossObjectiveRoot, bossWeakPoint, enemyContactShadows);
       previewGeometry.dispose();
       previewMaterial.dispose();
       storedPathGeometry.dispose();
@@ -1370,6 +1419,8 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       bossPathGeometry.dispose();
       bossPathMaterial.dispose();
       bossObjectiveGeometry.dispose();
+      bossWeakPoint.geometry.dispose();
+      bossWeakPointMaterial.dispose();
       bossObjectiveMeshes.forEach((mesh) => {
         if (mesh.material instanceof THREE.Material) mesh.material.dispose();
       });
@@ -1380,6 +1431,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       armorPlateMaterial.dispose();
       enemyTelegraphRingGeometry.dispose();
       projectileGeometry.dispose();
+      projectileMarkerGeometry.dispose();
       hostileProjectileMaterial.dispose();
       returnedProjectileMaterial.dispose();
       obstacleBoxGeometry.dispose();

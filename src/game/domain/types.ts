@@ -565,6 +565,7 @@ export interface GameSnapshot {
       projectileCuts: number;
       bossBreaks: number;
       deathSourceId: string | null;
+      deathSourceLabel: string | null;
     };
     actIndex: number;
     layerIndex: number;

@@ -15,7 +15,7 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 已增加 `FULL_GAME_CONTENT_MANIFEST.json`、统一术语表和 `npm run verify:full-game-design`；机器门已确认 4 Act、28 Skill、10+4 Enemy、4 Boss、3/4/2 Entity、53 个 Encounter 目标和 12/28 点数上限一致。
 - 技能经济已改为完整 Run：开局 2 点、每 Act 保证 2 点、Elite 最多补 2 点；保证 10、上限 12，只能购买 28 节点中的 42.86%。
 - Charged Dash 正式规则锁定为：整条路线贯穿敌群；命中真实 Armor Coverage 就卸对应甲；命中裸露区就击杀；无甲背部可直接处决，后背有甲则先卸后甲。
-- 当前已完成根战斗、28 个被动 Hook、Projectile / Obstacle / Hazard、Event / Forge、Safe Save / Continue、Replay v3、10+4 Enemy、49 个非 Boss Encounter、4 个机制型 Boss、Profile / Dossier / Settings 与 Standard / Assist / Threat；53 / 53 Encounter 已有真实 Definition 和生命周期。完整 Run 矩阵、最终 UI、性能与真人体验门仍按计划推进。
+- 当前已完成根战斗、28 个被动、弹体 / 障碍 / 危险区、事件 / 重接、安全存档、回放、14 类敌人、49 个非首领遭遇、4 个机制型首领、档案 / 设置与三类局内规则；53 / 53 遭遇均有真实生命周期。100 种种子 × 4 套构筑的完整回放矩阵已通过；性能、兼容性和真人体验门仍按计划推进。
 
 ## Full Game 已完成内容
 
@@ -99,20 +99,22 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - [x] P8 Save / Replay：Run Save 升级为 v2 并校验 Protocol / Reboot；Replay 升级为 v3 并记录 Title Protocol 命令；1,000 次混合协议 Safe Save Roundtrip 与 Protocol Replay Hash 通过。
 - [x] P8 当前自动化：28 个测试文件 / 176 项通过；TypeScript、Build 通过；Profile / Protocol 浏览器门覆盖 Assist 重启、档案、设置、损坏恢复、44px 与 390×844，Console 0。
 - [x] P9 第一批产品流程：Esc Pause / Resume / Abandon、当前构筑与操作说明、触控 Ultimate / Cancel 52px 按钮、Defeat / Victory 本局击杀 / 卸甲 / 切弹 / Boss Break 统计；390×844 真实页面、最小 44px 与 Console 0 通过。
+- [x] P9 收口：4 区 52 个候选节点路线图、稳定死亡来源、中文主界面、弹体方向标、实体轮廓、危险区地面标记、护甲片与首领弱点形状提示；灰度实体截图与非颜色结构门通过。
+- [x] P10 完整局基线：标准规则从标题进入，完成 4 区 / 24 节点 / 4 首领，最终回放 Hash 一致；100 种种子 × 4 套代表构筑共 400 局全部完成并一致。
 
 ## Full Game 下一步计划
 
-1. 继续 P9：补充可读死亡来源、完整 Run Map 历史路径、非颜色提示和灰度检查。
-2. 完成全流程 UI / Touch / Accessibility，把 Boss Objective、死亡原因和全部输入做成最终产品流程。
-3. 内容与元系统完成后执行 100 Seed × 4 Build Replay Matrix、完整 Run、性能与真人体验门。
+1. 完成 P10 浏览器矩阵、性能和稳定性自动门。
+2. 复核完整移动端输入、存档、首领和档案端到端流程。
+3. 完成最终审计后提交并推送；真人体验门只记录真实外部门，不冒充完成。
 4. 每个有意义变更继续执行自动化、截图、`render_game_to_text` 和 Console 检查，再依 P8–P11 推进。
 
 ## Full Game 当前问题与边界
 
 - 视觉 Agent 的大量角色 / 动画 / Asset 修改尚未提交，本分支不会从其脏工作树复制文件；最终只合并稳定 Commit。
-- 53 / 53 Encounter 已接入，Boss 路线不再锁定；但尚未完成真实完整 4 Act Run 的 100 Seed × 4 Build、P95 时长和真人 3 次 / Boss 门，当前仍不能宣称 Hard Gate FG-H01 已关闭。
+- 53 / 53 遭遇已接入；完整标准局和 400 局回放矩阵已完成。P95 真人时长和每首领 3 次真人门仍需真实测试者。
 - Run Save v2 与 Profile v1 已覆盖 Protocol、Assist、设置和统计边界；仍需在最终完整 Run 矩阵中再次验证跨 Act Reboot 与首次标准通关解锁 Threat 的端到端流程。
-- Replay v3 已通过代表性 Campaign Protocol 路径与 Boss 失败重开 Hash Match，但 FG-R01 要求的 100 Seed × 4 Build 完整回放仍未执行。
+- 回放 v3 已通过 100 种种子 × 4 套构筑完整局矩阵，最终 Hash 一致率 100%。
 - 现有 `game.ts` 仍承担较多编排；新增系统必须进入独立模块，不能继续形成 God Object。
 - Route Graph 第一版曾因错误旋转目标映射造成部分 Seed 节点不可达；已改成旋转源投影，并用 100 Seed 回归锁住该问题。
 - Planning Board 第一版因高内容面板仍采用垂直居中，导致顶部路线卡被推到视口外；真实浏览器已发现并改为顶部展开，普通点击回归通过。

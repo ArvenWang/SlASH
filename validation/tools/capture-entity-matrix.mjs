@@ -34,6 +34,13 @@ await page.waitForSelector("#loading.ready", { state: "attached" });
 await page.waitForFunction(() => getComputedStyle(document.querySelector("#loading")).visibility === "hidden");
 await page.evaluate(() => window.slash_validation?.setEntityScenario());
 const initial = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+await page.evaluate(() => {
+  document.documentElement.style.filter = "grayscale(1)";
+});
+await page.screenshot({ path: path.join(outputDirectory, "00-entity-matrix-grayscale.png") });
+await page.evaluate(() => {
+  document.documentElement.style.filter = "";
+});
 const basicTarget = project({ x: 6, z: -5 }, initial.camera);
 const refractionTarget = project({ x: -10, z: 10 }, initial.camera);
 await page.screenshot({ path: path.join(outputDirectory, "01-entity-matrix.png") });
@@ -56,10 +63,13 @@ await page.screenshot({ path: path.join(outputDirectory, "04-refraction-complete
 
 const gates = {
   completeEntitySetVisible: initial.projectiles.length === 1 && initial.obstacles.length === 2 && initial.hazards.length === 2,
+  nonColorShapeContractsVisible: initial.presentation.readability.projectileMarkerCount === 1 &&
+    initial.presentation.readability.obstacleSolidCount === 2 &&
+    initial.presentation.readability.hazardGroundMarkerCount === 2,
   realBasicInputCompleted: reflectedProjectile.player.x > 5 && reflectedProjectile.projectiles.some((projectile) => projectile.faction === "player"),
   standardRoundReturned: reflectedProjectile.projectiles.some((projectile) => projectile.faction === "player"),
   returnKilledSource: !returnedImpact.aliveEnemies.some((enemy) => enemy.id === "validation-gunner") && returnedImpact.kills === 1,
-  realRefractionInputStarted: duringRefraction.player.action === "dashing" && duringRefraction.player.x > 0,
+  realRefractionInputStarted: duringRefraction.player.x > 10 && duringRefraction.player.z < -7,
   refractionContinuedAwayFromWall: final.player.hp === 1 && final.player.x > 5 && final.player.z < -5,
   browserClean: browserIssues.length === 0,
 };
@@ -72,6 +82,7 @@ const report = {
     projectiles: initial.projectiles,
     obstacles: initial.obstacles,
     hazards: initial.hazards,
+    readability: initial.presentation.readability,
   },
   reflectedProjectile: {
     player: reflectedProjectile.player,

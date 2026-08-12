@@ -504,6 +504,8 @@ kbd {
 
 .defeat-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 24px; }
 .defeat-actions > :only-child { grid-column: 1 / -1; }
+.death-source { display: grid; gap: 5px; padding: 12px 14px; border-left: 3px solid #e8f2f3; background: rgba(232, 242, 243, 0.06); }
+.death-source b { font-size: 9px; letter-spacing: 0.1em; }
 
 .run-summary-grid {
   display: grid;
@@ -622,6 +624,27 @@ body.reduced-motion *::after { scroll-behavior: auto !important; transition-dura
 
 .run-resource-strip span { display: inline-flex; align-items: baseline; gap: 6px; }
 .run-resource-strip b { color: #e8f2f3; font-size: 13px; }
+
+.run-map {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px 28px;
+  border-bottom: 1px solid rgba(213, 232, 234, 0.12);
+}
+.run-map-act { min-width: 0; opacity: 0.38; }
+.run-map-act.state-current { opacity: 1; }
+.run-map-act.state-completed { opacity: 0.72; }
+.run-map-act > b { display: block; margin-bottom: 7px; color: #9cabad; font-size: 9px; letter-spacing: 0.08em; }
+.run-map-act > div { display: flex; align-items: center; min-width: 0; }
+.run-map-layer { display: inline-flex; align-items: center; }
+.run-map-layer em { margin: 0 2px; color: #536063; font-style: normal; }
+.map-node { display: inline-grid; place-items: center; width: 14px; height: 14px; color: #829093; font-size: 9px; font-style: normal; }
+.map-node.state-available { color: #e6ffff; outline: 1px solid #a9c9ce; }
+.map-node.state-selected { color: #071014; background: #e6ffff; outline: 1px solid #e6ffff; }
+.map-node.state-active { color: #fff; outline: 2px solid #fff; }
+.map-node.state-completed { color: #dceced; text-decoration: line-through; }
+.run-map > small { grid-column: 1 / -1; color: #778588; font-size: 8px; letter-spacing: 0.05em; }
 
 .route-panel,
 .skill-board { padding: 24px; }
@@ -870,6 +893,8 @@ body.reduced-motion *::after { scroll-behavior: auto !important; transition-dura
   .point-counter { min-width: 96px; }
   .point-counter strong { font-size: 32px; }
   .planning-grid { grid-template-columns: 1fr; }
+  .run-map { grid-template-columns: 1fr; padding: 12px 18px; }
+  .run-map-act.state-future { display: none; }
   .route-panel { border-right: 0; border-bottom: 1px solid rgba(213, 232, 234, 0.16); padding: 18px; }
   .skill-board { padding: 18px; }
   .skill-module-grid { grid-template-columns: 1fr; }

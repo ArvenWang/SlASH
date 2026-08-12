@@ -87,6 +87,7 @@ export function createFullGameCampaignState(seed: number): FullGameCampaignState
       bossBreaks: 0,
       lastProcessedEventSequence: 0,
       deathSourceId: null,
+      deathSourceLabel: null,
     },
     phase: "title",
     routeProgress: createFullGameRunProgress(seed),
@@ -388,9 +389,24 @@ export function synchronizeCampaignRunMetrics(state: GameState): void {
     else if (event.type === "armor-broken") metrics.armorBreaks += 1;
     else if (event.type === "projectile-destroyed") metrics.projectileCuts += 1;
     else if (event.type === "boss-break") metrics.bossBreaks += 1;
-    else if (event.type === "player-died") metrics.deathSourceId = event.enemyId;
+    else if (event.type === "player-died") {
+      metrics.deathSourceId = event.enemyId;
+      metrics.deathSourceLabel = deathSourceLabelAtImpact(state, event.enemyId);
+    }
     metrics.lastProcessedEventSequence = Math.max(metrics.lastProcessedEventSequence, event.sequence);
   }
+}
+
+function deathSourceLabelAtImpact(state: GameState, sourceId: string): string {
+  const enemy = state.enemies.find((candidate) => candidate.id === sourceId);
+  if (enemy) return `enemy:${enemy.definitionId}`;
+  const projectile = state.projectiles.find((candidate) => candidate.id === sourceId);
+  if (projectile) return `projectile:${projectile.definitionId}`;
+  const hazard = state.hazards.find((candidate) => candidate.id === sourceId);
+  if (hazard) return `hazard:${hazard.definitionId}`;
+  const boss = state.run.fullGame?.activeBoss;
+  if (boss && sourceId.startsWith(boss.entityId)) return `boss:${boss.definitionId}`;
+  return sourceId.includes("mirror-slash") ? "mechanic:mirror-slash" : `source:${sourceId}`;
 }
 
 export function campaignEncounterCanComplete(state: GameState): boolean {

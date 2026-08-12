@@ -50,6 +50,7 @@ export interface CampaignRunMetricsState {
   bossBreaks: number;
   lastProcessedEventSequence: number;
   deathSourceId: string | null;
+  deathSourceLabel: string | null;
 }
 
 export interface FullGameCampaignState {

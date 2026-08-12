@@ -268,7 +268,7 @@ function renderTitle(
   return `
     <section class="campaign-panel title-panel" aria-labelledby="campaign-title">
       <p class="panel-kicker">PROJECT SLASH</p>
-      <h1 id="campaign-title">REDLINE ASCENT</h1>
+      <h1 id="campaign-title">红线上升</h1>
       <p class="panel-copy">三种主动模组。四个区域。每局最多 12 点，只能完成 28 个被动中的一部分。</p>
       <div class="base-rules" aria-label="基础战斗规则">
         <span>普通突进：点击目标位置</span>
@@ -310,7 +310,7 @@ function renderProtocolSelector(
           <b>辅助</b><span>每区 ${ASSIST_PROTOCOL_RULES.rebootPerAct} 次重启；敌人前摇 +25%；敌弹速度 -15%；单独记录。</span>
         </button>
       </div>
-      <div class="threat-levels" aria-label="Threat 等级">
+      <div class="threat-levels" aria-label="威胁等级">
         <span><b>威胁等级</b>${maximumThreatLevel > 0 ? "效果逐级累积" : "标准难度首次通关后解锁"}</span>
         ${THREAT_PROTOCOL_DEFINITIONS.map((definition) => {
           const unlocked = definition.level <= maximumThreatLevel;
@@ -333,7 +333,7 @@ function renderPractice(options: CampaignUiRuntimeOptions): string {
         return `<article class="library-card ${available ? "" : "locked"}">
           <span>第 ${boss.actIndex + 1} 区 · ${available ? "已发现" : "未发现"}</span>
           <h2>${available ? escapeHtml(boss.title) : "未识别首领"}</h2>
-          <p>${available ? escapeHtml(boss.summary) : "在正式 Run 中抵达该首领后，练习入口与完整机制说明会永久解锁。"}</p>
+          <p>${available ? escapeHtml(boss.summary) : "在正式游戏中抵达该首领后解锁。"}</p>
           <button class="secondary-action" type="button" data-action="start-boss-practice" data-boss-id="${escapeHtml(boss.id)}" ${available ? "" : "disabled"}>${available ? "开始练习" : "尚未解锁"}</button>
         </article>`;
       }).join("")}</div>
@@ -361,7 +361,7 @@ function renderDossier(options: CampaignUiRuntimeOptions): string {
         return `<article class="dossier-card ${available ? "" : "locked"}">
           <span>${available ? (entry.classification === "ELITE" ? "精英" : "普通") : "未知"}</span>
           <h3>${available ? escapeHtml(entry.title) : "未识别单位"}</h3>
-          <dl>${available ? `<div><dt>行为</dt><dd>${escapeHtml(entry.behavior)}</dd></div><div><dt>对策</dt><dd>${escapeHtml(entry.counterplay)}</dd></div>` : `<div><dt>记录</dt><dd>在正式 Run 中遭遇后解锁。</dd></div>`}</dl>
+          <dl>${available ? `<div><dt>行为</dt><dd>${escapeHtml(entry.behavior)}</dd></div><div><dt>对策</dt><dd>${escapeHtml(entry.counterplay)}</dd></div>` : `<div><dt>记录</dt><dd>在正式游戏中遭遇后解锁。</dd></div>`}</dl>
         </article>`;
       }).join("")}</div>
       <h2 class="library-section-title">首领记录</h2>
@@ -423,7 +423,7 @@ function renderPlanning(state: GameState): string {
       <header class="planning-header">
         <div>
           <p class="panel-kicker">第 ${campaign.routeProgress.actIndex + 1} 区 · 第 ${campaign.routeProgress.layerIndex + 1} 层</p>
-          <h1 id="planning-title">${escapeHtml(act?.name ?? "PLANNING BOARD")}</h1>
+          <h1 id="planning-title">${escapeHtml(actName(act?.index ?? 0))}</h1>
           <p>先暂定下一节点，再用已知威胁决定是否花点；确认前路线与技能都不会锁定。</p>
         </div>
         <div class="point-counter" aria-label="技能点">
@@ -434,6 +434,8 @@ function renderPlanning(state: GameState): string {
       </header>
 
       ${renderRunResources(state)}
+
+      ${renderRunMap(state)}
 
       <div class="planning-grid">
         <aside class="route-panel" aria-labelledby="route-title">
@@ -463,6 +465,115 @@ function renderPlanning(state: GameState): string {
     </section>`;
 }
 
+function renderRunMap(state: GameState): string {
+  const campaign = state.run.fullGame;
+  if (!campaign) return "";
+  const progress = campaign.routeProgress;
+  return `<section class="run-map" aria-label="完整路线图">
+    ${progress.route.acts.map((act) => {
+      const actState = act.actIndex < progress.actIndex
+        ? "completed"
+        : act.actIndex === progress.actIndex ? "current" : "future";
+      return `<div class="run-map-act state-${actState}">
+        <b>第 ${act.actIndex + 1} 区</b>
+        <div>${act.layers.map((layer, layerIndex) => `<span class="run-map-layer">${layer.map((node) => {
+          const stateName = progress.completedNodeIds.includes(node.id)
+            ? "completed"
+            : progress.currentNodeId === node.id
+              ? "active"
+              : campaign.provisionalRouteNodeId === node.id
+                ? "selected"
+                : progress.availableNodeIds.includes(node.id)
+                  ? "available"
+                  : "unknown";
+          return `<i class="map-node kind-${node.kind} state-${stateName}" title="${escapeHtml(routeKindName(node.kind))}">${routeNodeSymbol(node.kind)}</i>`;
+        }).join("")}${layerIndex < act.layers.length - 1 ? "<em>›</em>" : ""}</span>`).join("")}</div>
+      </div>`;
+    }).join("")}
+    <small>● 战斗　◆ 精英　△ 挑战　○ 事件　□ 重接　★ 首领</small>
+  </section>`;
+}
+
+function routeNodeSymbol(kind: string): string {
+  if (kind === "elite") return "◆";
+  if (kind === "challenge") return "△";
+  if (kind === "event") return "○";
+  if (kind === "forge") return "□";
+  if (kind === "boss") return "★";
+  return "●";
+}
+
+function routeKindName(kind: string): string {
+  if (kind === "elite") return "精英";
+  if (kind === "challenge") return "挑战";
+  if (kind === "event") return "事件";
+  if (kind === "forge") return "构筑重接";
+  if (kind === "boss") return "首领";
+  return "战斗";
+}
+
+function actName(index: number): string {
+  return ["抵达场", "压缩熔炉", "镜像档案库", "红线圣堂"][index] ?? `第 ${index + 1} 区`;
+}
+
+function tagName(tag: string): string {
+  const labels: Readonly<Record<string, string>> = {
+    STANDARD: "普通",
+    ELITE: "精英",
+    CHALLENGE: "挑战",
+    BOSS: "首领",
+    "FINAL BOSS": "最终首领",
+    STRIKER: "突击兵",
+    GUNNER: "枪手",
+    LANCER: "长枪兵",
+    CONSTRUCTOR: "构筑者",
+    MINE: "地雷",
+    SNIPER: "狙击手",
+    VANGUARD: "先锋",
+    BASTION: "堡垒",
+    BLINK: "闪现",
+    CONDUCTOR: "指挥者",
+    ARMOR: "装甲",
+    PROJECTILE: "弹幕",
+    OBSTACLE: "障碍",
+    HAZARD: "危险区",
+    RAIL: "轨道",
+    ANCHOR: "锚柱",
+    LANES: "通道",
+    MIXED: "混合",
+    "PRE-BOSS": "首领前哨",
+    "2 WAVES": "两波",
+    "3 WAVES": "三波",
+  };
+  return labels[tag.toUpperCase()] ?? tag;
+}
+
+function skillCopy(copy: string): string {
+  return copy
+    .replaceAll("Basic Dash", "普通突进")
+    .replaceAll("Charged Dash", "破阵突进")
+    .replaceAll("Basic", "普通突进")
+    .replaceAll("Charged", "破阵突进")
+    .replaceAll("Ultimate", "终极突进")
+    .replaceAll("Vector Focus", "矢量专注")
+    .replaceAll("Dash", "突进")
+    .replaceAll("Recovery", "收势")
+    .replaceAll("Transit", "突进途中")
+    .replaceAll("Energy", "能量")
+    .replaceAll("Stored Line", "旧路径")
+    .replaceAll("Cross Execution", "交叉处决")
+    .replaceAll("Cross", "交叉冲击")
+    .replaceAll("Echo", "残响斩")
+    .replaceAll("Armor Coverage", "护甲覆盖区")
+    .replaceAll("Armor Part", "护甲片")
+    .replaceAll("Armor", "护甲")
+    .replaceAll("Projectile", "弹体")
+    .replaceAll("Obstacle", "障碍物")
+    .replaceAll("Boss", "首领")
+    .replaceAll("Charging", "蓄力")
+    .replaceAll("Planning", "规划");
+}
+
 function renderRouteCard(
   node: ReturnType<typeof availableRouteNodes>[number],
   selected: boolean,
@@ -471,11 +582,11 @@ function renderRouteCard(
   const preview = threatPreviewForRouteNode(node, runSeed);
   return `
     <button class="route-card ${selected ? "selected" : ""}" type="button" data-action="select-route" data-node-id="${escapeHtml(node.id)}" ${preview.available ? "" : "disabled"}>
-      <span class="route-kind">${escapeHtml(node.kind.toUpperCase())}</span>
+      <span class="route-kind">${escapeHtml(routeKindName(node.kind))}</span>
       <strong>${escapeHtml(preview.title)}</strong>
       <p>${escapeHtml(preview.summary)}</p>
-      <div class="tag-row">${preview.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>
-      ${preview.challengeCondition ? `<p class="challenge-contract"><b>CONDITION</b> ${escapeHtml(preview.challengeCondition)}<br><b>REWARD</b> ${escapeHtml(preview.challengeReward ?? "无额外奖励")}</p>` : ""}
+      <div class="tag-row">${preview.tags.map((tag) => `<span>${escapeHtml(tagName(tag))}</span>`).join("")}</div>
+      ${preview.challengeCondition ? `<p class="challenge-contract"><b>条件</b> ${escapeHtml(preview.challengeCondition)}<br><b>奖励</b> ${escapeHtml(preview.challengeReward ?? "无额外奖励")}</p>` : ""}
       <small>${preview.hostileCount} 名敌人 · ${preview.waveCount} 波 · 压力 ${preview.pressure.toFixed(1)}</small>
       <small>装甲 ${preview.armoredHostileCount} · 弹幕 ${preview.projectileSourceCount} · 障碍 ${preview.obstacleSourceCount} · 危险区 ${preview.hazardSourceCount}</small>
       <small>节点奖励：${escapeHtml(rewardName(node.reward))}</small>
@@ -515,7 +626,7 @@ function renderIntelLookahead(state: GameState, depthLimit: number): string {
         <b>后续第 ${depth} 层</b>
         ${frontier.map((node) => {
           const preview = threatPreviewForRouteNode(node, state.run.seed);
-          return `<span><i>${escapeHtml(node.kind.toUpperCase())}</i>${escapeHtml(preview.title)}<small>${escapeHtml(node.reward.toUpperCase())}</small></span>`;
+          return `<span><i>${escapeHtml(routeKindName(node.kind))}</i>${escapeHtml(preview.title)}<small>${escapeHtml(rewardName(node.reward))}</small></span>`;
         }).join("")}
       </div>`);
   }
@@ -538,9 +649,8 @@ function renderSkillModule(
     <section class="skill-module module-${module}">
       <div class="module-root">
         <span>基础能力 · 0 点</span>
-        <h3>${escapeHtml(root?.nameEn ?? module.toUpperCase())}</h3>
-        <strong>${escapeHtml(root?.nameZh ?? module)}</strong>
-        <p>${escapeHtml(root?.description ?? "")}</p>
+        <h3>${escapeHtml(root?.nameZh ?? module)}</h3>
+        <p>${escapeHtml(skillCopy(root?.description ?? ""))}</p>
       </div>
       <div class="module-branches">
         ${branches.map((branchId) => `
@@ -567,12 +677,12 @@ function renderSkillNode(
       aria-label="${escapeHtml(`${definition.presentation.code} ${definition.presentation.nameZh} ${status}`)}">
       <span class="skill-connector" aria-hidden="true"></span>
       <span class="skill-meta"><b>${escapeHtml(definition.presentation.code)}</b><i>${escapeHtml(status)}</i></span>
-      <strong>${escapeHtml(definition.presentation.nameZh)} <small>${escapeHtml(definition.presentation.nameEn)}</small></strong>
+      <strong>${escapeHtml(definition.presentation.nameZh)}</strong>
       <dl>
-        <div><dt>效果</dt><dd>${escapeHtml(definition.presentation.effect)}</dd></div>
-        <div><dt>触发</dt><dd>${escapeHtml(definition.presentation.trigger)}</dd></div>
-        <div><dt>限制</dt><dd>${escapeHtml(definition.presentation.limit)}</dd></div>
-        <div><dt>前置</dt><dd>${escapeHtml(definition.presentation.prerequisite)}</dd></div>
+        <div><dt>效果</dt><dd>${escapeHtml(skillCopy(definition.presentation.effect))}</dd></div>
+        <div><dt>触发</dt><dd>${escapeHtml(skillCopy(definition.presentation.trigger))}</dd></div>
+        <div><dt>限制</dt><dd>${escapeHtml(skillCopy(definition.presentation.limit))}</dd></div>
+        <div><dt>前置</dt><dd>${escapeHtml(skillCopy(definition.presentation.prerequisite))}</dd></div>
       </dl>
     </button>`;
 }
@@ -585,7 +695,7 @@ function renderEvent(state: GameState): string {
   if (!campaign || !definition) {
     return `
       <section class="campaign-panel event-panel" aria-labelledby="event-title">
-        <p class="panel-kicker">EVENT DATA ERROR</p>
+        <p class="panel-kicker">事件数据错误</p>
         <h1 id="event-title">事件内容不可用</h1>
         <p>本节点没有匹配到有效事件定义。为保护本局状态，系统不会自动选择或发放资源。</p>
       </section>`;
@@ -599,7 +709,7 @@ function renderEvent(state: GameState): string {
       <div class="event-choice-grid">
         ${definition.choices.map((choice, index) => `
           <button class="event-choice" type="button" data-action="event-choice" data-choice-id="${escapeHtml(choice.id)}">
-            <span>OPTION ${index + 1}</span>
+            <span>选项 ${index + 1}</span>
             <strong>${escapeHtml(choice.title)}</strong>
             <p>${escapeHtml(choice.summary)}</p>
             <small>${choice.effects.map((effect) => {
@@ -627,7 +737,7 @@ function renderForge(state: GameState): string {
           <h1 id="forge-title">构筑重接</h1>
           <p>可移除最多 ${allocation.forgeMoveLimit} 个已锁定技能点并重新分配；移除前置会连同依赖节点一起计入移动数。</p>
         </div>
-        <div class="point-counter" aria-label="Forge 移动次数">
+        <div class="point-counter" aria-label="重接移动次数">
           <strong>${allocation.forgeMovesUsed}/${allocation.forgeMoveLimit}</strong>
           <span>已移动</span>
           <small>${allocation.unspentPoints} 未投入 SP · ${tokens} 枚凭证</small>
@@ -670,8 +780,8 @@ function renderReward(state: GameState): string {
       <p class="panel-kicker">节点完成</p>
       <h1 id="reward-title">节点结算</h1>
       <div class="reward-value"><strong>+${reward?.skillPointsGranted ?? 0}</strong><span>技能点</span></div>
-      <p>${reward?.skillPointsGranted ? "新点数会在下一张 Planning Board 中进入 Draft，可花费也可保留。" : "本节点没有技能点奖励；现有未消费点仍会保留。"}</p>
-      ${challenge ? `<div class="challenge-result ${challenge.status}"><strong>CHALLENGE ${escapeHtml(challenge.status.toUpperCase())}</strong><p>${challenge.status === "succeeded" ? `额外资源：${escapeHtml(resourceName(challenge.rewardResourceId))} +${challenge.rewardAmount}` : `未获得额外资源：${escapeHtml(challenge.failureReason ?? "条件未满足")}`}</p></div>` : ""}
+      <p>${reward?.skillPointsGranted ? "新点数会在下一张规划界面进入草案，可花费也可保留。" : "本节点没有技能点奖励；现有未消费点仍会保留。"}</p>
+      ${challenge ? `<div class="challenge-result ${challenge.status}"><strong>${challenge.status === "succeeded" ? "挑战完成" : "挑战失败"}</strong><p>${challenge.status === "succeeded" ? `额外资源：${escapeHtml(resourceName(challenge.rewardResourceId))} +${challenge.rewardAmount}` : `未获得额外资源：${escapeHtml(challenge.failureReason ?? "条件未满足")}`}</p></div>` : ""}
       <button class="primary-action" type="button" data-action="acknowledge-reward">继续规划</button>
     </section>`;
 }
@@ -684,7 +794,7 @@ function renderVictory(state: GameState): string {
   return `
     <section class="campaign-panel reward-panel" aria-labelledby="victory-title">
       <p class="panel-kicker">${practice ? "首领练习完成" : "本局完成"}</p>
-      <h1 id="victory-title">${practice ? escapeHtml(practice.title) : "REDLINE CLEARED"}</h1>
+      <h1 id="victory-title">${practice ? escapeHtml(practice.title) : "红线贯通"}</h1>
       <p>${practice ? "练习完成，不计入正式通关纪录。" : `${protocolLabel(campaign?.protocol.mode ?? "standard", campaign?.protocol.threatLevel ?? 0)} · ${campaign?.routeProgress.completedNodeIds.length ?? 0} 节点 · ${campaign?.skills.committedSkillIds.length ?? 0} 个技能 · ${(campaign ? Math.max(0, state.elapsedMs - campaign.runMetrics.startedAtMs) / 60_000 : 0).toFixed(1)} 分钟 · 种子 ${state.run.seed}`}</p>
       ${practice || !campaign ? "" : renderRunMetrics(campaign)}
       <button class="primary-action" type="button" data-action="return-to-title">返回标题</button>
@@ -704,21 +814,39 @@ function renderDefeat(state: GameState): string {
       ? "可以重启"
       : "本局结束";
   const copy = practice
-    ? "练习失败不会影响正式纪录，可以从当前 Boss 起点立即重试。"
+    ? "练习失败不会影响正式纪录，可以从当前首领起点立即重试。"
     : canReboot
-      ? `本 Act 还剩 ${campaign.protocol.assistRebootsRemaining} 次 Reboot；重试会消耗 1 次并恢复本节点初始状态。`
+      ? `本区还剩 ${campaign.protocol.assistRebootsRemaining} 次重启；重试会消耗 1 次并恢复本节点初始状态。`
       : `死亡会结束本局。种子 ${state.run.seed}，已完成 ${campaign.routeProgress.completedNodeIds.length} 个节点。`;
+  const deathSource = campaign.runMetrics.deathSourceLabel
+    ? deathSourceName(campaign.runMetrics.deathSourceLabel)
+    : null;
   return `
     <section class="campaign-panel reward-panel defeat-panel" aria-labelledby="defeat-title">
       <p class="panel-kicker">${practice ? "首领练习" : protocolLabel(campaign.protocol.mode, campaign.protocol.threatLevel)}</p>
       <h1 id="defeat-title">${title}</h1>
       <p>${escapeHtml(copy)}</p>
+      ${practice || !deathSource ? "" : `<p class="death-source"><b>死亡来源</b>${escapeHtml(deathSource)}</p>`}
       ${practice ? "" : renderRunMetrics(campaign)}
       <div class="defeat-actions">
         ${canReboot ? `<button class="primary-action" type="button" data-action="restart-encounter">${practice ? "重试" : "使用重启"}</button>` : ""}
         <button class="secondary-action" type="button" data-action="return-to-title">返回标题</button>
       </div>
     </section>`;
+}
+
+function deathSourceName(label: string): string {
+  if (label.startsWith("enemy:")) {
+    const definitionId = label.slice("enemy:".length);
+    return ENEMY_DOSSIER_DEFINITIONS.find((entry) => entry.enemyDefinitionId === definitionId)?.title ?? "敌人攻击";
+  }
+  if (label.startsWith("projectile:")) return label.includes("sniper") ? "狙击弹" : "敌方弹体";
+  if (label.startsWith("hazard:")) return label.includes("mine") ? "地雷爆炸" : "电弧轨道";
+  if (label.startsWith("boss:")) {
+    const definitionId = label.slice("boss:".length);
+    return BOSS_DEFINITIONS.find((boss) => boss.id === definitionId)?.title ?? "首领攻击";
+  }
+  return label === "mechanic:mirror-slash" ? "镜像路径回放" : "未知攻击";
 }
 
 function renderRunMetrics(campaign: NonNullable<GameState["run"]["fullGame"]>): string {

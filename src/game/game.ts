@@ -1854,6 +1854,7 @@ export function getGameSnapshot(state: GameState): GameSnapshot {
         projectileCuts: campaign.runMetrics.projectileCuts,
         bossBreaks: campaign.runMetrics.bossBreaks,
         deathSourceId: campaign.runMetrics.deathSourceId,
+        deathSourceLabel: campaign.runMetrics.deathSourceLabel,
       },
       actIndex: campaign.routeProgress.actIndex,
       layerIndex: campaign.routeProgress.layerIndex,

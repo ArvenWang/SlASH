@@ -165,6 +165,9 @@ async function solveSiegeChoir(currentPage, bounds, input, directory) {
     if (!state.campaign.boss.coreExposed || state.campaign.boss.details.armorBreaks !== 2) {
       throw new Error("Siege Choir did not expose its rear core after two coverage breaks.");
     }
+    if (!state.presentation.bossMechanics.weakPointVisible) {
+      throw new Error("Siege Choir core has no visible shape marker.");
+    }
     if (round === 0) await currentPage.screenshot({ path: path.join(directory, "02-siege-choir-rear-core.png"), fullPage: true });
     await basicTo(currentPage, bounds, { x: 0, z: -11 }, input);
     state = await snapshot(currentPage);

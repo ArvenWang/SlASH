@@ -254,6 +254,9 @@ function validateRunMetrics(metrics: unknown): void {
   if (metrics.deathSourceId !== null && typeof metrics.deathSourceId !== "string") {
     throw invalidState("死亡来源无效");
   }
+  if (metrics.deathSourceLabel !== null && typeof metrics.deathSourceLabel !== "string") {
+    throw invalidState("死亡来源标签无效");
+  }
 }
 
 function validateProtocol(protocol: unknown): void {

@@ -29,7 +29,8 @@
     "verify:bosses": "node validation/tools/generate-boss-report.mjs",
     "verify:bosses:browser": "node validation/tools/verify-boss-practice.mjs",
     "verify:profile-protocol": "node validation/tools/verify-profile-protocol-ui.mjs",
-    "verify:pause-touch": "node validation/tools/verify-pause-touch-summary.mjs"
+    "verify:pause-touch": "node validation/tools/verify-pause-touch-summary.mjs",
+    "verify:campaign-full-run": "node validation/tools/generate-full-run-report.mjs"
   },
   "dependencies": {
     "lil-gui": "0.21.0",

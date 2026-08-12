@@ -336,14 +336,14 @@ P11 Visual Branch Integration Contract + Git Push
 ### 任务
 
 - [x] Title / Continue / New Run / Practice / Settings。
-- [ ] Run Map 与 Threat Preview。
-- [ ] Skill Tree / Forge。
-- [ ] Charged Indicator / Armor Part / Ultimate Planning。
-- [ ] Boss Objective HUD。
-- [x] Pause / Resume / Abandon、Defeat / Victory 与本局核心统计；死亡来源翻译仍待补充。
+- [x] Run Map 与 Threat Preview。
+- [x] Skill Tree / Forge。
+- [x] Charged Indicator / Armor Part / Ultimate Planning。
+- [x] Boss Objective HUD。
+- [x] Pause / Resume / Abandon、Defeat / Victory、本局核心统计与稳定死亡来源。
 - [ ] Touch 全流程；Ultimate / Cancel 与 44px 已完成，完整 4 Act 触控流程待验收。
-- [ ] 非颜色提示与灰度检查。
-- [ ] 为视觉分支提供 Enemy / Attack / Boss / Entity Presentation ID 清单。
+- [x] 非颜色提示与灰度检查；弹体、障碍、危险区、护甲、首领弱点均有形状或轮廓合同。
+- [x] 为视觉分支提供 Enemy / Attack / Boss / Entity Presentation ID 清单。
 
 ### 完成门
 
@@ -358,7 +358,7 @@ P11 Visual Branch Integration Contract + Git Push
 - [ ] `npm run build`
 - [ ] Architecture / Content / Replay / Save / Boss / Skill Matrix。
 - [ ] Web Game Client 短输入循环。
-- [ ] 100 Seed Route / Replay。
+- [x] 100 Seed × 4 Build 完整 Route / Replay；400 / 400 最终 Hash 一致。
 - [ ] Browser Matrix。
 - [ ] Worst Case Performance。
 - [ ] 30min Stability。
