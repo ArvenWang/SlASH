@@ -395,28 +395,27 @@ P11 Visual Branch Integration Contract + Git Push
 
 ### 合并策略
 
-1. 等视觉 Agent 将当前工作提交到稳定分支。
-2. 获取其 Commit，不从脏工作树复制文件。
-3. 在临时 Integration Branch 合并两个已提交分支。
-4. 冲突优先保持 Gameplay Rule 与视觉资产合同，逐文件人工解决。
-5. 合并前后以固定 Seed Replay Hash 证明视觉不会改变规则。
-6. 分支本身在未集成视觉前也必须可独立构建和运行。
+1. [x] 视觉工作以稳定提交 `b5229ec` 提供。
+2. [x] 临时分支 `codex/full-game-integration` 合并两个已提交分支。
+3. [x] 冲突保留 Gameplay / Content / Replay，合入 V5R 资产与表现层。
+4. [x] 合并后固定 Seed 911 完成 24 节点 / 4 首领且 Replay Match。
+5. [x] 合并后全量测试、构建、浏览器、输入、生命周期、角色资产和性能门通过。
 
 ### 推送门
 
-- [ ] 所有本分支要求完成。
-- [ ] `git diff --check`。
-- [ ] 无密钥、缓存、大型录像。
-- [ ] 工作树干净。
+- [x] 所有自动化范围完成；真人门明确列为外部门。
+- [x] `git diff --check`。
+- [x] 无密钥、缓存、大型录像。
+- [x] 工作树干净；最终进展提交后核对。
 - [ ] 推送 `origin/codex/full-game-production`。
 - [ ] 核对 Local / Remote SHA。
-- [ ] 更新 `AGENT_PROGRESS.md`。
+- [x] 更新 `AGENT_PROGRESS.md`。
 
 ## 14. 当前风险与处理
 
 | 风险 | 影响 | 处理 |
 | --- | --- | --- |
-| 视觉 Agent 未提交，无法立即集成其新资产 | 本分支暂时使用基线 Presentation | 稳定 ID + Event Contract；最终在提交后合并 |
+| 视觉资产与完整玩法冲突 | 可能覆盖 Gameplay Rule | 已在临时分支人工合并；玩法层保持原版本，视觉层通过 Registry 接入 |
 | `game.ts` 仍承担大量编排 | 新系统继续堆入会形成 God Object | 每个系统独立模块，Game 仅顺序编排 |
 | 1HP + 长 Run 容错低 | 新玩家挫败 | Practice / Assist，Standard 不改变核心 |
 | 28 Skill 组合爆炸 | 平衡与测试量大 | Typed Hooks、6 代表构筑、Pairwise Matrix、上限 Clamp |

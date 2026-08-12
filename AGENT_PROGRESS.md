@@ -102,17 +102,18 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - [x] P9 收口：4 区 52 个候选节点路线图、稳定死亡来源、中文主界面、弹体方向标、实体轮廓、危险区地面标记、护甲片与首领弱点形状提示；灰度实体截图与非颜色结构门通过。
 - [x] P10 完整局基线：标准规则从标题进入，完成 4 区 / 24 节点 / 4 首领，最终回放 Hash 一致；100 种种子 × 4 套代表构筑共 400 局全部完成并一致。
 - [x] P10 浏览器与性能：Chrome 三分辨率、Firefox、WebKit、兼容模式、390×844 触控共 7 / 7 通过；Resize / 全屏 / 冻结恢复 / WebGL 恢复通过；1080p 与 1440p 60 秒压力场景均通过；5 分钟 retained heap 仅增长 320,792 bytes，Geometry / Texture 数量稳定。
+- [x] P11 视觉整合：稳定视觉提交 `b5229ec` 已在临时分支合并为 `d60d02b`；玩法 / Content / Replay 文件保持玩法分支版本，V5R 角色、语义骨架动画、武器、角色 LOD、尸体分离和场景视觉配置已进入正式运行时。
+- [x] P11 合并后回归：30 文件 / 178 项通过；固定 Seed 911 的完整局为 24 节点 / 4 首领 / 回放一致；7 / 7 浏览器、生命周期、100 次输入、角色 Provider 与资产许可通过；1080p 60 秒为 59.82 FPS、P95 17.1ms、P99 18.3ms、Worst 66.8ms，1440p 为 59.80 FPS、P95 17.8ms、P99 18.5ms、Worst 83.3ms，均满足 Full Game 门。
 
 ## Full Game 下一步计划
 
-1. 复核完整移动端输入、存档、首领和档案端到端流程。
-2. 评估视觉分支稳定提交的集成冲突；不得覆盖玩法规则。
-3. 完成最终审计后提交并推送；真人体验门只记录真实外部门，不冒充完成。
-4. 每个有意义变更继续执行自动化、截图、`render_game_to_text` 和 Console 检查，再依 P8–P11 推进。
+1. 执行最终 Git 审计并推送 `origin/codex/full-game-production`。
+2. 核对本地 / 远端提交一致。
+3. 真人体验门、30 分钟可见完整局和灰度辨识继续作为外部门，不冒充自动完成。
 
 ## Full Game 当前问题与边界
 
-- 视觉 Agent 的大量角色 / 动画 / Asset 修改尚未提交，本分支不会从其脏工作树复制文件；最终只合并稳定 Commit。
+- 视觉分支已按稳定提交合并；冲突中保留了完整玩法规则，并将 V5R 表现层接到 14 类敌人的统一 Presentation 映射。
 - 53 / 53 遭遇已接入；完整标准局和 400 局回放矩阵已完成。P95 真人时长和每首领 3 次真人门仍需真实测试者。
 - Run Save v2 与 Profile v1 已覆盖 Protocol、Assist、设置和统计边界；仍需在最终完整 Run 矩阵中再次验证跨 Act Reboot 与首次标准通关解锁 Threat 的端到端流程。
 - 回放 v3 已通过 100 种种子 × 4 套构筑完整局矩阵，最终 Hash 一致率 100%。
@@ -125,8 +126,7 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 
 ## Full Game 暂勿并行修改
 
-- 本分支下一阶段将修改 Pause / Run Summary / Touch UI / Accessibility；其他 Agent 不应在 `codex/full-game-production` 平行重构这些文件。
-- 视觉 Agent 可继续在原工作树修改 Presentation / Character / Asset；不要把 Gameplay 规则写入视觉资产层。
+- 推送前不应再并行修改 `codex/full-game-production`。
 
 ---
 
