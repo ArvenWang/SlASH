@@ -393,6 +393,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   let bossBannerEyebrow = "";
   let bossBannerTitle = "";
   let bossBannerSubtitle = "";
+  let activeUltimateSegmentIndex: number | null = null;
 
   function createEnemyVisual(enemy: EnemyState, index: number): void {
     const enemyPresentation = enemyPresentationRegistry.get(enemy.definitionId);
@@ -916,6 +917,8 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     const direction = end.clone().sub(start).setY(0).normalize();
     const anticipatedHits = "anticipatedHits" in event ? event.anticipatedHits : [];
     const curveContinuation = event.type === "dash-path-segment-started";
+    const ultimateSegmentIndex = event.abilityId === "vector-focus" ? activeUltimateSegmentIndex : null;
+    const ultimateSegment = ultimateSegmentIndex !== null;
     const kills = anticipatedHits.map(({ position }) => (
       new THREE.Vector3(position.x, 0, position.z)
     ));
@@ -924,6 +927,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     playerActor.root.rotation.y = playerHeading;
     playerActor.animation.update({
       state: "action",
+      variant: ultimateSegment ? `chain-${Math.min(3, ultimateSegmentIndex + 1)}` : null,
       timeSeconds: worldTime,
       deltaSeconds: 1 / 30,
       turn: 0,
@@ -936,16 +940,24 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     }
     vfx.spawnSlash(
       presentation.vfxProfileId,
-      { start, end, killPositions: kills, actor: playerActor.afterimageSource },
+      {
+        start,
+        end,
+        killPositions: kills,
+        actor: playerActor.afterimageSource,
+        variant: ultimateSegment ? "chain" : "normal",
+      },
     );
     if (!curveContinuation) {
-      audio.playDash(presentation.audioProfileId, kills.length);
-      postFx.triggerImpact(presentation.cameraProfileId, kills.length * 0.055);
-      heroAnchorLight.intensity = Math.min(34, 18 + kills.length * 2.6);
+      if (ultimateSegment) audio.playChainDash(presentation.audioProfileId, kills.length, ultimateSegmentIndex);
+      else audio.playDash(presentation.audioProfileId, kills.length);
+      postFx.triggerImpact(presentation.cameraProfileId, kills.length * (ultimateSegment ? 0.07 : 0.055));
+      heroAnchorLight.intensity = Math.min(58, (ultimateSegment ? 38 : 18) + kills.length * 2.6);
+      const impulseScale = ultimateSegment ? 2.35 : 1;
       cameraImpulse.add(new THREE.Vector3(
-        direction.x * 0.16 * (tuning.reducedMotion ? 0 : 1),
-        (0.065 + kills.length * 0.009) * (tuning.reducedMotion ? 0 : 1),
-        direction.z * 0.13 * (tuning.reducedMotion ? 0 : 1),
+        direction.x * 0.16 * impulseScale * (tuning.reducedMotion ? 0 : 1),
+        (0.065 + kills.length * 0.009) * impulseScale * (tuning.reducedMotion ? 0 : 1),
+        direction.z * 0.13 * impulseScale * (tuning.reducedMotion ? 0 : 1),
       ));
       previewSuppressedUntil = worldTime + 0.42;
       shell.reticle.classList.add("active");
@@ -1155,6 +1167,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     waveWarningLabel = null;
     waveWarningRemaining = 0;
     bossBannerRemaining = 0;
+    activeUltimateSegmentIndex = null;
     updateHud();
   }
 
@@ -1216,6 +1229,14 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
           direction: new THREE.Vector3(event.to.x - event.from.x, 0, event.to.z - event.from.z).normalize(),
           intensity: 0.42,
         });
+      } else if (event.type === "ultimate-planning-started") {
+        const presentation = abilityPresentationRegistry.get(event.abilityId);
+        if (presentation.activationAudioProfileId) audio.playFocusStart(presentation.activationAudioProfileId);
+        postFx.triggerImpact(presentation.activationImpactProfileId ?? presentation.cameraProfileId);
+      } else if (event.type === "ultimate-segment-started") {
+        activeUltimateSegmentIndex = event.segmentIndex;
+      } else if (event.type === "ultimate-ended" || event.type === "ultimate-planning-cancelled") {
+        activeUltimateSegmentIndex = null;
       } else if (event.type === "stage-cleared" || event.type === "game-complete") {
         phaseAge = 0;
       } else if (event.type === "encounter-wave-warning") {
@@ -1309,6 +1330,11 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
               : "idle";
     playerActor.animation.update({
       state: playerAnimationState,
+      variant: ultimatePlanningProgress !== null
+        ? "focus-selection"
+        : activeUltimateSegmentIndex !== null && dashProgress !== null
+          ? `chain-${Math.min(3, activeUltimateSegmentIndex + 1)}`
+          : null,
       timeSeconds: worldTime,
       deltaSeconds: dt,
       turn: THREE.MathUtils.clamp(playerTurnDelta / 0.65, -1, 1),

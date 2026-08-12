@@ -1,14 +1,17 @@
 Project Slash runtime asset and license audit
-Generated: 2026-08-10T04:49:10.822Z
+Generated: 2026-08-12T02:43:20.168Z
 Status: PASSED
 
 Scope
-- Runtime source files inspected: 18
-- Production build files inspected: 8
+- Runtime source files inspected: 130
+- Production build files inspected: 13
 - Concept art and validation evidence are not imported by the production runtime.
 
 Packaged binary art/audio
-- None
+- dist/models/characters/enemy-v5-rigged.glb
+- dist/models/characters/enemy-v5r-rig-v25.glb
+- dist/models/characters/hero-v5-rigged.glb
+- dist/models/characters/hero-v5r-rig-v25.glb
 
 Runtime external URLs
 - None
@@ -19,17 +22,19 @@ Secret-pattern findings
 Dependency licenses
 - three@0.185.1: MIT
 - lil-gui@0.21.0: MIT
+- meshoptimizer@1.1.1: MIT
 - playwright@1.62.1: Apache-2.0
 - typescript@7.0.2: Apache-2.0
 - vite@8.2.1: MIT
+- vitest@4.1.10: MIT
 - @types/three@0.185.4: MIT
 
 Gates
-- noPackagedBinaryArtOrAudio: PASS
+- packagedBinaryAssetsDeclared: PASS
 - noRuntimeExternalUrls: PASS
 - noSecretPatterns: PASS
 - dependencyLicensesKnown: PASS
 - licenseManifestPresent: PASS
 
 Conclusion
-- Production runtime is code-generated and contains no packaged third-party art or audio. Declared dependencies use approved licenses.
+- Production runtime contains only declared first-party binary assets and no undeclared third-party art or audio. Declared dependencies use approved licenses.

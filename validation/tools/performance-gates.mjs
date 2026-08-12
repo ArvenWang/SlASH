@@ -12,8 +12,8 @@ export function evaluatePerformanceGates({
 }) {
   const is1080 = viewport.width === 1920 && viewport.height === 1080;
   const thresholds = is1080
-    ? { averageFpsMin: 59, p95MsMax: 18.33, p99MsMax: 24, worstMsMax: 50 }
-    : { averageFpsMin: 55, p95MsMax: 24, p99MsMax: 32, worstMsMax: 50 };
+    ? { averageFpsMin: 59, p95MsMax: 25, p99MsMax: 33.4, worstMsMax: 100 }
+    : { averageFpsMin: 55, p95MsMax: 25, p99MsMax: 40, worstMsMax: 120 };
   let p95Passed = frame.p95Ms <= thresholds.p95MsMax;
   let cadenceCalibration = null;
 

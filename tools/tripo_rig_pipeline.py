@@ -13,12 +13,16 @@ import sys
 from typing import Any, Dict, Optional
 
 from tripo3d import TripoClient
-from tripo3d.models import RigSpec, RigType
+from tripo_pipeline import (
+    download_models_resilient,
+    enum_value,
+    get_balance_resilient,
+    wait_for_task_resilient,
+    write_manifest,
+)
 
-from tripo_pipeline import enum_value, wait_for_task_resilient, write_manifest
 
-
-DEFAULT_RIG_MODEL_VERSION = "v2.0-20250506"
+DEFAULT_RIG_MODEL_VERSION = "v2.5-20260210"
 
 
 async def rig_character(args: argparse.Namespace) -> int:
@@ -40,9 +44,9 @@ async def rig_character(args: argparse.Namespace) -> int:
             prior_manifest = {}
 
     client = TripoClient(api_key=api_key)
-    balance_before = await client.get_balance()
+    balance_before = await get_balance_resilient(api_key)
     common_manifest: Dict[str, Any] = {
-        "pipeline": "tripo-rig-v2",
+        "pipeline": "tripo-rig-v2.5",
         "createdAt": prior_manifest.get("createdAt", datetime.now(timezone.utc).isoformat()),
         "candidate": args.candidate,
         "sourceTaskId": args.source_task_id,
@@ -85,13 +89,17 @@ async def rig_character(args: argparse.Namespace) -> int:
                 )
                 return 1
 
-            rig_task_id = await client.rig_model(
-                args.source_task_id,
-                model_version=args.model_version,
-                out_format="glb",
-                rig_type=RigType.BIPED,
-                spec=RigSpec(args.spec),
-            )
+            # The official PyPI SDK can lag behind the current API enum. Use
+            # create_task so v2.5 is explicit and cannot silently fall back to
+            # the deprecated v2.0 rig model.
+            rig_task_id = await client.create_task({
+                "type": "animate_rig",
+                "original_model_task_id": args.source_task_id,
+                "model_version": args.model_version,
+                "out_format": "glb",
+                "rig_type": "biped",
+                "spec": args.spec,
+            })
             print(f"rig_task_id={rig_task_id}", flush=True)
 
         task = await wait_for_task_resilient(api_key, rig_task_id, args.timeout)
@@ -111,8 +119,8 @@ async def rig_character(args: argparse.Namespace) -> int:
             )
             return 1
 
-        downloaded = await client.download_task_models(task, str(output_dir))
-        balance_after = await client.get_balance()
+        downloaded = await download_models_resilient(api_key, task, output_dir)
+        balance_after = await get_balance_resilient(api_key)
         clean_downloads = {
             key: Path(value).name if value else None
             for key, value in downloaded.items()
@@ -162,10 +170,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resume-task-id")
     parser.add_argument(
         "--model-version",
-        choices=("v1.0-20240301", "v2.0-20250506"),
+        choices=("v2.5-20260210",),
         default=DEFAULT_RIG_MODEL_VERSION,
     )
-    parser.add_argument("--spec", choices=("tripo", "mixamo"), default="tripo")
+    parser.add_argument("--spec", choices=("tripo", "mixamo"), default="mixamo")
     parser.add_argument("--timeout", type=float, default=1200.0)
     return parser.parse_args()
 

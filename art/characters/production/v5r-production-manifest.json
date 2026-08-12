@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-08-12",
+  "status": "model-input-ready",
+  "artDirection": "V5R",
+  "source": {
+    "type": "project-authored-ai-assisted",
+    "styleReferences": [
+      "art/characters/concepts/hero-turnaround-v5.png",
+      "art/characters/concepts/enemy-turnaround-v5.png",
+      "art/characters/concepts/hero-action-sheet-v2.png",
+      "art/characters/concepts/enemy-action-cut-sheet-v2.png"
+    ]
+  },
+  "hero": {
+    "fourView": "art/characters/production/hero-v5r-four-view-r2.png",
+    "previousFourView": "art/characters/production/hero-v5r-four-view.png",
+    "coreActionSheet": "art/characters/production/hero-v5r-core-action-sheet.png",
+    "focusActionSheet": "art/characters/production/hero-v5r-focus-action-sheet.png",
+    "weaponProportion": "art/characters/production/hero-v5r-weapon-proportion.svg",
+    "weaponProportionPreview": "art/characters/production/hero-v5r-weapon-proportion.png",
+    "multiview": [
+      "art/characters/tripo-inputs/hero-v5r-r2/front.png",
+      "art/characters/tripo-inputs/hero-v5r-r2/left.png",
+      "art/characters/tripo-inputs/hero-v5r-r2/back.png",
+      "art/characters/tripo-inputs/hero-v5r-r2/right.png"
+    ]
+  },
+  "enemy": {
+    "fourView": "art/characters/production/enemy-v5r-four-view.png",
+    "actionCutSheet": "art/characters/production/enemy-v5r-action-cut-sheet.png",
+    "multiview": [
+      "art/characters/tripo-inputs/enemy-v5r/front.png",
+      "art/characters/tripo-inputs/enemy-v5r/left.png",
+      "art/characters/tripo-inputs/enemy-v5r/back.png",
+      "art/characters/tripo-inputs/enemy-v5r/right.png"
+    ]
+  },
+  "multiviewOrder": ["front", "left", "back", "right"],
+  "multiviewResolution": [1024, 1024],
+  "constraints": {
+    "bodyAndWeaponSeparated": true,
+    "heroWeaponTotalHeightRatio": 0.62,
+    "heroWeaponAllowedRange": [0.58, 0.66],
+    "heroWeaponGripHeightRatio": 0.11,
+    "forwardAxis": "+Z",
+    "heroTargetHeight": 3.3,
+    "enemyTargetHeight": 3.157
+  },
+  "acceptance": {
+    "VR-H01": "passed",
+    "neighborViewContamination": "passed-after-enemy-left-recrop",
+    "heroJointContinuity": "passed-after-r2-input-revision",
+    "heroCandidate01": "rejected-before-rig-for-visible-geometry-seams",
+    "modelRigAnimationEnvironment": "not-yet-evaluated"
+  }
+}

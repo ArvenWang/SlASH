@@ -2,17 +2,14 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkinnedScene } from "three/examples/jsm/utils/SkeletonUtils.js";
 import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
-import {
-  createTripoEnemyVisual,
-  createTripoHeroVisual,
-} from "../../characters/tripo-runtime";
-import type { EnemyAnimationFrame, HeroAnimationFrame } from "../../characters/animation";
+import { MeshoptSimplifier } from "meshoptimizer";
 import {
   createCharacterAnimationController,
-  type CharacterAnimationFrame,
   type ProceduralAnimationDriver,
 } from "../animation/controller";
 import { animationSetRegistry } from "../registry";
+import { createEnemyV5RVisual, createHeroV5RVisual } from "./v5r-runtime";
+import { createSkinnedCorpseRuntime } from "./skinned-corpse";
 import { assertGltfAssetRequirements, disposeObjectResources, inspectGltfAsset } from "./gltf-asset";
 import type {
   CharacterCreateOptions,
@@ -26,6 +23,11 @@ export interface GltfCharacterInstance {
   readonly weaponMount: THREE.Object3D;
   readonly landmarks?: ReadonlyMap<string, THREE.Object3D>;
   readonly proceduralDriver?: ProceduralAnimationDriver;
+  readonly clips?: readonly THREE.AnimationClip[];
+  readonly animationTimeOffsetSeconds?: number;
+  readonly groundReference?: THREE.Object3D;
+  readonly deathPresentation?: CharacterRuntime["deathPresentation"];
+  dispose?(): void;
 }
 
 export interface GltfCharacterProviderConfig {
@@ -132,6 +134,7 @@ export class GltfCharacterProvider implements CharacterProvider {
       const asset = this.config.load
         ? await this.config.load()
         : await new GLTFLoader().loadAsync(this.config.url as string);
+      await MeshoptSimplifier.ready;
       const inspection = inspectGltfAsset(asset.scene, asset.animations);
       assertGltfAssetRequirements(inspection, { requireSkinnedMesh: true });
       asset.scene.userData.assetInspection = inspection;
@@ -157,14 +160,17 @@ export class GltfCharacterProvider implements CharacterProvider {
           this.config.sourceYawRadians ?? 0,
         );
     const ownedMaterials = cloneInstanceMaterials(instance.root);
+    const instanceClips = instance.clips ?? this.asset.animations;
     const animation = createCharacterAnimationController({
       root: instance.root,
       animationSet: animationSetRegistry.get(this.config.animationSetId),
-      clips: this.asset.animations,
+      clips: instanceClips,
       proceduralDriver: instance.proceduralDriver,
       createMixer: true,
+      timeOffsetSeconds: instance.animationTimeOffsetSeconds,
     });
-    const inspection = inspectGltfAsset(instance.root, this.asset.animations);
+    const inspection = inspectGltfAsset(instance.root, instanceClips);
+    const groundReferenceBounds = new THREE.Box3().setFromObject(instance.groundReference ?? instance.root);
     const setEnergyLevel = createEnergyController(instance.root);
     return {
       role: this.config.role,
@@ -173,14 +179,14 @@ export class GltfCharacterProvider implements CharacterProvider {
       weaponMounts: new Map([["primary-weapon", instance.weaponMount]]),
       landmarks: instance.landmarks ?? new Map(),
       afterimageSource: instance.root,
-      deathPresentation: null,
+      deathPresentation: instance.deathPresentation ?? null,
       asset: {
         source: "gltf",
         providerId: this.id,
         animationClipNames: inspection.animationClipNames,
         skeletonBoneCount: inspection.skeletonBones,
         forwardAxis: "+Z",
-        groundAligned: Math.abs(inspection.groundOffset) <= 0.01,
+        groundAligned: Math.abs(groundReferenceBounds.min.y) <= 0.01,
         inspection,
       },
       setPosition(position, y = 0) {
@@ -195,6 +201,7 @@ export class GltfCharacterProvider implements CharacterProvider {
       setEnergyLevel,
       dispose() {
         animation.dispose();
+        instance.dispose?.();
         instance.root.removeFromParent();
         ownedMaterials.forEach((material) => material.dispose());
       },
@@ -208,77 +215,57 @@ export class GltfCharacterProvider implements CharacterProvider {
   }
 }
 
-function heroProceduralDriver(animator: ReturnType<typeof createTripoHeroVisual>["animator"]): ProceduralAnimationDriver {
-  return {
-    update(frame: CharacterAnimationFrame) {
-      const dashState = frame.activeState === "anticipation"
-        || frame.activeState === "action"
-        || frame.activeState === "arrival";
-      const legacyFrame: HeroAnimationFrame = {
-        time: frame.timeSeconds,
-        dt: frame.deltaSeconds,
-        turn: frame.turn ?? 0,
-        dashProgress: dashState ? (frame.sourceProgress ?? 0) : null,
-        recoveryProgress: frame.activeState === "recovery" ? (frame.sourceProgress ?? 0) : null,
-        deathProgress: frame.activeState === "death" ? (frame.sourceProgress ?? 0) : null,
-      };
-      animator.update(legacyFrame);
-    },
-    reset: animator.reset,
-  };
-}
-
-function enemyProceduralDriver(animator: ReturnType<typeof createTripoEnemyVisual>["animator"]): ProceduralAnimationDriver {
-  return {
-    update(frame: CharacterAnimationFrame) {
-      const legacyFrame: EnemyAnimationFrame = {
-        time: frame.timeSeconds,
-        dt: frame.deltaSeconds,
-        distanceMoved: frame.distanceMoved ?? 0,
-        speedNormalized: frame.speedNormalized ?? 0,
-        turn: frame.turn ?? 0,
-        threat: frame.threat ?? 0,
-        deathAge: frame.activeState === "hit" || frame.activeState === "death"
-          ? (frame.hitAgeSeconds ?? 0)
-          : null,
-      };
-      animator.update(legacyFrame);
-    },
-    reset: animator.reset,
-  };
-}
-
-export function createTripoHeroProvider(): CharacterProvider {
+export function createHeroV5RProvider(): CharacterProvider {
   return new GltfCharacterProvider({
-    id: "gltf-tripo-hero-v5",
+    id: "gltf-hero-v5r",
     role: "hero",
-    url: "/models/characters/hero-v5-rigged.glb",
-    animationSetId: "hero-tripo-additive-v1",
+    url: "/models/characters/hero-v5r-rig-v25.glb",
+    animationSetId: "hero-v5r-authored",
     targetHeight: 3.3,
     instantiate(template) {
-      const visual = createTripoHeroVisual(template);
+      const visual = createHeroV5RVisual(template);
       return {
         root: visual.root,
         weaponMount: visual.weaponMount,
-        proceduralDriver: heroProceduralDriver(visual.animator),
+        landmarks: visual.landmarks,
+        clips: visual.clips,
+        groundReference: visual.model,
+        proceduralDriver: visual.proceduralDriver,
+        animationTimeOffsetSeconds: visual.animationTimeOffsetSeconds,
+        dispose: visual.dispose,
       };
     },
   });
 }
 
-export function createTripoEnemyProvider(): CharacterProvider {
+export function createEnemyV5RProvider(): CharacterProvider {
   return new GltfCharacterProvider({
-    id: "gltf-tripo-enemy-v5",
+    id: "gltf-enemy-v5r",
     role: "enemy",
-    url: "/models/characters/enemy-v5-rigged.glb",
-    animationSetId: "enemy-tripo-additive-v1",
+    url: "/models/characters/enemy-v5r-rig-v25.glb",
+    animationSetId: "enemy-v5r-authored",
     targetHeight: 3.157,
     instantiate(template, options) {
-      const visual = createTripoEnemyVisual(template, (options.variant ?? 0) * 0.77);
+      const visual = createEnemyV5RVisual(template, Math.max(0, Math.floor(options.variant ?? 0)));
       return {
         root: visual.root,
         weaponMount: visual.weaponMount,
-        proceduralDriver: enemyProceduralDriver(visual.animator),
+        landmarks: visual.landmarks,
+        clips: visual.clips,
+        groundReference: visual.model,
+        proceduralDriver: visual.proceduralDriver,
+        animationTimeOffsetSeconds: visual.animationTimeOffsetSeconds,
+        deathPresentation: visual.cutSeam ? {
+          profileId: "humanoid-soft-v1",
+          setCutVisible: visual.cutSeam.setVisible,
+          setCutHeat: visual.cutSeam.setHeat,
+          separate(scene, direction, seed) {
+            return createSkinnedCorpseRuntime(scene, visual.root, direction, seed, 3.157);
+          },
+        } : undefined,
+        dispose() {
+          visual.dispose();
+        },
       };
     },
   });

@@ -15,7 +15,13 @@ from typing import Any, Dict, Optional
 from tripo3d import TripoClient
 from tripo3d.models import Animation
 
-from tripo_pipeline import enum_value, wait_for_task_resilient, write_manifest
+from tripo_pipeline import (
+    download_models_resilient,
+    enum_value,
+    get_balance_resilient,
+    wait_for_task_resilient,
+    write_manifest,
+)
 
 
 ANIMATIONS = {
@@ -44,6 +50,9 @@ async def retarget_character(args: argparse.Namespace) -> int:
     if not animation_names or unknown:
         print(f"Invalid animations: {', '.join(unknown) if unknown else 'none'}", file=sys.stderr)
         return 2
+    if len(animation_names) > 5:
+        print("Tripo v2.5 accepts at most five animations per retarget task", file=sys.stderr)
+        return 2
 
     output_dir = Path(args.output).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -57,9 +66,9 @@ async def retarget_character(args: argparse.Namespace) -> int:
             prior_manifest = {}
 
     client = TripoClient(api_key=api_key)
-    balance_before = await client.get_balance()
+    balance_before = await get_balance_resilient(api_key)
     common_manifest: Dict[str, Any] = {
-        "pipeline": "tripo-animation-retarget",
+        "pipeline": "tripo-animation-retarget-v2.5",
         "createdAt": prior_manifest.get("createdAt", datetime.now(timezone.utc).isoformat()),
         "candidate": args.candidate,
         "rigTaskId": args.rig_task_id,
@@ -103,8 +112,8 @@ async def retarget_character(args: argparse.Namespace) -> int:
             )
             return 1
 
-        downloaded = await client.download_task_models(task, str(output_dir))
-        balance_after = await client.get_balance()
+        downloaded = await download_models_resilient(api_key, task, output_dir)
+        balance_after = await get_balance_resilient(api_key)
         clean_downloads = {
             key: Path(value).name if value else None
             for key, value in downloaded.items()

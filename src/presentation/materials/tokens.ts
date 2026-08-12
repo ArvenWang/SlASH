@@ -20,8 +20,8 @@ export const MATERIAL_TOKENS = Object.freeze({
     coldLight: 0xb8dbe2,
     coolRim: 0x62dfff,
     warmAccent: 0xff5a28,
-    background: 0x0b1d28,
-    fog: 0x183b49,
+    background: 0x071219,
+    fog: 0x102833,
   },
 } as const);
 

@@ -17,10 +17,11 @@ describe("presentation profiles", () => {
     const environment = environmentProfileRegistry.get("transit-cathedral-v1");
     const lighting = lightingProfileRegistry.get(environment.lightingProfileId);
     const postFx = postFxProfileRegistry.get(environment.postFxProfileId);
-    expect(environment).toMatchObject({ fogDensity: 0.0078, rainDensity: 1 });
+    expect(environment).toMatchObject({ fogDensity: 0.0102, rainDensity: 1 });
     expect(lighting).toMatchObject({ exposure: 0.98, shadowMapSize: { high: 1536, compatibility: 1024 } });
     expect(postFx).toMatchObject({ bloomStrength: { high: 0.34, compatibility: 0.28 } });
     expect(vfxProfileRegistry.get("dash-slash-current-v1").priority).toBe("critical");
+    expect(vfxProfileRegistry.get("vector-focus-chain-v1").priority).toBe("critical");
     expect(materialProfileRegistry.get("blood-wet-v1").colorToken).toBe("blood.primary");
   });
 

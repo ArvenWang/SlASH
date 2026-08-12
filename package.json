@@ -21,7 +21,9 @@
     "verify:browsers": "node validation/tools/verify-browser-matrix.mjs",
     "verify:audio": "node validation/tools/capture-audio-evidence.mjs",
     "verify:characters": "node validation/tools/verify-character-providers.mjs",
+    "verify:start-focus": "node validation/tools/verify-start-vector-focus.mjs",
     "verify:character-assets": "node validation/tools/inspect-glb-character-assets.mjs",
+    "capture:tripo-model": "node validation/tools/capture-tripo-model-lab.mjs",
     "verify:labs": "node validation/tools/verify-presentation-labs.mjs",
     "verify:assets": "node validation/tools/audit-runtime-assets.mjs",
     "verify:full-game-design": "node validation/tools/verify-full-game-design.mjs",
@@ -34,6 +36,7 @@
   },
   "dependencies": {
     "lil-gui": "0.21.0",
+    "meshoptimizer": "1.1.1",
     "three": "0.185.1"
   },
   "devDependencies": {

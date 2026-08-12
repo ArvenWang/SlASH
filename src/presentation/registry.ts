@@ -58,7 +58,9 @@ export interface AbilityPresentationDefinition {
   readonly id: AbilityId;
   readonly vfxProfileId: VfxProfileId;
   readonly audioProfileId: AudioProfileId;
+  readonly activationAudioProfileId?: AudioProfileId;
   readonly cameraProfileId: CameraProfileId;
+  readonly activationImpactProfileId?: CameraProfileId;
 }
 
 export interface PresentationProfileReference {
@@ -70,7 +72,7 @@ export interface PresentationProfileReference {
   };
 }
 
-export const PLAYER_CHARACTER_PRESENTATION_ID: CharacterPresentationId = "hero-procedural-v5";
+export const PLAYER_CHARACTER_PRESENTATION_ID: CharacterPresentationId = "hero-v5r";
 
 const STATE_PRIORITIES: Readonly<Record<CharacterAnimationState, number>> = {
   idle: 0,
@@ -109,9 +111,70 @@ function animationStates(
   };
 }
 
+function heroV5RAnimationStates(): Readonly<Record<CharacterAnimationState, AnimationStateDefinition>> {
+  const base = animationStates({
+    idle: "hero-ready-v5r",
+    anticipation: "hero-dash-anticipation-v5r",
+    action: "hero-dash-travel-v5r",
+    arrival: "hero-arrival-v5r",
+    recovery: "hero-recovery-v5r",
+    hit: "hero-death-v5r",
+    death: "hero-death-v5r",
+  });
+  return {
+    idle: { ...base.idle, clipVariants: { turn: "hero-turn-v5r", "focus-activate": "hero-focus-activate-v5r", "focus-selection": "hero-focus-selection-v5r" } },
+    anticipation: { ...base.anticipation, sourceProgressRange: [0, 0.18] },
+    action: {
+      ...base.action,
+      sourceProgressRange: [0.18, 0.72],
+      clipVariants: { "chain-1": "hero-chain-slash-01-v5r", "chain-2": "hero-chain-slash-02-v5r", "chain-3": "hero-chain-slash-03-v5r" },
+      variantSourceProgressRanges: { "chain-1": [0, 1], "chain-2": [0, 1], "chain-3": [0, 1] },
+    },
+    arrival: { ...base.arrival, sourceProgressRange: [0.72, 1] },
+    recovery: { ...base.recovery, sourceProgressRange: [0, 1] },
+    hit: { ...base.hit, sourceProgressRange: [0, 1] },
+    death: { ...base.death, sourceProgressRange: [0, 1] },
+  };
+}
+
+function enemyV5RAnimationStates(): Readonly<Record<CharacterAnimationState, AnimationStateDefinition>> {
+  const base = animationStates({
+    idle: "enemy-idle-v5r",
+    anticipation: "enemy-threat-v5r",
+    action: "enemy-run-v5r",
+    arrival: "enemy-attack-recovery-v5r",
+    recovery: "enemy-attack-recovery-v5r",
+    hit: "enemy-hit-left-v5r",
+    death: "enemy-separation-transition-v5r",
+  });
+  return {
+    idle: { ...base.idle, clipVariants: { turn: "enemy-turn-v5r" } },
+    anticipation: base.anticipation,
+    action: { ...base.action, speedScaleFromInput: true, clipVariants: { threat: "enemy-threat-v5r", attack: "enemy-contact-attack-v5r" } },
+    arrival: base.arrival,
+    recovery: base.recovery,
+    hit: { ...base.hit, sourceProgressRange: [0, 1], clipVariants: { right: "enemy-hit-right-v5r", "cut-hold": "enemy-delayed-cut-hold-v5r" } },
+    death: { ...base.death, sourceProgressRange: [0, 1], clipVariants: { fall: "enemy-fall-v5r" } },
+  };
+}
+
 export const characterPresentationRegistry = new DefinitionRegistry<CharacterPresentationDefinition>([
   {
     id: PLAYER_CHARACTER_PRESENTATION_ID,
+    providerId: "gltf-hero-v5r",
+    animationSetId: "hero-v5r-authored",
+    afterimageSource: "character-root",
+    weaponMounts: ["primary-weapon"],
+  },
+  {
+    id: "enemy-v5r",
+    providerId: "gltf-enemy-v5r",
+    animationSetId: "enemy-v5r-authored",
+    afterimageSource: "character-root",
+    weaponMounts: ["primary-weapon"],
+  },
+  {
+    id: "hero-procedural-v5",
     providerId: "procedural-hero-v5",
     animationSetId: "hero-procedural-v5",
     afterimageSource: "character-root",
@@ -141,6 +204,16 @@ export const characterPresentationRegistry = new DefinitionRegistry<CharacterPre
 ]);
 
 export const animationSetRegistry = new DefinitionRegistry<AnimationSetDefinition>([
+  {
+    id: "hero-v5r-authored",
+    controllerId: "semantic-animation-clip-v5r",
+    states: heroV5RAnimationStates(),
+  },
+  {
+    id: "enemy-v5r-authored",
+    controllerId: "semantic-animation-clip-v5r",
+    states: enemyV5RAnimationStates(),
+  },
   {
     id: "hero-procedural-v5",
     controllerId: "hero-procedural-pose-driver-v5",
@@ -179,8 +252,8 @@ export const animationSetRegistry = new DefinitionRegistry<AnimationSetDefinitio
 export const enemyPresentationRegistry = new DefinitionRegistry<EnemyPresentationDefinition>(
   enemyDefinitions.list().map((enemy) => ({
     id: enemy.id,
-    characterId: "enemy-procedural-v5",
-    animationSetId: "enemy-procedural-v5",
+    characterId: "enemy-v5r",
+    animationSetId: "enemy-v5r-authored",
     vfxProfileId: "enemy-cut-humanoid-v1",
     audioProfileId: "enemy-cyber-grunt-v1",
     deathProfileId: "humanoid-soft-v1",
@@ -202,9 +275,11 @@ export const abilityPresentationRegistry = new DefinitionRegistry<AbilityPresent
   },
   {
     id: VECTOR_FOCUS_ABILITY_ID,
-    vfxProfileId: "dash-slash-current-v1",
-    audioProfileId: "dash-slash-current-v1",
-    cameraProfileId: "dash-impact-current-v1",
+    vfxProfileId: "vector-focus-chain-v1",
+    audioProfileId: "vector-focus-chain-v1",
+    activationAudioProfileId: "vector-focus-start-v1",
+    cameraProfileId: "vector-focus-impact-v1",
+    activationImpactProfileId: "vector-focus-start-impact-v1",
   },
 ]);
 
@@ -222,6 +297,16 @@ export const deathProfileRegistry = new DefinitionRegistry<PresentationProfileRe
 export const cameraProfileRegistry = new DefinitionRegistry<PresentationProfileReference>([
   {
     id: "dash-impact-current-v1",
+    runtimeId: "gameplay-camera-impulse-v1",
+    quality: { high: "full", compatibility: "full" },
+  },
+  {
+    id: "vector-focus-impact-v1",
+    runtimeId: "gameplay-camera-impulse-v1",
+    quality: { high: "full", compatibility: "full" },
+  },
+  {
+    id: "vector-focus-start-impact-v1",
     runtimeId: "gameplay-camera-impulse-v1",
     quality: { high: "full", compatibility: "full" },
   },
@@ -267,8 +352,13 @@ export function assertPresentationRegistryIntegrity(): PresentationRegistryInteg
     const presentation = abilityPresentationRegistry.get(ability.id);
     vfxRegistry.get(presentation.vfxProfileId);
     audioRegistry.get(presentation.audioProfileId);
+    if (presentation.activationAudioProfileId) audioRegistry.get(presentation.activationAudioProfileId);
     cameraProfileRegistry.get(presentation.cameraProfileId);
     postFxImpactProfileRegistry.get(presentation.cameraProfileId);
+    if (presentation.activationImpactProfileId) {
+      cameraProfileRegistry.get(presentation.activationImpactProfileId);
+      postFxImpactProfileRegistry.get(presentation.activationImpactProfileId);
+    }
     checked.push(`ability:${ability.id}`);
   }
   for (const projectile of projectileDefinitions.list()) {
