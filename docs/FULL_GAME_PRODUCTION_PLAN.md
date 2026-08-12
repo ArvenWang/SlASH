@@ -353,15 +353,15 @@ P11 Visual Branch Integration Contract + Git Push
 
 ### 自动化
 
-- [ ] `npm test`
-- [ ] `npm run check`
-- [ ] `npm run build`
-- [ ] Architecture / Content / Replay / Save / Boss / Skill Matrix。
-- [ ] Web Game Client 短输入循环。
+- [x] `npm test`：30 文件 / 178 项通过。
+- [x] `npm run check`
+- [x] `npm run build`
+- [x] Architecture / Content / Replay / Save / Boss / Skill Matrix。
+- [x] Web Game Client 短输入循环。
 - [x] 100 Seed × 4 Build 完整 Route / Replay；400 / 400 最终 Hash 一致。
-- [ ] Browser Matrix。
-- [ ] Worst Case Performance。
-- [ ] 30min Stability。
+- [x] Browser Matrix：7 / 7。
+- [x] Worst Case Performance：1080p / 1440p 60 秒均通过。
+- [ ] 30min Stability；5 分钟自动门已通过。30 分钟可见完整局改列最终人工长测，不用空转页面冒充完整局。
 
 ### 真实体验
 
