@@ -75,7 +75,7 @@ const report = {
   schemaVersion: 1,
   capturedAt: new Date().toISOString(),
   status: browserIssues.length === 0 ? "passed" : "failed",
-  nativeClipStatus: "Production Tripo rigs contain no AnimationClip; native clip transitions are covered by the validation fixture test.",
+  nativeClipStatus: "Production V5R rigs use project-authored semantic THREE.AnimationClip sets; rejected Tripo preset motions are not part of runtime playback.",
   results,
   browserIssues,
 };

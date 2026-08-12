@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run cost-bounded Tripo character generation without persisting API secrets."""
+"""Run cost-bounded Tripo V5R character generation without persisting API secrets."""
 
 from __future__ import annotations
 
@@ -78,6 +78,51 @@ async def wait_for_task_resilient(
         await asyncio.sleep(min(polling_interval, max(0.0, remaining)))
 
 
+async def get_balance_resilient(api_key: str, attempts: int = 8) -> Any:
+    for attempt in range(1, attempts + 1):
+        client = TripoClient(api_key=api_key)
+        try:
+            return await client.get_balance()
+        except (ConnectionError, OSError) as exc:
+            if attempt >= attempts:
+                raise
+            retry_delay = min(1.5 * attempt, 10.0)
+            print(
+                f"transient_balance_error={type(exc).__name__}; "
+                f"retry={attempt}; delay={retry_delay:.1f}s",
+                flush=True,
+            )
+            await asyncio.sleep(retry_delay)
+        finally:
+            await client.close()
+    raise RuntimeError("Unreachable balance retry state")
+
+
+async def download_models_resilient(
+    api_key: str,
+    task: Any,
+    output_dir: Path,
+    attempts: int = 8,
+) -> Dict[str, Optional[str]]:
+    for attempt in range(1, attempts + 1):
+        client = TripoClient(api_key=api_key)
+        try:
+            return await client.download_task_models(task, str(output_dir))
+        except (ConnectionError, OSError) as exc:
+            if attempt >= attempts:
+                raise
+            retry_delay = min(2.0 * attempt, 12.0)
+            print(
+                f"transient_download_error={type(exc).__name__}; "
+                f"retry={attempt}; delay={retry_delay:.1f}s",
+                flush=True,
+            )
+            await asyncio.sleep(retry_delay)
+        finally:
+            await client.close()
+    raise RuntimeError("Unreachable download retry state")
+
+
 async def generate_multiview(args: argparse.Namespace) -> int:
     api_key = os.environ.get("TRIPO_API_KEY")
     if not api_key:
@@ -91,13 +136,14 @@ async def generate_multiview(args: argparse.Namespace) -> int:
     front = Path(args.front).resolve()
     left = Path(args.left).resolve()
     back = Path(args.back).resolve()
-    for source in (front, left, back):
+    right = Path(args.right).resolve()
+    for source in (front, left, back, right):
         if not source.is_file():
             print(f"Missing input image: {source}", file=sys.stderr)
             return 2
 
     client = TripoClient(api_key=api_key)
-    balance_before = await client.get_balance()
+    balance_before = await get_balance_resilient(api_key)
     print(f"balance_before={balance_before.balance:.2f}", flush=True)
 
     task_id: Optional[str] = args.resume_task_id
@@ -109,7 +155,7 @@ async def generate_multiview(args: argparse.Namespace) -> int:
         except (OSError, json.JSONDecodeError):
             prior_manifest = {}
     common_manifest: Dict[str, Any] = {
-        "pipeline": "tripo-p1-multiview",
+        "pipeline": "tripo-p1-v5r-four-view",
         "createdAt": prior_manifest.get("createdAt", datetime.now(timezone.utc).isoformat()),
         "candidate": args.candidate,
         "modelVersion": MODEL_VERSION,
@@ -123,7 +169,7 @@ async def generate_multiview(args: argparse.Namespace) -> int:
             "front": relative_to_workspace(front, workspace),
             "left": relative_to_workspace(left, workspace),
             "back": relative_to_workspace(back, workspace),
-            "right": None,
+            "right": relative_to_workspace(right, workspace),
         },
         "balanceBefore": prior_manifest.get("balanceBefore", balance_before.balance),
     }
@@ -133,22 +179,17 @@ async def generate_multiview(args: argparse.Namespace) -> int:
             print(f"resuming_task_id={task_id}", flush=True)
         else:
             task_id = await client.multiview_to_model(
-                images=[str(front), str(left), str(back), None],
+                images=[str(front), str(left), str(back), str(right)],
                 model_version=MODEL_VERSION,
                 face_limit=args.face_limit,
                 texture=True,
                 pbr=True,
                 model_seed=args.seed,
                 texture_seed=args.texture_seed,
-                texture_quality="standard",
-                geometry_quality="standard",
+                texture_quality=args.texture_quality,
                 texture_alignment="original_image",
                 auto_size=False,
                 orientation="align_image",
-                quad=False,
-                compress=False,
-                generate_parts=False,
-                smart_low_poly=False,
                 export_uv=True,
             )
             print(f"task_id={task_id}", flush=True)
@@ -167,8 +208,8 @@ async def generate_multiview(args: argparse.Namespace) -> int:
             write_manifest(manifest_path, manifest)
             return 1
 
-        downloaded = await client.download_task_models(task, str(output_dir))
-        balance_after = await client.get_balance()
+        downloaded = await download_models_resilient(api_key, task, output_dir)
+        balance_after = await get_balance_resilient(api_key)
         clean_downloads = {
             key: Path(value).name if value else None
             for key, value in downloaded.items()
@@ -213,8 +254,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--front", required=True)
     parser.add_argument("--left", required=True)
     parser.add_argument("--back", required=True)
+    parser.add_argument("--right", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--face-limit", type=int, default=8000)
+    parser.add_argument("--texture-quality", choices=("standard", "detailed"), default="standard")
     parser.add_argument("--seed", type=int, default=314159)
     parser.add_argument("--texture-seed", type=int, default=271828)
     parser.add_argument("--timeout", type=float, default=1200.0)

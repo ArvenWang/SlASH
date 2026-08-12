@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { VECTOR_FOCUS_ABILITY_ID } from "../content/abilities/definitions";
 import {
   dampAngle,
   signedAngleDelta,
@@ -43,6 +44,10 @@ export interface PresentationShell {
   readonly phaseEyebrow: HTMLSpanElement;
   readonly phaseTitle: HTMLElement;
   readonly phaseSubtitle: HTMLElement;
+  readonly focusHud: HTMLDivElement;
+  readonly focusValue: HTMLElement;
+  readonly focusPrompt: HTMLElement;
+  readonly focusSlots: readonly HTMLElement[];
 }
 
 export type PresentationLifecycleAction = "restart-stage" | "advance-stage" | "reset-run";
@@ -117,6 +122,49 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   previewLine.renderOrder = 4;
   scene.add(previewLine);
 
+  const focusRouteGeometry = new THREE.BufferGeometry();
+  focusRouteGeometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(new Array(5 * 3).fill(0), 3),
+  );
+  focusRouteGeometry.setDrawRange(0, 0);
+  const focusRouteMaterial = new THREE.LineBasicMaterial({
+    color: 0xcffcff,
+    transparent: true,
+    opacity: 0.62,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  const focusRouteLine = new THREE.Line(focusRouteGeometry, focusRouteMaterial);
+  focusRouteLine.name = "vector-focus-route-preview";
+  focusRouteLine.visible = false;
+  focusRouteLine.renderOrder = 12;
+  scene.add(focusRouteLine);
+
+  const focusMarkerGeometry = new THREE.RingGeometry(0.32, 0.43, 28);
+  const focusMarkers = Array.from({ length: 3 }, (_, index) => {
+    const marker = new THREE.Mesh(
+      focusMarkerGeometry,
+      new THREE.MeshBasicMaterial({
+        color: index === 2 ? 0xffffff : 0xbceff5,
+        transparent: true,
+        opacity: 0.8,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      }),
+    );
+    marker.name = `vector-focus-marker-${index + 1}`;
+    marker.rotation.x = -Math.PI / 2;
+    marker.position.y = 0.09;
+    marker.visible = false;
+    marker.renderOrder = 13;
+    scene.add(marker);
+    return marker;
+  });
+
   const playerActor = playerProvider.create({ role: "hero" });
   scene.add(playerActor.root);
   vfx.setDensity(tuning.vfxDensity);
@@ -179,6 +227,9 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   let renderedStageIndex = -1;
   let renderedStageName = "";
   let renderedAliveCount = -1;
+  let renderedFocusEnergy = -1;
+  let renderedFocusMode = "";
+  let renderedFocusPrompt = "";
   let renderedBannerVisible: boolean | null = null;
   let renderedBannerTone = "";
   let renderedBannerEyebrow = "";
@@ -245,6 +296,46 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       shell.enemyLabel.textContent = `${String(alive).padStart(2, "0")} HOSTILES`;
       renderedAliveCount = alive;
     }
+
+    const resource = gameState.player.abilities.ultimate?.resource;
+    const energy = Math.round(resource?.current ?? 0);
+    const maximum = Math.max(1, resource?.maximum ?? 100);
+    const active = gameState.player.activeAbility;
+    const mode = active?.phase === "target-selection"
+      ? "selecting"
+      : active?.phase === "route-execution"
+        ? "executing"
+        : energy >= maximum
+          ? "ready"
+          : "charging";
+    if (renderedFocusEnergy !== energy) {
+      shell.focusHud.style.setProperty("--focus-level", String((energy / maximum) * 100));
+      shell.focusValue.textContent = String(energy).padStart(3, "0");
+      playerActor.setEnergyLevel(energy / maximum);
+      renderedFocusEnergy = energy;
+    }
+    if (renderedFocusMode !== mode) {
+      shell.focusHud.classList.toggle("ready", mode === "ready");
+      shell.focusHud.classList.toggle("selecting", mode === "selecting");
+      shell.focusHud.classList.toggle("executing", mode === "executing");
+      renderedFocusMode = mode;
+    }
+    const selectedCount = active?.phase === "target-selection" ? active.targets.length : 0;
+    shell.focusSlots.forEach((slot, index) => slot.classList.toggle("locked", index < selectedCount));
+    const remainingSeconds = active?.phase === "target-selection"
+      ? Math.max(0, active.timeoutMs - active.elapsedMs) / 1_000
+      : 0;
+    const prompt = mode === "selecting"
+      ? `MARK ${String(Math.min(3, selectedCount + 1)).padStart(2, "0")} // ${remainingSeconds.toFixed(1)}S WINDOW`
+      : mode === "executing"
+        ? "VECTOR ROUTE EXECUTING"
+        : mode === "ready"
+          ? "SPACE // VECTOR FOCUS READY"
+          : "MULTIKILL TO ACCELERATE CHARGE";
+    if (renderedFocusPrompt !== prompt) {
+      shell.focusPrompt.textContent = prompt;
+      renderedFocusPrompt = prompt;
+    }
   }
 
   function updatePhaseBanner(): void {
@@ -298,6 +389,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       && hoverValid
       && tuning.dashPreview
       && gameState.stage.phase === "playing"
+      && gameState.player.activeAbility === null
       && worldTime >= previewSuppressedUntil;
     if (!previewLine.visible) return;
     const positions = previewGeometry.getAttribute("position") as THREE.BufferAttribute;
@@ -305,6 +397,49 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     positions.setXYZ(1, pointerWorld.x, 0.08, pointerWorld.z);
     positions.needsUpdate = true;
     previewGeometry.computeBoundingSphere();
+  }
+
+  function updateFocusRoutePreview(dt: number): void {
+    const active = gameState.player.activeAbility;
+    const selecting = active?.phase === "target-selection" ? active : null;
+    const executing = active?.phase === "route-execution" ? active : null;
+    const route = selecting?.targets ?? executing?.route ?? [];
+    const visible = gameState.stage.phase === "playing" && active?.abilityId === VECTOR_FOCUS_ABILITY_ID;
+    focusRouteLine.visible = visible;
+    if (!visible) {
+      focusRouteGeometry.setDrawRange(0, 0);
+      focusMarkers.forEach((marker) => { marker.visible = false; });
+      return;
+    }
+
+    const routePositions = selecting
+      ? route
+      : route.slice(Math.max(0, executing?.segmentIndex ?? 0));
+    const points = [gameState.player.position, ...routePositions];
+    if (selecting && hoverValid && route.length < selecting.targetCount) {
+      points.push({ x: pointerWorld.x, z: pointerWorld.z });
+    }
+    const positions = focusRouteGeometry.getAttribute("position") as THREE.BufferAttribute;
+    points.slice(0, 5).forEach((routePoint, index) => {
+      positions.setXYZ(index, routePoint.x, 0.11 + index * 0.006, routePoint.z);
+    });
+    positions.needsUpdate = true;
+    focusRouteGeometry.setDrawRange(0, Math.min(5, points.length));
+    focusRouteGeometry.computeBoundingSphere();
+
+    route.slice(0, 3).forEach((routePoint, index) => {
+      const marker = focusMarkers[index];
+      if (!marker) return;
+      marker.visible = true;
+      marker.position.set(routePoint.x, 0.105, routePoint.z);
+      const targetScale = executing ? 1.35 : 1;
+      marker.scale.setScalar(THREE.MathUtils.damp(marker.scale.x, targetScale, 12, dt));
+      const material = marker.material as THREE.MeshBasicMaterial;
+      material.opacity = THREE.MathUtils.damp(material.opacity, executing ? 0.94 : 0.74, 9, dt);
+    });
+    focusMarkers.forEach((marker, index) => {
+      if (index >= route.length) marker.visible = false;
+    });
   }
 
   function triggerDashVisual(event: Extract<GameEvent, { type: "dash-started" }>): void {
@@ -319,11 +454,14 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     const kills = event.anticipatedHits.map(({ position }) => (
       new THREE.Vector3(position.x, 0, position.z)
     ));
-    environment.reactToDash(start, end, Math.min(1.6, 1 + kills.length * 0.08));
+    const isRouteSegment = event.execution === "route-segment";
+    const routeIntensity = isRouteSegment ? 1.85 : 1;
+    environment.reactToDash(start, end, Math.min(2.2, routeIntensity + kills.length * 0.08));
     playerHeading = Math.atan2(direction.x, direction.z);
     playerActor.root.rotation.y = playerHeading;
     playerActor.animation.update({
       state: "action",
+      variant: isRouteSegment ? `chain-${Math.min(3, event.segmentIndex + 1)}` : null,
       timeSeconds: worldTime,
       deltaSeconds: 1 / 30,
       turn: 0,
@@ -335,15 +473,26 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     }
     vfx.spawnSlash(
       presentation.vfxProfileId,
-      { start, end, killPositions: kills, actor: playerActor.afterimageSource },
+      {
+        start,
+        end,
+        killPositions: kills,
+        actor: playerActor.afterimageSource,
+        variant: isRouteSegment ? "chain" : "normal",
+      },
     );
-    audio.playDash(presentation.audioProfileId, kills.length);
-    postFx.triggerImpact(presentation.cameraProfileId, kills.length * 0.055);
-    heroAnchorLight.intensity = Math.min(34, 18 + kills.length * 2.6);
+    if (isRouteSegment) {
+      audio.playChainDash(presentation.audioProfileId, kills.length, event.segmentIndex);
+    } else {
+      audio.playDash(presentation.audioProfileId, kills.length);
+    }
+    postFx.triggerImpact(presentation.cameraProfileId, kills.length * (isRouteSegment ? 0.07 : 0.055));
+    heroAnchorLight.intensity = Math.min(58, (isRouteSegment ? 38 : 18) + kills.length * 2.6);
+    const impulseScale = isRouteSegment ? 2.35 : 1;
     cameraImpulse.add(new THREE.Vector3(
-      direction.x * 0.16,
-      0.065 + kills.length * 0.009,
-      direction.z * 0.13,
+      direction.x * 0.16 * impulseScale,
+      (0.065 + kills.length * 0.009) * impulseScale,
+      direction.z * 0.13 * impulseScale,
     ));
     previewSuppressedUntil = worldTime + 0.42;
     shell.reticle.classList.add("active");
@@ -361,8 +510,14 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       visual.actor.deathPresentation?.setCutVisible(t >= 0.006);
       visual.actor.deathPresentation?.setCutHeat(Math.max(instantHeat * 0.92, heatIn * heatOut));
       if (!visual.separated) {
+        const rightX = Math.cos(visual.heading);
+        const rightZ = -Math.sin(visual.heading);
+        const hitFromRight = visual.slashDirection.x * rightX + visual.slashDirection.z * rightZ > 0;
+        const hitProgress = THREE.MathUtils.clamp(t / 0.12, 0, 1);
+        const deathProgress = THREE.MathUtils.clamp((t - 0.12) / 0.13, 0, 1);
         visual.actor.animation.update({
           state: t < 0.12 ? "hit" : "death",
+          variant: t < 0.075 ? (hitFromRight ? "right" : null) : t < 0.12 ? "cut-hold" : null,
           timeSeconds: worldTime,
           deltaSeconds: dt,
           distanceMoved: 0,
@@ -370,7 +525,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
           turn: 0,
           threat: 0,
           hitAgeSeconds: t,
-          sourceProgress: THREE.MathUtils.clamp(t / 0.72, 0, 1),
+          sourceProgress: t < 0.12 ? hitProgress : deathProgress,
         });
       }
       if (!visual.contactSpawned && t >= 0.012) {
@@ -427,6 +582,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     const threat = 1 - THREE.MathUtils.smoothstep(distanceToPlayer, 1.2, 3.1);
     visual.actor.animation.update({
       state: speedNormalized > 0.05 || threat > 0.05 ? "action" : "idle",
+      variant: speedNormalized <= 0.05 && threat > 0.05 ? "threat" : null,
       timeSeconds: worldTime,
       deltaSeconds: dt,
       distanceMoved,
@@ -491,6 +647,25 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
         postFx.triggerImpact("death-impact-current-v1");
         hostileRim.intensity = 180;
         audio.playDeath("player-death-current-v1");
+      } else if (event.type === "ability-selection-started") {
+        const presentation = abilityPresentationRegistry.get(event.abilityId);
+        if (presentation.activationAudioProfileId) {
+          audio.playFocusStart(presentation.activationAudioProfileId);
+        }
+        postFx.triggerImpact(presentation.activationImpactProfileId ?? presentation.cameraProfileId);
+      } else if (event.type === "ability-target-added") {
+        const marker = focusMarkers[event.index];
+        if (marker) {
+          marker.scale.setScalar(1.75);
+          (marker.material as THREE.MeshBasicMaterial).opacity = 1;
+        }
+      } else if (event.type === "ability-route-started") {
+        const presentation = abilityPresentationRegistry.get(event.abilityId);
+        postFx.triggerImpact(presentation.cameraProfileId, 0.18);
+      } else if (event.type === "ability-route-ended") {
+        const presentation = abilityPresentationRegistry.get(event.abilityId);
+        postFx.triggerImpact(presentation.cameraProfileId, 0.36);
+        cameraImpulse.y += 0.5;
       } else if (event.type === "stage-cleared" || event.type === "game-complete") {
         phaseAge = 0;
       }
@@ -498,10 +673,11 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
   }
 
   function update(dt: number): PresentationLifecycleAction | null {
-    worldTime += dt;
+    const worldDt = dt * (gameState.player.activeAbility?.worldTimeScale ?? 1);
+    worldTime += worldDt;
     stageIntroAge += dt;
-    environment.update(worldTime, dt);
-    postFx.update(worldTime, dt);
+    environment.update(worldTime, worldDt);
+    postFx.update(worldTime, worldDt);
     hostileRim.intensity = THREE.MathUtils.damp(hostileRim.intensity, 52, 5, dt);
     heroAnchorLight.intensity = THREE.MathUtils.damp(heroAnchorLight.intensity, 2.6, 11, dt);
 
@@ -537,8 +713,16 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     const recoveryProgress = !player.dash && player.recoveryRemainingMs > 0
       ? 1 - THREE.MathUtils.clamp(player.recoveryRemainingMs / gameState.rules.recoveryMs, 0, 1)
       : null;
+    const focusSelection = gameState.player.activeAbility?.phase === "target-selection"
+      ? gameState.player.activeAbility
+      : null;
+    const routeDash = player.dash?.execution === "route-segment" ? player.dash : null;
     const playerAnimationState = gameState.stage.phase === "dead"
       ? "death"
+      : focusSelection
+        ? "idle"
+        : routeDash
+          ? "action"
       : dashProgress !== null && dashProgress < 0.18
         ? "anticipation"
         : dashProgress !== null && dashProgress < 0.72
@@ -548,18 +732,26 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
             : recoveryProgress !== null
               ? "recovery"
               : "idle";
+    const playerAnimationVariant = focusSelection
+      ? focusSelection.elapsedMs < 240 ? "focus-activate" : "focus-selection"
+      : routeDash
+        ? `chain-${Math.min(3, routeDash.segmentIndex + 1)}`
+        : null;
     playerActor.animation.update({
       state: playerAnimationState,
+      variant: playerAnimationVariant,
       timeSeconds: worldTime,
-      deltaSeconds: dt,
+      deltaSeconds: gameState.stage.phase === "dead" ? dt : worldDt,
       turn: THREE.MathUtils.clamp(playerTurnDelta / 0.65, -1, 1),
       sourceProgress: gameState.stage.phase === "dead"
         ? THREE.MathUtils.clamp(phaseAge / 0.78, 0, 1)
-        : dashProgress ?? recoveryProgress,
+        : routeDash
+          ? THREE.MathUtils.clamp(routeDash.elapsedMs / routeDash.durationMs, 0, 1)
+          : dashProgress ?? recoveryProgress,
     });
     for (const enemy of gameState.enemies) {
       const visual = enemyVisuals.get(enemy.id);
-      if (visual) updateEnemyVisual(enemy, visual, dt);
+      if (visual) updateEnemyVisual(enemy, visual, visual.deathAge === null ? worldDt : dt);
     }
     updateEnemyContactShadows();
     vfx.update(dt);
@@ -577,6 +769,7 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
     camera.position.y += Math.sin(worldTime * 0.21) * 0.07;
     camera.lookAt(cameraTarget);
     updatePreview();
+    updateFocusRoutePreview(dt);
     updateHud();
     updatePhaseBanner();
     return lifecycleAction;
@@ -629,9 +822,13 @@ export function createPresentationRuntime(options: PresentationRuntimeOptions): 
       }
       enemyVisuals.clear();
       playerActor.dispose();
-      scene.remove(previewLine, enemyContactShadows);
+      scene.remove(previewLine, focusRouteLine, enemyContactShadows, ...focusMarkers);
       previewGeometry.dispose();
       previewMaterial.dispose();
+      focusRouteGeometry.dispose();
+      focusRouteMaterial.dispose();
+      focusMarkerGeometry.dispose();
+      focusMarkers.forEach((marker) => (marker.material as THREE.Material).dispose());
       enemyContactShadowGeometry.dispose();
       enemyContactShadowMaterial.dispose();
       enemyContactShadowTexture.dispose();

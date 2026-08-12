@@ -51,6 +51,9 @@ export function executeDashSlash(state: GameState, target: Vec2): void {
     elapsedMs: 0,
     hitRadius: modified.hitRadius,
     recoveryMs: modified.recoveryMs,
+    execution: "standard",
+    segmentIndex: 0,
+    killCount: 0,
   };
   state.player.recoveryRemainingMs = 0;
   state.player.bufferedAbility = null;
@@ -70,6 +73,8 @@ export function executeDashSlash(state: GameState, target: Vec2): void {
     to: copyVec2(to),
     direction: copyVec2(direction),
     durationMs: modified.durationMs,
+    execution: "standard",
+    segmentIndex: 0,
     anticipatedHits,
   });
 }

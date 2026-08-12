@@ -45,7 +45,28 @@ export interface DashState {
   elapsedMs: number;
   hitRadius: number;
   recoveryMs: number;
+  execution: "standard" | "route-segment";
+  segmentIndex: number;
+  killCount: number;
 }
+
+export type ActiveAbilityState =
+  | {
+      abilityId: AbilityId;
+      phase: "target-selection";
+      targets: Vec2[];
+      elapsedMs: number;
+      timeoutMs: number;
+      targetCount: number;
+      worldTimeScale: number;
+    }
+  | {
+      abilityId: AbilityId;
+      phase: "route-execution";
+      route: Vec2[];
+      segmentIndex: number;
+      worldTimeScale: number;
+    };
 
 export interface BufferedAbilityCommand {
   slot: AbilitySlot;
@@ -60,6 +81,7 @@ export interface PlayerState {
   dash: DashState | null;
   recoveryRemainingMs: number;
   bufferedAbility: BufferedAbilityCommand | null;
+  activeAbility: ActiveAbilityState | null;
   abilities: Record<AbilitySlot, AbilityRuntimeState | null>;
 }
 
@@ -143,10 +165,35 @@ export type GameEventPayload =
       to: Vec2;
       direction: Vec2;
       durationMs: number;
+      execution: "standard" | "route-segment";
+      segmentIndex: number;
       anticipatedHits: Array<{ entityId: EntityId; position: Vec2 }>;
     }
-  | { type: "enemy-killed"; enemyId: EntityId; sourceId: EntityId; attackId: AbilityId; position: Vec2; direction: Vec2 }
-  | { type: "dash-ended"; abilityId: AbilityId; sourceId: EntityId; position: Vec2 }
+  | {
+      type: "enemy-killed";
+      enemyId: EntityId;
+      sourceId: EntityId;
+      attackId: AbilityId;
+      execution: "standard" | "route-segment";
+      segmentIndex: number;
+      position: Vec2;
+      direction: Vec2;
+    }
+  | {
+      type: "dash-ended";
+      abilityId: AbilityId;
+      sourceId: EntityId;
+      execution: "standard" | "route-segment";
+      segmentIndex: number;
+      killCount: number;
+      energyGain: number;
+      position: Vec2;
+    }
+  | { type: "ability-selection-started"; abilityId: AbilityId; timeoutMs: number; targetCount: number }
+  | { type: "ability-target-added"; abilityId: AbilityId; target: Vec2; index: number }
+  | { type: "ability-cancelled"; abilityId: AbilityId; reason: "input" | "timeout" | "death" }
+  | { type: "ability-route-started"; abilityId: AbilityId; route: Vec2[] }
+  | { type: "ability-route-ended"; abilityId: AbilityId; position: Vec2 }
   | { type: "player-died"; enemyId: EntityId; position: Vec2 }
   | { type: "stage-cleared" | "game-complete"; stageIndex: number; levelId: LevelId };
 
@@ -183,11 +230,20 @@ export interface GameInput {
 }
 
 export type GameCommand =
-  | { type: "activate-ability"; slot: AbilitySlot; target: Vec2 }
+  | { type: "activate-ability"; slot: AbilitySlot; target?: Vec2 }
+  | { type: "submit-ability-target"; target: Vec2 }
+  | { type: "cancel-active-ability" }
   | { type: "restart-stage" }
   | { type: "advance-stage" };
 
-export type GameCommandResult = DashRequestResult | "restarted" | "advanced" | "ignored";
+export type GameCommandResult =
+  | DashRequestResult
+  | "target-added"
+  | "triggered"
+  | "cancelled"
+  | "restarted"
+  | "advanced"
+  | "ignored";
 
 export interface GameCommandDispatchResult {
   sequence: number;
@@ -195,7 +251,7 @@ export interface GameCommandDispatchResult {
 }
 
 export type DashRequestResult = "started" | "buffered" | "ignored";
-export type PlayerAction = "ready" | "dashing" | "recovering" | "dead";
+export type PlayerAction = "ready" | "dashing" | "targeting" | "route-dashing" | "recovering" | "dead";
 
 export interface GameSnapshot {
   stage: { index: number; number: number; count: number; id: string; name: string };
@@ -225,8 +281,30 @@ export interface GameSnapshot {
     progress: number;
     durationMs: number;
   } | null;
+  activeAbility:
+    | {
+        id: AbilityId;
+        phase: "target-selection";
+        targets: Vec2[];
+        elapsedMs: number;
+        timeoutMs: number;
+        targetCount: number;
+        worldTimeScale: number;
+      }
+    | {
+        id: AbilityId;
+        phase: "route-execution";
+        route: Vec2[];
+        segmentIndex: number;
+        worldTimeScale: number;
+      }
+    | null;
   bufferedTarget: Vec2 | null;
-  abilities: Record<AbilitySlot, { id: AbilityId; cooldownMs: number } | null>;
+  abilities: Record<AbilitySlot, {
+    id: AbilityId;
+    cooldownMs: number;
+    resource?: { id: string; current: number; maximum: number };
+  } | null>;
   kills: number;
   enemyCount: number;
   aliveEnemies: Array<{ id: string; x: number; z: number }>;
@@ -256,4 +334,9 @@ export interface AbilityRuntimeState {
   abilityId: AbilityId;
   cooldownRemainingMs: number;
   charges?: number;
+  resource?: {
+    id: string;
+    current: number;
+    maximum: number;
+  };
 }

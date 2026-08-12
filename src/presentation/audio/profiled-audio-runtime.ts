@@ -4,6 +4,8 @@ import { audioProfileRegistry } from "../profiles/definitions";
 export interface ProfiledAudioRuntime {
   resume(): Promise<void>;
   playDash(profileId: string, killCount: number): void;
+  playFocusStart(profileId: string): void;
+  playChainDash(profileId: string, killCount: number, segmentIndex: number): void;
   playDeath(profileId: string): void;
   setEnabled(enabled: boolean): void;
   snapshot(): { enabled: boolean; triggerCounts: Readonly<Record<string, number>> };
@@ -13,7 +15,7 @@ export interface ProfiledAudioRuntime {
 export function createProfiledAudioRuntime(base: AudioRuntime): ProfiledAudioRuntime {
   let enabled = true;
   const triggerCounts: Record<string, number> = {};
-  function resolve(profileId: string, event: "dash" | "death") {
+  function resolve(profileId: string, event: "dash" | "focus-start" | "chain-dash" | "death") {
     const profile = audioProfileRegistry.get(profileId);
     if (profile.event !== event) throw new Error(`Audio profile ${profileId} is not a ${event} profile.`);
     triggerCounts[profileId] = (triggerCounts[profileId] ?? 0) + 1;
@@ -27,6 +29,20 @@ export function createProfiledAudioRuntime(base: AudioRuntime): ProfiledAudioRun
         throw new Error(`Unsupported dash audio runtime: ${profile.runtimeId}`);
       }
       base.playDash(killCount);
+    },
+    playFocusStart(profileId) {
+      const profile = resolve(profileId, "focus-start");
+      if (profile.runtimeId !== "procedural-focus-start-audio-runtime") {
+        throw new Error(`Unsupported focus audio runtime: ${profile.runtimeId}`);
+      }
+      base.playFocusStart();
+    },
+    playChainDash(profileId, killCount, segmentIndex) {
+      const profile = resolve(profileId, "chain-dash");
+      if (profile.runtimeId !== "procedural-chain-dash-audio-runtime") {
+        throw new Error(`Unsupported chain audio runtime: ${profile.runtimeId}`);
+      }
+      base.playChainDash(killCount, segmentIndex);
     },
     playDeath(profileId) {
       const profile = resolve(profileId, "death");

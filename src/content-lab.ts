@@ -82,7 +82,17 @@ function applyTestUpgrades(enabled: boolean): void {
 function activateAbility(id: string): string {
   const definition = abilityDefinitions.get(id);
   const slot = definition.slot as AbilitySlot;
-  runtime.state.player.abilities[slot] = { abilityId: definition.id, cooldownRemainingMs: 0 };
+  runtime.state.player.abilities[slot] = {
+    abilityId: definition.id,
+    cooldownRemainingMs: 0,
+    resource: definition.resource
+      ? {
+          id: definition.resource.id,
+          current: definition.resource.maximum,
+          maximum: definition.resource.maximum,
+        }
+      : undefined,
+  };
   const { result } = runtime.dispatch({
     type: "activate-ability",
     slot,

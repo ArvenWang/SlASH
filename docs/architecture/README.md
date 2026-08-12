@@ -32,7 +32,7 @@ flowchart LR
 | Gameplay | `src/game/` | 固定步长模拟、碰撞、行为、能力、事件、Replay | 模型、动画、VFX、灯光 |
 | Runtime | `src/runtime/`、`src/application.ts` | 生命周期和各系统装配 | 定义具体内容 |
 | Presentation | `src/presentation/` | 视觉映射、角色来源、动画状态、Profile、预算 | 改写 Gameplay 结果 |
-| Current visual runtimes | `src/characters/`、`src/scene/`、`src/vfx.ts` | 当前程序化画面实现 | 决定击杀、移动或过关 |
+| Current visual runtimes | `src/presentation/characters/`、`src/presentation/weapons/`、`src/scene/`、`src/vfx.ts` | V5R 模型/动作/武器、模块化场景与当前效果实现 | 决定击杀、移动或过关 |
 
 `src/main.ts` 只负责加载样式和启动 `bootstrapSlashApplication()`。跨层装配集中在 `src/application.ts`，Gameplay 与 Presentation 之间通过 `GameState` 和 `GameEvent` 连接。
 
@@ -54,9 +54,9 @@ flowchart LR
 
 - 三个现有关卡仍全部使用 Immediate Spawn；`timed`、`after-previous-killed`、`triggered` 已有数据类型，但 Encounter Scheduler 尚未实现。
 - Projectile / Obstacle / Hazard 已有 Definition、State、碰撞形状和快照入口，但没有虚构正式内容或完整生命周期系统。
-- 两份生产 GLB 有骨骼但没有 AnimationClip；Controller 已支持 Clip，当前 GLB 走自制骨骼 Additive Driver。
-- 程序化环境和 VFX Runtime 仍较大；Profile 已先隔离配置。后续在加入第一个新环境模块或新特效家族时，按实际需求拆 Runtime，避免提前制造空框架。
-- 当前视觉 Profile 只是“现状迁移版”，不是通过审美验收的最终方案。
+- Tripo Rig 文件本身不携带合格生产动作；正式运行由 Semantic Skeleton Profile 绑定项目自制 `THREE.AnimationClip`，Tripo 预设只保留为拒绝证据。
+- 环境 Runtime 仍较大，但 Arena / Transit / City / Weather / Lighting 已按模块分组，V5R 材质、距离和层级由 `src/scene/environment-visual-profile.ts` 独立配置。加入第二个正式环境家族时再按真实复用边界拆文件。
+- V5R 视觉实现已通过自动技术门，但用户真人审美签核仍是独立终门；自动截图不能替代签核。
 
 ## 文档索引
 
@@ -66,6 +66,7 @@ flowchart LR
 - [Presentation Boundary](PRESENTATION_BOUNDARY.md)
 - [Character Pipeline](CHARACTER_PIPELINE.md)
 - [Animation Pipeline](ANIMATION_PIPELINE.md)
+- [V5R Visual Asset Contract](VISUAL_ASSET_CONTRACT.md)
 - [Level Pipeline](LEVEL_PIPELINE.md)
 - [Replay 与确定性](REPLAY_AND_DETERMINISM.md)
 - [Performance Budget](PERFORMANCE_BUDGET.md)

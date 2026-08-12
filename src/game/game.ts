@@ -8,17 +8,30 @@
 import { createEnemyEntityId } from "../core/ids";
 import { copyVec2, squaredDistance, vec2 } from "../core/math/vec2";
 import { createSeededRandom } from "../core/random/seeded-random";
-import { DASH_SLASH_ABILITY_ID } from "../content/abilities/definitions";
+import {
+  DASH_SLASH_ABILITY_ID,
+  VECTOR_FOCUS_ABILITY_ID,
+  abilityDefinitions,
+} from "../content/abilities/definitions";
 import { enemyDefinitions } from "../content/enemies/definitions";
 import {
   LEVEL_DEFINITIONS,
   levelByIndex,
   type LevelDefinition,
 } from "../content/levels/definitions";
-import { activateAbility } from "./abilities/ability-system";
+import { activateAbility, applyAbilityCompletion } from "./abilities/ability-system";
+import {
+  advanceActiveAbilitySelection,
+  cancelActiveAbility,
+  completeVectorFocusSegment,
+  getAbilityWorldTimeScale,
+  isSelectingAbilityTarget,
+  submitActiveAbilityTarget,
+} from "./abilities/vector-focus";
 import { segmentIntersectsCircle } from "./collision/shapes";
 import type {
   ArenaBounds,
+  AbilityRuntimeState,
   DashRequestResult,
   GameCommand,
   GameCommandDispatchResult,
@@ -71,6 +84,14 @@ export type {
   Vec2,
 } from "./domain/types";
 export { getDashDurationMs } from "./abilities/dash-slash";
+export {
+  cancelActiveAbility,
+  getVectorFocusEnergy,
+  getVectorFocusEnergyGain,
+  isVectorFocusReady,
+  setVectorFocusEnergy,
+  submitActiveAbilityTarget,
+} from "./abilities/vector-focus";
 export { clampPointToArena } from "./collision/arena";
 export { distanceSquaredPointToSegment, segmentIntersectsCircle } from "./collision/shapes";
 export { drainGameEvents } from "./events/event-buffer";
@@ -177,6 +198,7 @@ export function createGame(stageIndex = 0, rules: Partial<GameRules> = {}): Game
   const encounter = level.encounters[0];
   if (!encounter) throw new Error(`Level ${level.id} has no encounter.`);
   const spawns = phaseOneSpawns(level);
+  const ultimateDefinition = abilityDefinitions.get(VECTOR_FOCUS_ABILITY_ID);
   const state: GameState = {
     version: GAME_STATE_VERSION,
     run: {
@@ -207,11 +229,22 @@ export function createGame(stageIndex = 0, rules: Partial<GameRules> = {}): Game
       dash: null,
       recoveryRemainingMs: 0,
       bufferedAbility: null,
+      activeAbility: null,
       abilities: {
         primary: { abilityId: DASH_SLASH_ABILITY_ID, cooldownRemainingMs: 0 },
         secondary: null,
         special: null,
-        ultimate: null,
+        ultimate: {
+          abilityId: VECTOR_FOCUS_ABILITY_ID,
+          cooldownRemainingMs: 0,
+          resource: ultimateDefinition.resource
+            ? {
+                id: ultimateDefinition.resource.id,
+                current: ultimateDefinition.resource.initial,
+                maximum: ultimateDefinition.resource.maximum,
+              }
+            : undefined,
+        },
       },
     },
     enemies: spawns.map((spawn, index) => {
@@ -354,8 +387,11 @@ export function getPlayerAction(state: GameState): PlayerAction {
   if (state.player.hp === 0) {
     return "dead";
   }
+  if (state.player.activeAbility?.phase === "target-selection") {
+    return "targeting";
+  }
   if (state.player.dash !== null) {
-    return "dashing";
+    return state.player.dash.execution === "route-segment" ? "route-dashing" : "dashing";
   }
   if (state.player.recoveryRemainingMs > EPSILON) {
     return "recovering";
@@ -388,11 +424,14 @@ function killEnemiesAlongSegment(
     enemy.state = "dead";
     enemy.killedAtMs = state.elapsedMs;
     state.combat.kills += 1;
+    if (dash) dash.killCount += 1;
     emitGameEvent(state, {
       type: "enemy-killed",
       enemyId: enemy.id,
       sourceId: "player",
       attackId,
+      execution: dash?.execution ?? "standard",
+      segmentIndex: dash?.segmentIndex ?? 0,
       position: copyPoint(enemy.position),
       direction: copyPoint(state.player.facing),
     });
@@ -406,13 +445,24 @@ function completeDash(state: GameState): void {
   }
   state.player.position = copyPoint(dash.to);
   state.player.dash = null;
-  state.player.recoveryRemainingMs = dash.recoveryMs;
+  const energyGain = dash.execution === "standard"
+    ? applyAbilityCompletion(state, dash.abilityId, dash.killCount)
+    : 0;
   emitGameEvent(state, {
     type: "dash-ended",
     abilityId: dash.abilityId,
     sourceId: "player",
+    execution: dash.execution,
+    segmentIndex: dash.segmentIndex,
+    killCount: dash.killCount,
+    energyGain,
     position: copyPoint(state.player.position),
   });
+  if (dash.execution === "route-segment") {
+    completeVectorFocusSegment(state);
+  } else {
+    state.player.recoveryRemainingMs = dash.recoveryMs;
+  }
 }
 
 function advancePlayerAction(state: GameState, deltaMs: number): void {
@@ -483,7 +533,11 @@ function aliveEnemyCount(state: GameState): number {
 }
 
 function resolveStageCompletion(state: GameState): boolean {
-  if (aliveEnemyCount(state) !== 0 || state.player.dash !== null) {
+  if (
+    aliveEnemyCount(state) !== 0
+    || state.player.dash !== null
+    || state.player.activeAbility?.phase === "route-execution"
+  ) {
     return false;
   }
 
@@ -492,6 +546,7 @@ function resolveStageCompletion(state: GameState): boolean {
       ? "game-complete"
       : "stage-cleared";
   state.player.bufferedAbility = null;
+  state.player.activeAbility = null;
   emitGameEvent(state, {
     type: state.stage.phase,
     stageIndex: state.stage.index,
@@ -519,6 +574,8 @@ function resolvePlayerContact(state: GameState): void {
 
     state.player.hp = 0;
     state.player.dash = null;
+    cancelActiveAbility(state, "death");
+    state.player.activeAbility = null;
     state.player.recoveryRemainingMs = 0;
     state.player.bufferedAbility = null;
     state.stage.phase = "dead";
@@ -539,13 +596,17 @@ function simulateFixedStep(state: GameState): void {
   state.tick += 1;
   state.run.tick += 1;
   state.elapsedMs += FIXED_STEP_MS;
-  advancePlayerAction(state, FIXED_STEP_MS);
+  if (isSelectingAbilityTarget(state)) {
+    advanceActiveAbilitySelection(state, FIXED_STEP_MS);
+  } else {
+    advancePlayerAction(state, FIXED_STEP_MS);
+  }
 
   if (resolveStageCompletion(state)) {
     return;
   }
 
-  moveEnemiesWithBehaviors(state, FIXED_STEP_MS);
+  moveEnemiesWithBehaviors(state, FIXED_STEP_MS * getAbilityWorldTimeScale(state));
   resolvePlayerContact(state);
 }
 
@@ -557,6 +618,10 @@ export function dispatchGameCommand(
   let result: GameCommandResult = "ignored";
   if (command.type === "activate-ability") {
     result = activateAbility(state, command.slot, command.target);
+  } else if (command.type === "submit-ability-target") {
+    result = submitActiveAbilityTarget(state, command.target);
+  } else if (command.type === "cancel-active-ability") {
+    result = cancelActiveAbility(state) ? "cancelled" : "ignored";
   } else if (command.type === "restart-stage") {
     restartStage(state);
     result = "restarted";
@@ -637,6 +702,52 @@ function roundForSnapshot(value: number): number {
   return Math.round(value * 1000) / 1000;
 }
 
+function snapshotAbility(runtime: AbilityRuntimeState | null): GameSnapshot["abilities"]["primary"] {
+  if (!runtime) return null;
+  return {
+    id: runtime.abilityId,
+    cooldownMs: roundForSnapshot(runtime.cooldownRemainingMs),
+    ...(runtime.resource
+      ? {
+          resource: {
+            id: runtime.resource.id,
+            current: roundForSnapshot(runtime.resource.current),
+            maximum: roundForSnapshot(runtime.resource.maximum),
+          },
+        }
+      : {}),
+  };
+}
+
+function gameStateActiveAbilitySnapshot(state: GameState): GameSnapshot["activeAbility"] {
+  const active = state.player.activeAbility;
+  if (!active) return null;
+  if (active.phase === "target-selection") {
+    return {
+      id: active.abilityId,
+      phase: active.phase,
+      targets: active.targets.map((target) => ({
+        x: roundForSnapshot(target.x),
+        z: roundForSnapshot(target.z),
+      })),
+      elapsedMs: roundForSnapshot(active.elapsedMs),
+      timeoutMs: roundForSnapshot(active.timeoutMs),
+      targetCount: active.targetCount,
+      worldTimeScale: active.worldTimeScale,
+    };
+  }
+  return {
+    id: active.abilityId,
+    phase: active.phase,
+    route: active.route.map((target) => ({
+      x: roundForSnapshot(target.x),
+      z: roundForSnapshot(target.z),
+    })),
+    segmentIndex: active.segmentIndex,
+    worldTimeScale: active.worldTimeScale,
+  };
+}
+
 /** Compact, stable state intended for renderGameToText and browser QA agents. */
 export function getGameSnapshot(state: GameState): GameSnapshot {
   const dash = state.player.dash;
@@ -681,6 +792,7 @@ export function getGameSnapshot(state: GameState): GameSnapshot {
             progress: roundForSnapshot(dash.elapsedMs / dash.durationMs),
             durationMs: roundForSnapshot(dash.durationMs),
           },
+    activeAbility: gameStateActiveAbilitySnapshot(state),
     bufferedTarget:
       state.player.bufferedAbility === null
         ? null
@@ -689,34 +801,10 @@ export function getGameSnapshot(state: GameState): GameSnapshot {
             z: roundForSnapshot(state.player.bufferedAbility.target.z),
           },
     abilities: {
-      primary:
-        state.player.abilities.primary === null
-          ? null
-          : {
-              id: state.player.abilities.primary.abilityId,
-              cooldownMs: roundForSnapshot(state.player.abilities.primary.cooldownRemainingMs),
-            },
-      secondary:
-        state.player.abilities.secondary === null
-          ? null
-          : {
-              id: state.player.abilities.secondary.abilityId,
-              cooldownMs: roundForSnapshot(state.player.abilities.secondary.cooldownRemainingMs),
-            },
-      special:
-        state.player.abilities.special === null
-          ? null
-          : {
-              id: state.player.abilities.special.abilityId,
-              cooldownMs: roundForSnapshot(state.player.abilities.special.cooldownRemainingMs),
-            },
-      ultimate:
-        state.player.abilities.ultimate === null
-          ? null
-          : {
-              id: state.player.abilities.ultimate.abilityId,
-              cooldownMs: roundForSnapshot(state.player.abilities.ultimate.cooldownRemainingMs),
-            },
+      primary: snapshotAbility(state.player.abilities.primary),
+      secondary: snapshotAbility(state.player.abilities.secondary),
+      special: snapshotAbility(state.player.abilities.special),
+      ultimate: snapshotAbility(state.player.abilities.ultimate),
     },
     kills: state.combat.kills,
     enemyCount: state.combat.totalEnemies,

@@ -1,4 +1,4 @@
-import { getGameSnapshot } from "./game/game";
+import { getGameSnapshot, setVectorFocusEnergy } from "./game/game";
 import { levelByIndex } from "./content/levels/definitions";
 import { createCharacterProviderRegistry } from "./presentation/characters/providers";
 import {
@@ -21,6 +21,7 @@ function requiredElement<T extends Element>(selector: string): T {
 
 export async function bootstrapSlashApplication(): Promise<void> {
   const shell = {
+    gameShell: requiredElement<HTMLElement>("#game-shell"),
     canvas: requiredElement<HTMLCanvasElement>("#game-canvas"),
     reticle: requiredElement<HTMLDivElement>("#reticle"),
     loading: requiredElement<HTMLDivElement>("#loading"),
@@ -32,6 +33,12 @@ export async function bootstrapSlashApplication(): Promise<void> {
     phaseSubtitle: requiredElement<HTMLElement>("#phase-subtitle"),
     loadingLabel: requiredElement<HTMLParagraphElement>("#loading-label"),
     loadingProgress: requiredElement<HTMLSpanElement>("#loading-progress"),
+    titleScreen: requiredElement<HTMLElement>("#title-screen"),
+    startButton: requiredElement<HTMLButtonElement>("#start-button"),
+    focusHud: requiredElement<HTMLDivElement>("#focus-hud"),
+    focusValue: requiredElement<HTMLElement>("#focus-value"),
+    focusPrompt: requiredElement<HTMLElement>("#focus-prompt"),
+    focusSlots: [...document.querySelectorAll<HTMLElement>("[data-focus-slot]")],
   };
   const pageParameters = new URLSearchParams(window.location.search);
   const qualityMode = pageParameters.get("quality") === "compatibility"
@@ -39,6 +46,7 @@ export async function bootstrapSlashApplication(): Promise<void> {
     : "high";
   const deterministicCapture = pageParameters.get("deterministic") === "1";
   const validationMode = pageParameters.get("validation") === "1";
+  const shouldAutostart = pageParameters.get("autostart") === "1" || validationMode;
 
   function setLoadingPhase(progress: number, label: string): void {
     const scale = Math.min(1, Math.max(0.05, progress));
@@ -62,8 +70,8 @@ export async function bootstrapSlashApplication(): Promise<void> {
     bloom: 0.34,
     cameraFov: 28.5,
     vfxDensity: 1,
-    rainDensity: 1,
-    fogDensity: 0.0078,
+    rainDensity: rendererRuntime.environment.snapshot().rainDensity,
+    fogDensity: rendererRuntime.environment.snapshot().fogDensity,
     enemyMotion: true,
     dashPreview: true,
   };
@@ -84,13 +92,15 @@ export async function bootstrapSlashApplication(): Promise<void> {
   });
   setLoadingPhase(0.78, "LINKING COMBATANTS");
 
+  type ApplicationPhase = "loading" | "title" | "playing";
+  let applicationPhase: ApplicationPhase = "loading";
   let lastTime = performance.now();
-  let simulationEnabled = true;
+  let simulationEnabled = false;
   let graphicsContextState: "ready" | "lost" | "restoring" = "ready";
   let audioEnabled = true;
 
   function dispatchPrimaryAbility(target: { x: number; z: number }): string {
-    if (gameState.stage.phase !== "playing") return "ignored";
+    if (applicationPhase !== "playing" || gameState.stage.phase !== "playing") return "ignored";
     const inputId = rendererRuntime.diagnostics.markInput();
     const { result } = gameRuntime.dispatch({
       type: "activate-ability",
@@ -102,9 +112,63 @@ export async function bootstrapSlashApplication(): Promise<void> {
     return result;
   }
 
+  function consumeImmediateEvents(): void {
+    presentationRuntime.consumeEvents(gameRuntime.drainEvents());
+  }
+
+  function dispatchUltimate(): string {
+    if (applicationPhase !== "playing" || gameState.stage.phase !== "playing") return "ignored";
+    const active = gameState.player.activeAbility;
+    const { result } = active?.phase === "target-selection"
+      ? gameRuntime.dispatch({ type: "cancel-active-ability" })
+      : gameRuntime.dispatch({ type: "activate-ability", slot: "ultimate" });
+    if (result !== "ignored") consumeImmediateEvents();
+    return result;
+  }
+
+  function dispatchAbilityTarget(target: { x: number; z: number }): string {
+    if (gameState.player.activeAbility?.phase !== "target-selection") {
+      return dispatchPrimaryAbility(target);
+    }
+    const { result } = gameRuntime.dispatch({ type: "submit-ability-target", target });
+    if (result !== "ignored") consumeImmediateEvents();
+    return result;
+  }
+
+  function cancelAbility(): string {
+    if (applicationPhase !== "playing") return "ignored";
+    const { result } = gameRuntime.dispatch({ type: "cancel-active-ability" });
+    if (result !== "ignored") consumeImmediateEvents();
+    return result;
+  }
+
+  function setApplicationPhase(nextPhase: ApplicationPhase): void {
+    applicationPhase = nextPhase;
+    shell.gameShell.dataset.applicationPhase = nextPhase;
+    const titleVisible = nextPhase === "title";
+    shell.titleScreen.classList.toggle("visible", titleVisible);
+    shell.titleScreen.setAttribute("aria-hidden", String(!titleVisible));
+    presentationRuntime.clearPointer();
+  }
+
+  function startGame(unlockAudio: boolean): void {
+    if (applicationPhase === "playing") return;
+    if (unlockAudio) {
+      void rendererRuntime.audio.resume().catch(() => {
+        // A later trusted gesture can retry audio without blocking combat.
+      });
+    }
+    gameRuntime.resetRun();
+    gameRuntime.drainEvents();
+    presentationRuntime.resetStage();
+    setApplicationPhase("playing");
+    simulationEnabled = true;
+    lastTime = performance.now();
+  }
+
   function resetPresentationStage(): void {
     presentationRuntime.resetStage();
-    simulationEnabled = true;
+    simulationEnabled = applicationPhase === "playing";
   }
 
   function updateFrame(dt: number): void {
@@ -112,6 +176,7 @@ export async function bootstrapSlashApplication(): Promise<void> {
       presentationRuntime.consumeEvents(gameRuntime.advance(dt * 1000, tuning.enemyMotion));
     }
     const lifecycleAction = presentationRuntime.update(dt);
+    if (applicationPhase !== "playing") return;
     if (lifecycleAction === "restart-stage") {
       gameRuntime.restartStage();
       resetPresentationStage();
@@ -170,7 +235,7 @@ export async function bootstrapSlashApplication(): Promise<void> {
       const presentation = presentationRuntime.snapshot();
       return {
         gameplay: {
-          phase: game.phase,
+          phase: applicationPhase === "playing" ? game.phase : applicationPhase,
           action: game.player.action,
           enemies: game.aliveEnemies.length,
           invulnerable: game.player.invulnerable,
@@ -189,6 +254,7 @@ export async function bootstrapSlashApplication(): Promise<void> {
     },
     renderGameToText: () => JSON.stringify({
       coordinateSystem: "World ground plane. Origin at arena center; +x is screen-right-ish, +z is toward the near camera edge.",
+      applicationPhase,
       qualityMode,
       graphicsContextState,
       camera: {
@@ -223,6 +289,16 @@ export async function bootstrapSlashApplication(): Promise<void> {
         resetPresentationStage();
       },
       dashTo: (x, z) => dispatchPrimaryAbility({ x, z }),
+      setVectorFocusEnergy(value) {
+        return setVectorFocusEnergy(gameState, value);
+      },
+      activateUltimate: dispatchUltimate,
+      addAbilityTarget(x, z) {
+        const { result } = gameRuntime.dispatch({ type: "submit-ability-target", target: { x, z } });
+        if (result !== "ignored") consumeImmediateEvents();
+        return result;
+      },
+      cancelActiveAbility: cancelAbility,
       setEnemyMotion(enabled) {
         tuning.enemyMotion = Boolean(enabled);
       },
@@ -243,6 +319,9 @@ export async function bootstrapSlashApplication(): Promise<void> {
 
   createInputRuntime({
     canvas: shell.canvas,
+    startSurface: shell.titleScreen,
+    isGameStarted: () => applicationPhase === "playing",
+    onStartRequest: () => startGame(true),
     onPointerMove: ({ clientX, clientY }) => presentationRuntime.updatePointer(clientX, clientY),
     onPrimaryPointer: ({ clientX, clientY }) => {
       void rendererRuntime.audio.resume().catch(() => {
@@ -255,12 +334,16 @@ export async function bootstrapSlashApplication(): Promise<void> {
       }
       presentationRuntime.updatePointer(clientX, clientY);
       const target = presentationRuntime.getPrimaryTarget();
-      if (target) dispatchPrimaryAbility(target);
+      if (target) dispatchAbilityTarget(target);
     },
+    onCancelAbility: () => { cancelAbility(); },
+    onUltimate: () => { dispatchUltimate(); },
     onPointerLeave: presentationRuntime.clearPointer,
     onRestart: () => {
-      gameRuntime.dispatch({ type: "restart-stage" });
-      resetPresentationStage();
+      if (applicationPhase === "playing") {
+        gameRuntime.dispatch({ type: "restart-stage" });
+        resetPresentationStage();
+      }
     },
     onToggleAudio: () => {
       audioEnabled = !audioEnabled;
@@ -283,7 +366,7 @@ export async function bootstrapSlashApplication(): Promise<void> {
     resize();
     renderScene();
     graphicsContextState = "ready";
-    simulationEnabled = gameState.stage.phase === "playing";
+    simulationEnabled = applicationPhase === "playing" && gameState.stage.phase === "playing";
     setLoadingPhase(1, "COMBAT SPACE RESTORED");
     requestAnimationFrame(() => shell.loading.classList.add("ready"));
   });
@@ -309,6 +392,8 @@ export async function bootstrapSlashApplication(): Promise<void> {
   }
 
   presentationRuntime.resetStage();
+  if (shouldAutostart) startGame(false);
+  else setApplicationPhase("title");
   resize();
   renderScene();
   setLoadingPhase(0.96, "FINALIZING FIRST FRAME");

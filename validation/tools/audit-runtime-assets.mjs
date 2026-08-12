@@ -25,12 +25,15 @@ const runtimeBinaryAssets = distFiles.filter((file) => binaryAssetPattern.test(f
 const declaredFirstPartyBinaryAssets = new Set([
   "dist/models/characters/hero-v5-rigged.glb",
   "dist/models/characters/enemy-v5-rigged.glb",
+  "dist/models/characters/hero-v5r-rig-v25.glb",
+  "dist/models/characters/enemy-v5r-rig-v25.glb",
 ]);
 const undeclaredBinaryAssets = runtimeBinaryAssets.filter((file) => !declaredFirstPartyBinaryAssets.has(file));
 
 const sourceTextFiles = runtimeFiles.filter((file) => /\.(?:css|html|js|json|mjs|ts)$/i.test(file));
 const secretPatterns = [
   { label: "OpenAI-style key", pattern: /\bsk-[A-Za-z0-9_-]{20,}\b/g },
+  { label: "Tripo-style key", pattern: /\btsk_[A-Za-z0-9_-]{20,}\b/g },
   { label: "AWS access key", pattern: /\bAKIA[0-9A-Z]{16}\b/g },
   { label: "Private key block", pattern: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g },
 ];
@@ -47,7 +50,7 @@ for (const file of sourceTextFiles) {
   }
 }
 
-const dependencyNames = ["three", "lil-gui", "playwright", "typescript", "vite", "vitest", "@types/three"];
+const dependencyNames = ["three", "lil-gui", "meshoptimizer", "playwright", "typescript", "vite", "vitest", "@types/three"];
 const dependencies = [];
 for (const name of dependencyNames) {
   const manifestPath = path.join(projectRoot, "node_modules", name, "package.json");

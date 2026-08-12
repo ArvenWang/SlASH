@@ -34,6 +34,8 @@ function phaseOneEventView(event: GameEvent): Record<string, unknown> {
     case "stage-cleared":
     case "game-complete":
       return { type: event.type, atMs: event.atMs, stageIndex: event.stageIndex };
+    default:
+      return { type: event.type, atMs: event.atMs };
   }
 }
 

@@ -21,7 +21,7 @@ export interface VfxProfileDefinition {
 export interface AudioProfileDefinition {
   readonly id: string;
   readonly runtimeId: string;
-  readonly event: "dash" | "death" | "enemy";
+  readonly event: "dash" | "focus-start" | "chain-dash" | "death" | "enemy";
   readonly quality: QualityDeclaration;
 }
 
@@ -95,6 +95,7 @@ export const materialProfileRegistry = new DefinitionRegistry<MaterialProfileDef
 
 export const vfxProfileRegistry = new DefinitionRegistry<VfxProfileDefinition>([
   { id: "dash-slash-current-v1", runtimeId: "procedural-dash-slash-runtime", durationMs: 200, poolSize: 8, priority: "critical", quality: { high: "full", compatibility: "full" } },
+  { id: "vector-focus-chain-v1", runtimeId: "procedural-dash-slash-runtime", durationMs: 480, poolSize: 8, priority: "critical", quality: { high: "full", compatibility: "full" } },
   { id: "enemy-cut-contact-v1", runtimeId: "procedural-cut-contact-runtime", durationMs: 120, poolSize: 24, priority: "critical", quality: { high: "full", compatibility: "full" } },
   { id: "enemy-cut-humanoid-v1", runtimeId: "procedural-humanoid-cut-runtime", durationMs: 720, poolSize: 24, priority: "important", quality: { high: "full", compatibility: "full" } },
   { id: "blood-current-v1", runtimeId: "procedural-blood-runtime", durationMs: 650, poolSize: 28, priority: "important", quality: { high: "full", compatibility: "full" } },
@@ -102,6 +103,8 @@ export const vfxProfileRegistry = new DefinitionRegistry<VfxProfileDefinition>([
 
 export const audioProfileRegistry = new DefinitionRegistry<AudioProfileDefinition>([
   { id: "dash-slash-current-v1", runtimeId: "procedural-dash-audio-runtime", event: "dash", quality: { high: "full", compatibility: "full" } },
+  { id: "vector-focus-start-v1", runtimeId: "procedural-focus-start-audio-runtime", event: "focus-start", quality: { high: "full", compatibility: "full" } },
+  { id: "vector-focus-chain-v1", runtimeId: "procedural-chain-dash-audio-runtime", event: "chain-dash", quality: { high: "full", compatibility: "full" } },
   { id: "player-death-current-v1", runtimeId: "procedural-death-audio-runtime", event: "death", quality: { high: "full", compatibility: "full" } },
   { id: "enemy-cyber-grunt-v1", runtimeId: "procedural-enemy-audio-runtime", event: "enemy", quality: { high: "full", compatibility: "full" } },
 ]);
@@ -152,6 +155,8 @@ export const postFxProfileRegistry = new DefinitionRegistry<PostFxProfileDefinit
 
 export const postFxImpactProfileRegistry = new DefinitionRegistry<PostFxImpactProfileDefinition>([
   { id: "dash-impact-current-v1", runtimeId: "cinematic-impact-runtime", baseImpact: 0.15, maximumImpact: 0.62, decay: 11 },
+  { id: "vector-focus-start-impact-v1", runtimeId: "cinematic-impact-runtime", baseImpact: 0.28, maximumImpact: 0.46, decay: 8 },
+  { id: "vector-focus-impact-v1", runtimeId: "cinematic-impact-runtime", baseImpact: 0.64, maximumImpact: 1, decay: 9 },
   { id: "kill-impact-current-v1", runtimeId: "cinematic-impact-runtime", baseImpact: 0.22, maximumImpact: 0.72, decay: 11 },
   { id: "death-impact-current-v1", runtimeId: "cinematic-impact-runtime", baseImpact: 1, maximumImpact: 1, decay: 11 },
 ]);
@@ -164,7 +169,7 @@ export const environmentProfileRegistry = new DefinitionRegistry<EnvironmentProf
     postFxProfileId: "cinematic-current-v1",
     background: MATERIAL_TOKENS.environment.background,
     fogColor: MATERIAL_TOKENS.environment.fog,
-    fogDensity: 0.0078,
+    fogDensity: 0.0102,
     rainDensity: 1,
     modules: [
       "transit-cathedral/arena",

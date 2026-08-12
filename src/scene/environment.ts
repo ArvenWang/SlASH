@@ -1,4 +1,8 @@
 import * as THREE from "three";
+import {
+  TRANSIT_PLATFORM_V5R_VISUAL_PROFILE,
+  type EnvironmentVisualProfile,
+} from "./environment-visual-profile";
 
 export interface ArenaBounds {
   readonly minX: number;
@@ -14,7 +18,13 @@ export interface EnvironmentRuntime {
   reactToDash(start: THREE.Vector3, end: THREE.Vector3, intensity?: number): void;
   setRainDensity(density: number): void;
   setFogDensity(density: number): void;
-  snapshot(): { rainDensity: number; fogDensity: number; rainParticles: number; activeModules: readonly string[] };
+  snapshot(): {
+    visualProfileId: string;
+    rainDensity: number;
+    fogDensity: number;
+    rainParticles: number;
+    activeModules: readonly string[];
+  };
   update(timeSeconds: number, dt: number): void;
   dispose(): void;
 }
@@ -25,6 +35,7 @@ export interface EnvironmentOptions {
   readonly fogDensity?: number;
   readonly rainDensity?: number;
   readonly modules?: readonly string[];
+  readonly visualProfile?: EnvironmentVisualProfile;
 }
 
 type BoxPlacement = {
@@ -276,22 +287,23 @@ function createInstancedBoxes(
 function createPlatform(
   root: THREE.Group,
   groundTextures: GroundTextures,
+  visualProfile: EnvironmentVisualProfile,
 ): {
   readonly hitSurface: THREE.Mesh;
   readonly beaconMaterial: THREE.MeshStandardMaterial;
 } {
   const understructureMaterial = new THREE.MeshStandardMaterial({
-    color: 0x080d12,
+    color: visualProfile.platform.understructure,
     metalness: 0.82,
     roughness: 0.38,
   });
   const floorMaterial = new THREE.MeshPhysicalMaterial({
-    color: 0x34464c,
+    color: visualProfile.platform.floor,
     map: groundTextures.albedo,
     roughnessMap: groundTextures.roughness,
     roughness: 1,
     metalness: 0.42,
-    envMapIntensity: 0.68,
+    envMapIntensity: visualProfile.platform.floorEnvMapIntensity,
     // Keep the sheen in the roughness map. A uniform clear coat made dry panels
     // reflect like puddles and erased the material hierarchy from the high camera.
     clearcoat: 0.08,
@@ -300,12 +312,12 @@ function createPlatform(
     anisotropyRotation: Math.PI / 2,
   });
   const trimMaterial = new THREE.MeshStandardMaterial({
-    color: 0x111920,
+    color: visualProfile.platform.trim,
     metalness: 0.9,
     roughness: 0.27,
   });
   const seamMaterial = new THREE.MeshStandardMaterial({
-    color: 0x0b1115,
+    color: visualProfile.platform.seam,
     metalness: 0.24,
     roughness: 0.84,
   });
@@ -320,6 +332,32 @@ function createPlatform(
     emissiveIntensity: 0.18,
     metalness: 0.6,
     roughness: 0.48,
+  });
+  const deckPlateMaterial = new THREE.MeshStandardMaterial({
+    color: visualProfile.platform.plate,
+    emissive: 0x020709,
+    emissiveIntensity: 0.12,
+    metalness: 0.7,
+    roughness: 0.44,
+  });
+  const deckInsetMaterial = new THREE.MeshStandardMaterial({
+    color: visualProfile.platform.inset,
+    metalness: 0.66,
+    roughness: 0.62,
+  });
+  const fasciaMaterial = new THREE.MeshStandardMaterial({
+    color: visualProfile.platform.fascia,
+    emissive: 0x010405,
+    emissiveIntensity: 0.1,
+    metalness: 0.78,
+    roughness: 0.46,
+  });
+  const edgeAccentMaterial = new THREE.MeshBasicMaterial({
+    color: visualProfile.platform.edgeAccent,
+    transparent: true,
+    opacity: 0.28,
+    depthWrite: false,
+    toneMapped: true,
   });
   const beaconMaterial = new THREE.MeshStandardMaterial({
     color: 0x6b1d0d,
@@ -346,6 +384,109 @@ function createPlatform(
   floor.position.y = -0.275;
   floor.receiveShadow = true;
   root.add(floor);
+
+  // Broad service islands establish a readable macro hierarchy before the fine
+  // panel seams. They stay below the invisible hit surface and never alter play.
+  const serviceIslandPlacements: BoxPlacement[] = [
+    { position: [-13.7, 0.018, -6.5], scale: [7.6, 0.026, 4.7], rotation: [0, 0.018, 0] },
+    { position: [11.8, 0.018, -6.2], scale: [9.2, 0.026, 4.4], rotation: [0, -0.016, 0] },
+    { position: [-10.8, 0.018, 6.5], scale: [8.8, 0.026, 4.9], rotation: [0, -0.012, 0] },
+    { position: [10.2, 0.018, 6.1], scale: [10.6, 0.026, 5.1], rotation: [0, 0.014, 0] },
+  ];
+  root.add(createInstancedBoxes(
+    serviceIslandPlacements,
+    deckPlateMaterial,
+    "arena-v5r-service-islands",
+    false,
+    true,
+  ));
+
+  const serviceIslandOutlines: BoxPlacement[] = [];
+  for (const island of [
+    { x: -13.7, z: -6.5, width: 7.6, depth: 4.7 },
+    { x: 11.8, z: -6.2, width: 9.2, depth: 4.4 },
+    { x: -10.8, z: 6.5, width: 8.8, depth: 4.9 },
+    { x: 10.2, z: 6.1, width: 10.6, depth: 5.1 },
+  ]) {
+    serviceIslandOutlines.push(
+      { position: [island.x, 0.047, island.z - island.depth * 0.5], scale: [island.width - 0.24, 0.008, 0.045] },
+      { position: [island.x, 0.047, island.z + island.depth * 0.5], scale: [island.width - 0.24, 0.008, 0.045] },
+      { position: [island.x - island.width * 0.5, 0.047, island.z], scale: [0.045, 0.008, island.depth - 0.24] },
+      { position: [island.x + island.width * 0.5, 0.047, island.z], scale: [0.045, 0.008, island.depth - 0.24] },
+    );
+  }
+  root.add(createInstancedBoxes(serviceIslandOutlines, drainFrameMaterial, "arena-v5r-service-island-bevels"));
+
+  const inspectionFrames: BoxPlacement[] = [
+    { position: [-5.2, 0.035, -8.35], scale: [1.85, 0.018, 1.08], rotation: [0, 0.025, 0] },
+    { position: [4.1, 0.035, 8.25], scale: [1.65, 0.018, 0.94], rotation: [0, -0.035, 0] },
+    { position: [16.6, 0.035, 4.2], scale: [1.42, 0.018, 0.88], rotation: [0, 0.04, 0] },
+    { position: [-16.3, 0.035, -2.4], scale: [1.5, 0.018, 0.92], rotation: [0, -0.03, 0] },
+  ];
+  const inspectionInsets = inspectionFrames.map((frame) => ({
+    ...frame,
+    position: [frame.position[0], 0.049, frame.position[2]] as const,
+    scale: [frame.scale[0] - 0.24, 0.006, frame.scale[2] - 0.22] as const,
+  }));
+  root.add(createInstancedBoxes(inspectionFrames, drainFrameMaterial, "arena-v5r-inspection-cover-frames"));
+  root.add(createInstancedBoxes(inspectionInsets, deckInsetMaterial, "arena-v5r-inspection-cover-insets"));
+
+  const maintenanceBayFrames: BoxPlacement[] = [
+    { position: [-15.35, 0.018, 6.25], scale: [5.4, 0.024, 2.65], rotation: [0, -0.012, 0] },
+    { position: [14.1, 0.018, -6.25], scale: [5.7, 0.024, 2.55], rotation: [0, 0.015, 0] },
+  ];
+  const maintenanceBayInsets: BoxPlacement[] = [
+    { position: [-15.35, 0.033, 6.25], scale: [4.9, 0.012, 2.17], rotation: [0, -0.012, 0] },
+    { position: [14.1, 0.033, -6.25], scale: [5.18, 0.012, 2.08], rotation: [0, 0.015, 0] },
+  ];
+  root.add(createInstancedBoxes(maintenanceBayFrames, trimMaterial, "arena-v5r-maintenance-bay-frames"));
+  root.add(createInstancedBoxes(maintenanceBayInsets, deckInsetMaterial, "arena-v5r-maintenance-bay-insets"));
+
+  const maintenanceSlats: BoxPlacement[] = [];
+  for (const bay of [
+    { x: -15.35, z: 6.25, width: 4.55, angle: -0.012 },
+    { x: 14.1, z: -6.25, width: 4.82, angle: 0.015 },
+  ]) {
+    for (let index = 0; index < 9; index += 1) {
+      maintenanceSlats.push({
+        position: [bay.x + THREE.MathUtils.lerp(-bay.width / 2, bay.width / 2, index / 8), 0.044, bay.z],
+        scale: [0.055, 0.008, 1.72],
+        rotation: [0, bay.angle, 0],
+      });
+    }
+  }
+  root.add(createInstancedBoxes(maintenanceSlats, drainFrameMaterial, "arena-v5r-maintenance-bay-slats"));
+
+  const fastenerPlacements: BoxPlacement[] = [];
+  for (const [x, z] of [
+    [-18.15, 4.75], [-12.55, 4.75], [-18.15, 7.75], [-12.55, 7.75],
+    [11.15, -7.7], [17.05, -7.7], [11.15, -4.8], [17.05, -4.8],
+    [-17.6, -8.7], [-10.1, -8.7], [7.2, 8.8], [15.5, 8.8],
+  ] as const) {
+    fastenerPlacements.push({ position: [x, 0.035, z], scale: [0.11, 0.012, 0.11] });
+  }
+  root.add(createInstancedBoxes(fastenerPlacements, drainFrameMaterial, "arena-v5r-deck-fasteners"));
+
+  const fasciaPanels: BoxPlacement[] = [];
+  for (const x of [-16, -8, 0, 8, 16]) {
+    fasciaPanels.push(
+      { position: [x, -0.58, 13.42], scale: [7.35, 0.62, 0.18] },
+      { position: [x, -0.58, -13.42], scale: [7.35, 0.62, 0.18] },
+    );
+  }
+  for (const z of [-9.3, -3.1, 3.1, 9.3]) {
+    fasciaPanels.push(
+      { position: [-20.42, -0.58, z], scale: [0.18, 0.62, 5.65] },
+      { position: [20.42, -0.58, z], scale: [0.18, 0.62, 5.65] },
+    );
+  }
+  root.add(createInstancedBoxes(fasciaPanels, fasciaMaterial, "arena-v5r-layered-edge-fascia", true, true));
+  root.add(createInstancedBoxes([
+    { position: [0, -0.26, 13.53], scale: [39.2, 0.045, 0.035] },
+    { position: [0, -0.26, -13.53], scale: [39.2, 0.045, 0.035] },
+    { position: [-20.53, -0.26, 0], scale: [0.035, 0.045, 24.3] },
+    { position: [20.53, -0.26, 0], scale: [0.035, 0.045, 24.3] },
+  ], edgeAccentMaterial, "arena-v5r-recessed-edge-accent"));
 
   const edgePlacements: BoxPlacement[] = [
     { position: [0, 0.08, -12.95], scale: [42, 0.24, 0.72] },
@@ -461,7 +602,7 @@ function createPlatform(
   const coldReflectionMaterial = new THREE.MeshBasicMaterial({
     color: 0x91b9bd,
     transparent: true,
-    opacity: 0.17,
+    opacity: 0.085,
     depthWrite: false,
     blending: THREE.NormalBlending,
     toneMapped: true,
@@ -508,7 +649,7 @@ function createPlatform(
   const glintMaterial = new THREE.MeshBasicMaterial({
     color: 0x9ebfc2,
     transparent: true,
-    opacity: 0.085,
+    opacity: 0.045,
     depthWrite: false,
     blending: THREE.NormalBlending,
     toneMapped: true,
@@ -535,7 +676,7 @@ function createPlatform(
   const warmReflectionMaterial = new THREE.MeshBasicMaterial({
     color: 0xb85c3d,
     transparent: true,
-    opacity: 0.16,
+    opacity: 0.08,
     depthWrite: false,
     blending: THREE.NormalBlending,
     toneMapped: true,
@@ -586,34 +727,37 @@ function createPlatform(
   return { hitSurface, beaconMaterial };
 }
 
-function createTransitArchitecture(root: THREE.Group): TransitRuntime {
+function createTransitArchitecture(
+  root: THREE.Group,
+  visualProfile: EnvironmentVisualProfile,
+): TransitRuntime {
   const structuralMaterial = new THREE.MeshStandardMaterial({
-    color: 0x293e4a,
-    emissive: 0x091a25,
-    emissiveIntensity: 0.52,
+    color: visualProfile.transit.structure,
+    emissive: visualProfile.transit.structureEmissive,
+    emissiveIntensity: 0.18,
     metalness: 0.88,
-    roughness: 0.36,
+    roughness: 0.52,
     flatShading: true,
   });
   const innerStructureMaterial = new THREE.MeshStandardMaterial({
-    color: 0x314957,
-    emissive: 0x081824,
-    emissiveIntensity: 0.56,
+    color: visualProfile.transit.innerStructure,
+    emissive: visualProfile.transit.structureEmissive,
+    emissiveIntensity: 0.2,
     metalness: 0.78,
-    roughness: 0.34,
+    roughness: 0.5,
     flatShading: true,
   });
   const trackMaterial = new THREE.MeshStandardMaterial({
-    color: 0x101c24,
-    emissive: 0x040b11,
-    emissiveIntensity: 0.34,
+    color: visualProfile.transit.track,
+    emissive: 0x010405,
+    emissiveIntensity: 0.14,
     metalness: 0.92,
     roughness: 0.3,
   });
   const trackLightMaterial = new THREE.MeshBasicMaterial({
-    color: 0x6f9ca5,
+    color: visualProfile.transit.guideLight,
     transparent: true,
-    opacity: 0.52,
+    opacity: visualProfile.transit.guideOpacity,
     toneMapped: false,
   });
 
@@ -632,7 +776,7 @@ function createTransitArchitecture(root: THREE.Group): TransitRuntime {
   const arches = new THREE.InstancedMesh(archGeometry, structuralMaterial, 3);
   const archTransform = new THREE.Object3D();
   arches.name = "transit-cathedral-main-arches";
-  arches.castShadow = true;
+  arches.castShadow = false;
   [-14.8, -39, -69].forEach((z, index) => {
     const scale = 1 + index * 0.13;
     archTransform.position.set(index === 0 ? -1.5 : 0, -index * 1.6, z);
@@ -707,12 +851,12 @@ function createTransitArchitecture(root: THREE.Group): TransitRuntime {
       scale: [secondaryLength, 0.2, 0.18],
       rotation: [0, secondaryAngle, 0],
     },
-    { position: [-39, 4.7, -4.5], scale: [28, 0.72, 5.2] },
-    { position: [-39, 3.65, -4.5], scale: [28, 0.82, 1.1] },
-    { position: [-52.5, 5.35, -4.5], scale: [0.55, 1.15, 6.2] },
-    { position: [-25.5, 5.35, -4.5], scale: [0.55, 1.15, 6.2] },
+    { position: [-48, 4.7, -15], scale: [20, 0.62, 4.2] },
+    { position: [-48, 3.78, -15], scale: [20, 0.68, 0.82] },
+    { position: [-57.5, 5.25, -15], scale: [0.42, 0.92, 4.8] },
+    { position: [-38.5, 5.25, -15], scale: [0.42, 0.92, 4.8] },
   ];
-  root.add(createInstancedBoxes(trackPlacements, trackMaterial, "elevated-transit-track", true, true));
+  root.add(createInstancedBoxes(trackPlacements, trackMaterial, "elevated-transit-track", false, true));
 
   const trackLightPlacements: BoxPlacement[] = [
     { position: [0, TRACK_Y + 0.16, TRACK_Z + 2.31], scale: [128, 0.055, 0.055] },
@@ -725,9 +869,9 @@ function createTransitArchitecture(root: THREE.Group): TransitRuntime {
       scale: [secondaryLength, 0.045, 0.045],
       rotation: [0, secondaryAngle, 0],
     },
-    { position: [-39, 4.94, -1.86], scale: [26.8, 0.04, 0.04] },
+    { position: [-48, 4.91, -12.86], scale: [19, 0.035, 0.035] },
   ];
-  for (const supportX of [-48, -24, 0, 24, 48]) {
+  for (const supportX of [-48, -34, 34, 48]) {
     trackLightPlacements.push(
       { position: [supportX - 0.52, 3.2, TRACK_Z + 1.47], scale: [0.48, 0.04, 0.04] },
       { position: [supportX + 0.52, 8.1, TRACK_Z + 1.47], scale: [0.48, 0.04, 0.04] },
@@ -754,7 +898,7 @@ function createTransitArchitecture(root: THREE.Group): TransitRuntime {
       rotation: [0, 0, (Math.floor((x + 52) / 8) % 2 === 0 ? 1 : -1) * 0.52],
     });
   }
-  for (const x of [-48, -24, 0, 24, 48]) {
+  for (const x of [-48, -34, 34, 48]) {
     hangerPlacements.push(
       { position: [x - 0.48, -0.8, TRACK_Z], scale: [0.42, 22.4, 2.45] },
       { position: [x + 0.48, -0.8, TRACK_Z], scale: [0.42, 22.4, 2.45] },
@@ -780,18 +924,18 @@ function createTransitArchitecture(root: THREE.Group): TransitRuntime {
   hangerPlacements.push(
     { position: [-25, 16.5, -27], scale: [0.34, 0.34, 25], rotation: [0.04, 0, -0.11] },
     { position: [22, 17.5, -27], scale: [0.34, 0.34, 25], rotation: [-0.04, 0, 0.11] },
-    { position: [-25.5, 8.5, -14.5], scale: [1.15, 27, 1.5], rotation: [0, 0, -0.18] },
-    { position: [22.5, 8.5, -14.5], scale: [1.15, 27, 1.5], rotation: [0, 0, 0.18] },
-    { position: [-49, -6.8, -4.5], scale: [1.15, 20.2, 2.1] },
-    { position: [-39, -7.8, -4.5], scale: [1.15, 22.2, 2.1] },
-    { position: [-29, -5.5, -4.5], scale: [1.15, 17.6, 2.1] },
-    { position: [-44, 0.4, -4.5], scale: [0.32, 12.5, 0.42], rotation: [0, 0, 0.58] },
-    { position: [-34, 0.4, -4.5], scale: [0.32, 12.5, 0.42], rotation: [0, 0, -0.58] },
+    { position: [-32, 7.5, -20], scale: [0.72, 21, 1.05], rotation: [0, 0, -0.15] },
+    { position: [30, 7.5, -20], scale: [0.72, 21, 1.05], rotation: [0, 0, 0.15] },
+    { position: [-58, -7.2, -15], scale: [0.72, 18.5, 1.4] },
+    { position: [-48, -8.2, -15], scale: [0.72, 20.5, 1.4] },
+    { position: [-38, -6.2, -15], scale: [0.72, 16.5, 1.4] },
+    { position: [-53, 0.1, -15], scale: [0.22, 10.5, 0.3], rotation: [0, 0, 0.55] },
+    { position: [-43, 0.1, -15], scale: [0.22, 10.5, 0.3], rotation: [0, 0, -0.55] },
   );
   root.add(createInstancedBoxes(hangerPlacements, innerStructureMaterial, "transit-hangers-and-truss"));
 
   const supportPanelPlacements: BoxPlacement[] = [];
-  for (const [supportIndex, supportX] of [-48, -24, 0, 24, 48].entries()) {
+  for (const [supportIndex, supportX] of [-48, -34, 34, 48].entries()) {
     const faceZ = TRACK_Z + 1.27;
     const stagger = supportIndex % 2 === 0 ? 0.65 : -0.4;
     for (const y of [-7.2 + stagger, -1.6 - stagger, 4.4 + stagger]) {
@@ -814,7 +958,7 @@ function createTransitArchitecture(root: THREE.Group): TransitRuntime {
   const trafficMaterial = new THREE.MeshBasicMaterial({
     color: 0xffffff,
     transparent: true,
-    opacity: 0.46,
+    opacity: visualProfile.transit.trafficOpacity,
     toneMapped: false,
   });
   const trafficCount = 11;
@@ -1120,7 +1264,10 @@ function createTrain(): THREE.Group {
   return train;
 }
 
-function createCity(root: THREE.Group): THREE.MeshBasicMaterial {
+function createCity(
+  root: THREE.Group,
+  visualProfile: EnvironmentVisualProfile,
+): THREE.MeshBasicMaterial {
   const random = mulberry32(0x51a5c17);
   const layerSettings = [
     { count: 10, nearZ: -32, farZ: -82, minX: -94, maxX: 94, minBase: -42, maxBase: -23, minH: 26, maxH: 61, minW: 7, maxW: 17, minD: 8, maxD: 20 },
@@ -1159,7 +1306,7 @@ function createCity(root: THREE.Group): THREE.MeshBasicMaterial {
 
   // Camera-left flank volumes occupy only the void outside the arena footprint.
   buildingsByLayer[0]?.push(
-    { x: -34, z: -8, width: 7.5, depth: 12, height: 35, baseY: -25, layer: 0 },
+    { x: -54, z: -28, width: 6.5, depth: 10, height: 31, baseY: -25, layer: 0 },
     { x: -78, z: -27, width: 12, depth: 17, height: 57, baseY: -43, layer: 0 },
   );
   buildingsByLayer[1]?.push(
@@ -1174,11 +1321,13 @@ function createCity(root: THREE.Group): THREE.MeshBasicMaterial {
     { x: 31, z: -166, width: 21, depth: 29, height: 185, baseY: -132, layer: 2 },
   );
 
-  const buildingMaterials = [
-    new THREE.MeshStandardMaterial({ color: 0x0b171e, emissive: 0x020609, emissiveIntensity: 0.15, roughness: 0.72, metalness: 0.28 }),
-    new THREE.MeshStandardMaterial({ color: 0x142f3a, emissive: 0x071923, emissiveIntensity: 0.39, roughness: 0.79, metalness: 0.17 }),
-    new THREE.MeshStandardMaterial({ color: 0x234653, emissive: 0x102d39, emissiveIntensity: 0.54, roughness: 0.88, metalness: 0.08 }),
-  ];
+  const buildingMaterials = visualProfile.city.layers.map((layer, index) => new THREE.MeshStandardMaterial({
+    color: layer.color,
+    emissive: layer.emissive,
+    emissiveIntensity: layer.emissiveIntensity,
+    roughness: 0.76 + index * 0.07,
+    metalness: Math.max(0.08, 0.26 - index * 0.09),
+  }));
 
   buildingsByLayer.forEach((buildings, layer) => {
     const placements: BoxPlacement[] = [];
@@ -1369,13 +1518,13 @@ function createCity(root: THREE.Group): THREE.MeshBasicMaterial {
   const functionalLightMaterial = new THREE.MeshBasicMaterial({
     color: 0x588b91,
     transparent: true,
-    opacity: 0.3,
+    opacity: visualProfile.city.functionalLightOpacity,
     toneMapped: true,
   });
   const navigationLightMaterial = new THREE.MeshBasicMaterial({
     color: 0xa95432,
     transparent: true,
-    opacity: 0.52,
+    opacity: visualProfile.city.navigationLightOpacity,
     toneMapped: false,
   });
   const skylineDetailPlacements: BoxPlacement[] = [];
@@ -1594,7 +1743,7 @@ function createCity(root: THREE.Group): THREE.MeshBasicMaterial {
   const windowMaterial = new THREE.MeshBasicMaterial({
     color: 0xffffff,
     transparent: true,
-    opacity: 0.56,
+    opacity: visualProfile.city.windowOpacity,
     toneMapped: false,
   });
   const windowRecords: Array<{ placement: BoxPlacement; color: THREE.Color }> = [];
@@ -2148,23 +2297,50 @@ function reactSteamToDash(
   }
 }
 
-function addLighting(root: THREE.Group): void {
-  const hemisphere = new THREE.HemisphereLight(0x7c9aab, 0x080b0f, 0.22);
+function addLighting(root: THREE.Group, visualProfile: EnvironmentVisualProfile): void {
+  const hemisphere = new THREE.HemisphereLight(
+    0x7c9aab,
+    0x080b0f,
+    visualProfile.ambientLighting.hemisphereIntensity,
+  );
   hemisphere.name = "rainy-night-hemisphere";
   root.add(hemisphere);
 
-  const key = new THREE.DirectionalLight(0xccecff, 0.58);
+  const key = new THREE.DirectionalLight(0xccecff, visualProfile.ambientLighting.keyIntensity);
   key.name = "arena-moon-key";
   key.position.set(16, 31, 19);
   key.target.position.set(0, -1, 0);
   root.add(key, key.target);
 
-  const trackFill = new THREE.PointLight(0x6a9fad, 42, 30, 2);
+  const arenaWash = new THREE.SpotLight(
+    0xb7e5ea,
+    visualProfile.ambientLighting.arenaWashIntensity,
+    52,
+    Math.PI * 0.34,
+    0.88,
+    1.75,
+  );
+  arenaWash.name = "arena-wide-overhead-wash";
+  arenaWash.position.set(7, 22, 14);
+  arenaWash.target.position.set(0, 0, 0);
+  root.add(arenaWash, arenaWash.target);
+
+  const trackFill = new THREE.PointLight(
+    0x6a9fad,
+    visualProfile.ambientLighting.transitFillIntensity,
+    28,
+    2,
+  );
   trackFill.name = "transit-cool-fill";
   trackFill.position.set(-10, 11, -15.5);
   root.add(trackFill);
 
-  const warmEdge = new THREE.PointLight(0xff5a28, 6, 8, 2);
+  const warmEdge = new THREE.PointLight(
+    0xff5a28,
+    visualProfile.ambientLighting.warmEdgeIntensity,
+    8,
+    2,
+  );
   warmEdge.name = "arena-warm-edge-fill";
   warmEdge.position.set(15, 2.4, -11.8);
   root.add(warmEdge);
@@ -2174,8 +2350,10 @@ export function createEnvironment(
   scene: THREE.Scene,
   options: EnvironmentOptions = {},
 ): EnvironmentRuntime {
+  const visualProfile = options.visualProfile ?? TRANSIT_PLATFORM_V5R_VISUAL_PROFILE;
   const root = new THREE.Group();
   root.name = "slash-environment";
+  root.userData.visualProfileId = visualProfile.id;
   scene.add(root);
   const activeModules = options.modules ?? [
     "transit-cathedral/arena",
@@ -2196,23 +2374,28 @@ export function createEnvironment(
   const cityModule = moduleRoot("transit-cathedral/city");
   const weatherModule = moduleRoot("transit-cathedral/weather");
   const lightingModule = moduleRoot("transit-cathedral/lighting");
+  transitModule.position.set(...visualProfile.moduleOffsets.transit);
+  cityModule.position.set(...visualProfile.moduleOffsets.city);
+  transitModule.userData.visualRole = "low-contrast-background-scale";
+  cityModule.userData.visualRole = "atmospheric-depth-layer";
+  arenaModule.userData.visualRole = "primary-gameplay-surface";
 
   const previousBackground = scene.background;
   const previousFog = scene.fog;
   const background = new THREE.Color(options.background ?? 0x0b1d28);
-  const fog = new THREE.FogExp2(options.fogColor ?? 0x183b49, options.fogDensity ?? 0.0078);
+  const fog = new THREE.FogExp2(options.fogColor ?? 0x102833, options.fogDensity ?? 0.0102);
   scene.background = background;
   scene.fog = fog;
 
   const groundTextures = createGroundTextures();
   const particleTexture = createRadialParticleTexture();
-  const platform = createPlatform(arenaModule, groundTextures);
+  const platform = createPlatform(arenaModule, groundTextures, visualProfile);
   const groundDashReactions = createGroundDashReactions(arenaModule);
-  const transit = createTransitArchitecture(transitModule);
-  const windowMaterial = createCity(cityModule);
+  const transit = createTransitArchitecture(transitModule, visualProfile);
+  const windowMaterial = createCity(cityModule, visualProfile);
   const rain = createRain(weatherModule);
   const steam = createSteam(weatherModule, particleTexture);
-  addLighting(lightingModule);
+  addLighting(lightingModule, visualProfile);
 
   let disposed = false;
   let rainDensity = 1;
@@ -2225,7 +2408,7 @@ export function createEnvironment(
   };
 
   const setFogDensity = (density: number): void => {
-    fog.density = THREE.MathUtils.clamp(Number.isFinite(density) ? density : 0.0078, 0, 0.05);
+    fog.density = THREE.MathUtils.clamp(Number.isFinite(density) ? density : 0.0102, 0, 0.05);
   };
 
   setRainDensity(options.rainDensity ?? 1);
@@ -2260,7 +2443,7 @@ export function createEnvironment(
     transit.updateTraffic(time);
 
     platform.beaconMaterial.emissiveIntensity = 2.05 + Math.sin(time * 2.5) * 0.38;
-    windowMaterial.opacity = 0.6 + Math.sin(time * 0.37) * 0.018;
+    windowMaterial.opacity = visualProfile.city.windowOpacity + Math.sin(time * 0.37) * 0.008;
     updateGroundDashReactions(groundDashReactions, step);
 
     const rainPositionAttribute = rain.points.geometry.getAttribute("position") as THREE.BufferAttribute;
@@ -2382,6 +2565,7 @@ export function createEnvironment(
     setRainDensity,
     setFogDensity,
     snapshot: () => ({
+      visualProfileId: visualProfile.id,
       rainDensity,
       fogDensity: fog.density,
       rainParticles: rain.points.geometry.drawRange.count,

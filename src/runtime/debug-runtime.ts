@@ -15,6 +15,10 @@ export interface SlashValidationApi {
   setStage(stageIndex: number): void;
   setStressScenario(enemyCount?: number): void;
   dashTo(x: number, z: number): string;
+  setVectorFocusEnergy(value: number): number;
+  activateUltimate(): string;
+  addAbilityTarget(x: number, z: number): string;
+  cancelActiveAbility(): string;
   setEnemyMotion(enabled: boolean): void;
   loseGraphicsContext(): void;
   restoreGraphicsContext(): void;

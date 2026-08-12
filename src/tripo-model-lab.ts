@@ -4,7 +4,8 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 
-type ModelView = "front" | "side" | "back" | "three-quarter";
+type ModelView = "front" | "side" | "back" | "right" | "three-quarter";
+type SurfaceMode = "source" | "normal" | "wireframe";
 
 interface GeneratedModelStats {
   meshes: number;
@@ -24,7 +25,10 @@ interface GeneratedModelSnapshot {
   status: "waiting" | "loading" | "ready" | "error";
   modelUrl: string | null;
   view: ModelView;
+  sourceYawDegrees: number;
+  surfaceMode: SurfaceMode;
   requestedClip: string | null;
+  samplePhase: number | null;
   activeClip: string | null;
   progressPercent: number | null;
   error: string | null;
@@ -50,7 +54,10 @@ const statsLabel: HTMLElement = statsElement;
 const params = new URLSearchParams(window.location.search);
 const modelUrl = params.get("model");
 const requestedClip = params.get("clip");
+const samplePhase = parseOptionalUnitInterval(params.get("phase"));
 const selectedView = parseView(params.get("view"));
+const sourceYawDegrees = parseFiniteNumber(params.get("yaw"), 0);
+const surfaceMode = parseSurfaceMode(params.get("surface"));
 const cleanCapture = params.get("clean") === "1";
 if (cleanCapture) document.documentElement.classList.add("clean");
 
@@ -107,12 +114,16 @@ floor.receiveShadow = true;
 scene.add(floor);
 
 let mixer: THREE.AnimationMixer | null = null;
+const inspectionMaterials = new Set<THREE.Material>();
 let previousTime = performance.now();
 let snapshot: GeneratedModelSnapshot = {
   status: modelUrl ? "loading" : "waiting",
   modelUrl,
   view: selectedView,
+  sourceYawDegrees,
+  surfaceMode,
   requestedClip,
+  samplePhase,
   activeClip: null,
   progressPercent: modelUrl ? 0 : null,
   error: null,
@@ -150,9 +161,20 @@ if (modelUrl) {
 
 function handleModelLoaded(gltf: GLTF) {
   const root = gltf.scene;
+  root.rotation.y = THREE.MathUtils.degToRad(sourceYawDegrees);
+  root.updateWorldMatrix(true, true);
   const normalization = normalizeModel(root, 3.3);
   root.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return;
+    if (surfaceMode === "normal") {
+      const material = new THREE.MeshNormalMaterial({ flatShading: false });
+      inspectionMaterials.add(material);
+      object.material = material;
+    } else if (surfaceMode === "wireframe") {
+      const material = new THREE.MeshBasicMaterial({ color: 0xd9f6f8, wireframe: true });
+      inspectionMaterials.add(material);
+      object.material = material;
+    }
     object.castShadow = true;
     object.receiveShadow = true;
     object.frustumCulled = true;
@@ -166,7 +188,13 @@ function handleModelLoaded(gltf: GLTF) {
       : gltf.animations[0] ?? null;
     if (clip) {
       mixer = new THREE.AnimationMixer(root);
-      mixer.clipAction(clip).play();
+      const action = mixer.clipAction(clip);
+      action.play();
+      if (samplePhase !== null) {
+        action.time = clip.duration * samplePhase;
+        action.paused = true;
+        mixer.update(0);
+      }
       activeClip = clip.name;
     }
   }
@@ -290,9 +318,25 @@ function formatStats(stats: GeneratedModelStats) {
 }
 
 function parseView(value: string | null): ModelView {
-  return value === "front" || value === "side" || value === "back" || value === "three-quarter"
+  return value === "front" || value === "side" || value === "back" || value === "right" || value === "three-quarter"
     ? value
     : "three-quarter";
+}
+
+function parseFiniteNumber(value: string | null, fallback: number): number {
+  if (value === null || value.trim() === "") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseOptionalUnitInterval(value: string | null): number | null {
+  if (value === null || value.trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? THREE.MathUtils.clamp(parsed, 0, 1) : null;
+}
+
+function parseSurfaceMode(value: string | null): SurfaceMode {
+  return value === "normal" || value === "wireframe" ? value : "source";
 }
 
 function setCamera(view: ModelView) {
@@ -300,6 +344,7 @@ function setCamera(view: ModelView) {
     front: [0, 1.52, 8.6],
     side: [-8.6, 1.52, 0],
     back: [0, 1.52, -8.6],
+    right: [8.6, 1.52, 0],
     "three-quarter": [6.1, 2.45, 6.1],
   };
   camera.position.set(...positions[view]);
@@ -337,6 +382,7 @@ function animate(now: number) {
 
 window.addEventListener("beforeunload", () => {
   mixer?.stopAllAction();
+  inspectionMaterials.forEach((material) => material.dispose());
   controls.dispose();
   environment.dispose();
   pmrem.dispose();

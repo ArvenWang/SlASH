@@ -21,10 +21,10 @@
 
 | Provider | 来源 | 当前用途 |
 | --- | --- | --- |
-| `procedural-hero-v5` | 程序化 | 生产默认 Hero 与回退 |
-| `procedural-enemy-v5` | 程序化 | 生产默认 Enemy 与回退 |
-| `gltf-tripo-hero-v5` | GLB | 按需加载候选/生产管线 |
-| `gltf-tripo-enemy-v5` | GLB | 按需加载候选/生产管线 |
+| `gltf-hero-v5r` | Tripo Rig v2.5 GLB + 项目语义适配 | 生产默认 Hero |
+| `gltf-enemy-v5r` | Tripo Rig v2.5 GLB + 项目语义适配 | 生产默认 Enemy |
+| `procedural-hero-v5` | 程序化 | Hero 回退与对照 |
+| `procedural-enemy-v5` | 程序化 | Enemy 回退与对照 |
 
 GLTF Provider 通过动态 `import()` 延迟进入主包，未选择 GLB 时不加载 GLTF Loader 和模型。程序角色不是等待删除的临时假模型，而是性能基准、Fallback 和视觉对照。
 
@@ -45,19 +45,23 @@ GLTF Provider 通过动态 `import()` 延迟进入主包，未选择 GLB 时不�
 
 ## 当前 GLB 事实
 
-资产位于：
+生产资产位于：
 
-- `public/models/characters/hero-v5-rigged.glb`；
-- `public/models/characters/enemy-v5-rigged.glb`。
+- `public/models/characters/hero-v5r-rig-v25.glb`；
+- `public/models/characters/enemy-v5r-rig-v25.glb`。
 
 当前资产检查结果：
 
-| 角色 | Triangles | Materials | Textures | Bones | 目标高度 | 原生 Clips |
+| 角色 | 原始 GLB Triangles | Runtime LOD0 总量 | 主体 LOD0 → LOD1 | Textures | Bones | 项目正式 Clips |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Hero | 7,934 | 1 | 3 × 2048 | 52 | 3.3m | 0 |
-| Enemy | 7,757 | 1 | 3 × 2048 | 49 | 3.157m | 0 |
+| Hero | 13,348 | 13,496（含武器/手部附件） | 10,260 → 4,308（-58.0%） | 3 × 2048 | 78 | 12 |
+| Enemy | 11,683 | 13,239（含武器/手部附件） | 9,751 → 3,897（-60.0%） | 3 × 2048 | 55 | 11 |
 
-两份文件是可加载的 Rigged GLB，但没有 AnimationClip。系统明确报告 `additive-fallback-required`，不会把“有骨骼”冒充“有动画”。当前 GLB 使用 `src/characters/tripo-runtime.ts` 的自制骨骼驱动。
+Tripo 预设动作只用于压力检查，因脚部、重心和敌人抬臂异常被拒绝，不进入生产。正式动作由 `src/presentation/animation/v5r-clips.ts` 生成真实 `THREE.AnimationClip`，并通过 `src/presentation/characters/skeleton-profile.ts` 的统一语义骨架绑定。所有 Tripo 原始骨骼名只允许出现在 Skeleton Profile；已删除旧 `src/characters/tripo-runtime.ts` 随机骨骼名驱动。
+
+`src/presentation/characters/v5r-runtime.ts` 负责动态落地、角色空间武器挂点、手掌/刀柄轴约束和可替换握持附件；`src/presentation/weapons/weapon-runtime.ts` 负责独立武器比例、刀尖、刃口、护手和拖尾锚点。Hero 刀总长固定为身高的 62%，不再使用旧 93% 规则。
+
+`src/presentation/characters/distance-lod.ts` 使用同一套 Skin Attribute，仅替换远距离 Index Buffer；自动阈值为角色高度约 4.2 倍，也可在 Lab 强制 `near/far`。LOD1 保留骨架、动画、材质和挂点，不复制第二套 Skeleton；64px 近/远轮廓证据位于 `validation/visual-redesign/model/`。
 
 ## 替换 Hero 或 Enemy
 
@@ -85,3 +89,5 @@ GLTF Provider 通过动态 `import()` 延迟进入主包，未选择 GLB 时不�
 - Provider 浏览器场景：`npm run verify:characters`；
 - 真实 GLB 导出/重载与实例隔离：`tests/character-animation-provider.test.ts`；
 - 视觉与动作检查：`validation/tools/character-lab.html`。
+- 四视图叠加与 64px/LOD：`validation/tools/capture-v5r-visual-acceptance.mjs`、`validation/tools/compare-v5r-model-silhouettes.py`；
+- 非生产替换 Fixture：`validation/tools/visual-module-fixture.html`、`validation/tools/verify-visual-module-fixture.mjs`。

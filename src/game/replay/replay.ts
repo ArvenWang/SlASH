@@ -12,8 +12,8 @@ import type {
   GameState,
 } from "../domain/types";
 
-export const REPLAY_VERSION = 1 as const;
-export const REPLAY_CONTENT_VERSION = "phase2a-v1" as const;
+export const REPLAY_VERSION = 2 as const;
+export const REPLAY_CONTENT_VERSION = "phase2a-vector-focus-v2" as const;
 
 export interface ReplayEntry {
   readonly runTick: number;
@@ -38,8 +38,15 @@ export interface ReplayRecorder {
 }
 
 function cloneCommand(command: GameCommand): GameCommand {
-  if (command.type !== "activate-ability") return { ...command };
-  return { ...command, target: { x: command.target.x, z: command.target.z } };
+  if (command.type === "activate-ability") {
+    return command.target
+      ? { ...command, target: { x: command.target.x, z: command.target.z } }
+      : { ...command };
+  }
+  if (command.type === "submit-ability-target") {
+    return { ...command, target: { x: command.target.x, z: command.target.z } };
+  }
+  return { ...command };
 }
 
 function stableStringify(value: unknown): string {

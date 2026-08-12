@@ -48,13 +48,13 @@ export function createCharacterProviderRegistry(): CharacterProviderRegistry {
   const registry = new CharacterProviderRegistry();
   registry.register(createProceduralHeroProvider());
   registry.register(createProceduralEnemyProvider());
-  registry.register(new LazyCharacterProvider("gltf-tripo-hero-v5", async () => {
-    const { createTripoHeroProvider } = await import("./gltf-provider");
-    return createTripoHeroProvider();
+  registry.register(new LazyCharacterProvider("gltf-hero-v5r", async () => {
+    const { createHeroV5RProvider } = await import("./gltf-provider");
+    return createHeroV5RProvider();
   }));
-  registry.register(new LazyCharacterProvider("gltf-tripo-enemy-v5", async () => {
-    const { createTripoEnemyProvider } = await import("./gltf-provider");
-    return createTripoEnemyProvider();
+  registry.register(new LazyCharacterProvider("gltf-enemy-v5r", async () => {
+    const { createEnemyV5RProvider } = await import("./gltf-provider");
+    return createEnemyV5RProvider();
   }));
   return registry;
 }

@@ -6,6 +6,8 @@
 export interface AudioRuntime {
   resume(): Promise<void>;
   playDash(killCount: number): void;
+  playFocusStart(): void;
+  playChainDash(killCount: number, segmentIndex: number): void;
   playDeath(): void;
   setEnabled(enabled: boolean): void;
   dispose(): Promise<void>;
@@ -223,6 +225,20 @@ function scheduleCombatDash(graph: AudioGraph, start: number, killCount: number)
   return variantIds;
 }
 
+function scheduleFocusStart(graph: AudioGraph, start: number) {
+  tone(graph, start, 190, 680, 0.24, 0.045, "sine");
+  tone(graph, start + 0.035, 820, 1_640, 0.18, 0.022, "triangle");
+  noiseBurst(graph, start + 0.012, 0.16, 0.028, 2_100, 8_400, 0x46_4f_43_55);
+}
+
+function scheduleChainDash(graph: AudioGraph, start: number, killCount: number, segmentIndex: number) {
+  scheduleCombatDash(graph, start, killCount);
+  const lift = Math.max(0, Math.min(2, segmentIndex));
+  tone(graph, start, 310 + lift * 92, 94, 0.3, 0.09, "sawtooth");
+  tone(graph, start + 0.012, 2_600 + lift * 620, 740, 0.19, 0.044, "triangle");
+  noiseBurst(graph, start + 0.018, 0.21, 0.12, 480, 14_000, 0x43_48_41_49 + lift);
+}
+
 function scheduleDeath(graph: AudioGraph, start: number) {
   noiseBurst(graph, start, 0.39, 0.18, 62, 2_500, 0x44_45_41_44);
   tone(graph, start, 238, 31, 0.5, 0.17, "sawtooth");
@@ -276,6 +292,19 @@ export function createAudioRuntime(): AudioRuntime {
     playDash(killCount) {
       if (!enabled || !context || !graph || context.state !== "running") return;
       scheduleCombatDash(graph, context.currentTime + 0.003, Math.max(0, Math.floor(killCount)));
+    },
+    playFocusStart() {
+      if (!enabled || !context || !graph || context.state !== "running") return;
+      scheduleFocusStart(graph, context.currentTime + 0.003);
+    },
+    playChainDash(killCount, segmentIndex) {
+      if (!enabled || !context || !graph || context.state !== "running") return;
+      scheduleChainDash(
+        graph,
+        context.currentTime + 0.003,
+        Math.max(0, Math.floor(killCount)),
+        Math.max(0, Math.floor(segmentIndex)),
+      );
     },
     playDeath() {
       if (!enabled || !context || !graph || context.state !== "running") return;

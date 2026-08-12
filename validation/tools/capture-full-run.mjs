@@ -5,6 +5,8 @@ import * as THREE from "three";
 
 const chromePath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const rawBaseUrl = process.argv[2] ?? "http://127.0.0.1:4175/";
+const gameplayUrl = new URL(rawBaseUrl);
+gameplayUrl.searchParams.set("autostart", "1");
 const outputRoot = path.resolve(process.argv[3] ?? "validation");
 const videoDirectory = path.join(outputRoot, "video");
 const screenshotDirectory = path.join(outputRoot, "screenshots");
@@ -107,7 +109,7 @@ try {
     if (message.type() === "error") browserIssues.push({ type: "console", text: message.text() });
   });
   page.on("pageerror", (error) => browserIssues.push({ type: "pageerror", text: error.message }));
-  await page.goto(rawBaseUrl, { waitUntil: "networkidle" });
+  await page.goto(gameplayUrl.toString(), { waitUntil: "networkidle" });
   await page.waitForFunction(() => typeof window.render_game_to_text === "function");
   await page.waitForFunction(() => document.querySelector("#loading")?.classList.contains("ready"));
 
