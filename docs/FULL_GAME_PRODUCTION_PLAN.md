@@ -1,5 +1,7 @@
 # Project SlASH — Full Game Production Plan
 
+> **历史计划：P0–P11 已结束。** 当前工作改由 `REDESIGN_V2_PRD.md`、`REDESIGN_V2_ACCEPTANCE.md` 与 `architecture/REDESIGN_V2_BOUNDARIES.md` 驱动，不得继续按本文件扩建旧 Planning / Route / Skill Tree 流程。
+
 > 版本：v1.0  
 > 分支：`codex/full-game-production`  
 > 独立工作树：`/Users/nefish/Desktop/Coding/Slash-full-game`  

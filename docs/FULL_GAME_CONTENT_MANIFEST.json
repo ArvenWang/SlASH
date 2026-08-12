@@ -112,6 +112,9 @@
     "bossEncounters": 4
   },
   "requiredDocuments": [
+    "docs/REDESIGN_V2_PRD.md",
+    "docs/REDESIGN_V2_ACCEPTANCE.md",
+    "docs/architecture/REDESIGN_V2_BOUNDARIES.md",
     "docs/FULL_GAME_DESIGN.md",
     "docs/FULL_GAME_ACCEPTANCE.md",
     "docs/FULL_GAME_PRODUCTION_PLAN.md",

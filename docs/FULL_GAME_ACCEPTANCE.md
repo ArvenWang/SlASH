@@ -1,5 +1,8 @@
 # Project SlASH — Full Game Acceptance Standard
 
+> **历史验收：已被 `REDESIGN_V2_ACCEPTANCE.md` 取代。**  
+> 本文件只保留未改动战斗机制的历史验证依据；要求公开完整技能树、路线图、详细结算、双语内容或旧视觉表现的项目全部失效。
+
 > 版本：v1.0  
 > 更新时间：2026-08-12  
 > 适用范围：`codex/full-game-production` 从架构基线到完整商业版 Gameplay 的全部新增内容。  

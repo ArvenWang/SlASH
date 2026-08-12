@@ -2,7 +2,35 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 
 # Project Slash — Agent Progress
 
-更新时间：2026-08-12
+更新时间：2026-08-13
+
+## Redesign V2 当前决策
+
+- 用户已否决当前 Full Game 的玩家流程与视觉结果，并确认按 V2 整体重构。
+- 当前交付顺序：三选一技能获取 → UI 简化 → 干净高台场景 → 三角形主角 / 方形敌人 / 真实重力。
+- 当前唯一产品、验收和架构事实源：
+  - `docs/REDESIGN_V2_PRD.md`；
+  - `docs/REDESIGN_V2_ACCEPTANCE.md`；
+  - `docs/architecture/REDESIGN_V2_BOUNDARIES.md`。
+- V1 `FULL_GAME_*` 文档已降级为历史资料，不得继续按其中的 Planning Board、玩家选路、完整技能树、点数分配、Event / Forge 页面或双语 UI 扩建。
+- 目标玩家流程：Title → Combat → 三选一 → 自动下一关 → Boss → 极简 Victory / Defeat。
+- 战斗内核、敌人 / Boss / Entity 生命周期、现有真实 Skill Hook、Seed / Replay 基础可以保留；Run 编排、玩家 UI、场景表现、角色表现和垂直物理按新边界迁移。
+- 工作方式：持续使用多个子代理完成互不冲突的小任务；每个小节只验证直接改动，整体完成后一次完整验证，不重复验证未修改内容。
+
+## Redesign V2 下一步
+
+1. 新增确定性三候选 Reward Draft 与后台 Run Director。
+2. 让真实主流程变成 Title → Combat → 三选一 → 自动下一关。
+3. 删除玩家可见的完整 Skill Tree、Run Map、Route Choice、独立 Reward 和冗余统计。
+4. 接入 Clean Arena Environment Provider 和自适应远景镜头。
+5. 后续接入 Primitive Character Provider 与真实垂直物理。
+
+## Redesign V2 当前问题
+
+- 当前生产代码仍是 V1 流程；新文档完成不代表三选一或新场景已经实现。
+- Save / Replay 仍使用 V1 Campaign Phase 和路线/配点命令；第二小节必须同步版本边界。
+- 旧自动化仍有多项把完整树、路线图和详细文案视为成功条件，必须随对应实现小节改写，不能保留为新流程的阻塞门。
+- V5R、旧场景和旧 UI 文件暂时仍在仓库；完成标准是正式运行与 Registry 不再引用，而不是提前删除文件。
 
 ## Full Game Production 当前进展
 

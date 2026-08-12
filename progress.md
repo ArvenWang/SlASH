@@ -1,5 +1,22 @@
 Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD，在 `/Users/nefish/Desktop/Coding/Slash` 实现以视觉表现为最高优先级的 3D Web 赛博武士直线突刺击杀 Visual Vertical Slice。
 
+## 2026-08-13 — Redesign V2 P0 事实源
+
+- 用户已确认整体重构方向，并要求持续使用多个子代理、小任务快速推进、减少重复验证。
+- 当前优先级锁定为：三选一技能获取 → UI 简化 → 干净高台场景；几何体角色与真实重力随后实施。
+- 新增当前唯一事实源：
+  - `docs/REDESIGN_V2_PRD.md`；
+  - `docs/REDESIGN_V2_ACCEPTANCE.md`；
+  - `docs/architecture/REDESIGN_V2_BOUNDARIES.md`。
+- V1 Full Game 三份文档已明确降级为历史资料。旧 Planning Board、玩家选路、完整技能树、点数分配、Event / Forge 页面、冗余结算和双语 UI 不再有效。
+- 当前目标主流程固定为：Title → Combat → 三选一 → 自动下一关 → Boss → 极简 Victory / Defeat。
+- 现有 28 个技能的 Hook 可作为已实现内容复用，但不代表 28 个设计均已获用户确认。已确认 Cross Execution、Echo Slash、Kill Momentum；Return Slash 保留观察；Near-Miss、Death Mark、Twin Path 已否决。
+- 场景目标固定为超出视野的干净高台平面、相同斜俯视方向、可视范围约扩大 1.5 倍；正式画面不再出现城市、铁轨、列车、雨雾或旧平台外结构。
+- 后续角色目标固定为三角形主角、方形敌人、真实垂直物理和持续可见运动；旧 V5R 正式路径最终退出，但本阶段不删除历史资产。
+- 验证策略：每个小节仅做一次定向验证，全部完成后一次整体 Run；未修改的历史机制不重复验证。
+- 下一小节：新增确定性 Reward Draft / Run Director，落地通关后三选一，并开始极简 UI 迁移。
+- 当前编辑锁：V2 文档已完成；下一小节将集中修改 `src/game/rewards/`、`src/game/campaign/`、`src/game/run/` 与 `src/runtime/campaign-ui-runtime.ts`，并同步受影响的 Save / Replay 测试。
+
 # Project Slash — Agent Progress
 
 更新时间：2026-08-10

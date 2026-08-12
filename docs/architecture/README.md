@@ -1,5 +1,7 @@
 # Phase 2A 架构总览
 
+> 当前重构边界以 [Redesign V2 Architecture Boundaries](REDESIGN_V2_BOUNDARIES.md) 为准。本文件保留仍可复用的 Phase 2A 分层事实；V5R、旧 Environment 与 V1 Campaign UI 不再是目标生产路径。
+
 ## 状态与目的
 
 Phase 2A 是扩展基础与视觉生产管线改造，不是一次视觉签核。当前画面、角色造型、动作质感和整体氛围仍需继续设计迭代；本阶段的交付是让这些迭代通过可替换的 Profile、Provider 和独立 Lab 完成，而不再改动 Gameplay 规则。
@@ -61,6 +63,9 @@ flowchart LR
 
 ## 文档索引
 
+- [Redesign V2 PRD](../REDESIGN_V2_PRD.md)
+- [Redesign V2 Acceptance](../REDESIGN_V2_ACCEPTANCE.md)
+- [Redesign V2 Architecture Boundaries](REDESIGN_V2_BOUNDARIES.md)
 - [Full Game Design](../FULL_GAME_DESIGN.md)
 - [Full Game Acceptance](../FULL_GAME_ACCEPTANCE.md)
 - [Full Game Production Plan](../FULL_GAME_PRODUCTION_PLAN.md)

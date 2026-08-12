@@ -1,5 +1,8 @@
 # Project SlASH — Full Game Design
 
+> **历史文档：已被 `REDESIGN_V2_PRD.md` 取代。**  
+> 本文件保留 V1 已实现的战斗与内容规则，但其中 Planning Board、玩家选路、完整技能树、点数分配、Event / Forge 页面、双语界面和视觉方向不再有效。发生冲突时一律以 V2 PRD 为准。
+
 > 文档状态：v1.0 生产设计事实源  
 > 更新时间：2026-08-12  
 > 目标：把现有三关 Visual Vertical Slice 扩展为一款可以完整通关、重复构筑、可持续平衡的商业化 Web Roguelite。  
