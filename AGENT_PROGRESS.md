@@ -7,7 +7,7 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 ## Redesign V2 当前决策
 
 - 用户已否决当前 Full Game 的玩家流程与视觉结果，并确认按 V2 整体重构。
-- 当前交付顺序：三选一技能获取 → UI 简化 → 干净高台场景 → 三角形主角 / 方形敌人 / 真实重力。
+- 当前交付进度：三选一技能获取、UI 简化、Clean Arena 与自适应远景镜头已完成；现进入三角形主角 / 方形敌人的 Primitive Character Provider 与真实垂直物理阶段。
 - 当前唯一产品、验收和架构事实源：
   - `docs/REDESIGN_V2_PRD.md`；
   - `docs/REDESIGN_V2_ACCEPTANCE.md`；
@@ -19,9 +19,8 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 
 ## Redesign V2 下一步
 
-1. 清理剩余旧 Campaign UI 死代码与 CSS，确保生产 Bundle 不再包含玩家可达的 Planning / Tree / Map 页面。
-2. 接入 Clean Arena Environment Provider 和自适应远景镜头。
-3. 后续接入 Primitive Character Provider 与真实垂直物理。
+1. 接入 Primitive Character Provider，以三角形主角和方形敌人替换正式战斗角色表现。
+2. 接入真实垂直物理，补齐高度、垂直速度、重力、支撑与落地状态。
 
 ## Redesign V2 已完成
 
@@ -33,11 +32,13 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - [x] V2 Save Schema 3 与 Replay v4；旧存档原文保留并明确拒绝近似迁移。
 - [x] 定向 6 文件 / 32 项、Production Build、whitespace 和一次真实浏览器短流程通过。
 - [x] 生产 Campaign UI 死代码清理：正式路径仅保留主页、设置、暂停、三选一、胜负；旧流程和约 480 行死 CSS 已移除。
+- [x] Clean Arena Environment Provider 与自适应远景镜头已接入正式关卡。
 
-## Redesign V2 当前问题
+## Redesign V2 当前状态与问题
 
-- 当前生产代码仍是 V1 流程；新文档完成不代表三选一或新场景已经实现。
-- Save / Replay 仍使用 V1 Campaign Phase 和路线/配点命令；第二小节必须同步版本边界。
+- 当前生产代码已进入 V2：主流程、Save / Replay 边界、精简 UI、Clean Arena 与自适应镜头均已落地，不再是仅完成文档的 V1 生产流程。
+- 当前场景仍是第一版结构基线，完成的是 Environment Provider、正式关卡接线与镜头构图，后续仍需继续做视觉精修。
+- 当前角色可读性不是最终状态，将随 Primitive Character Provider 几何体阶段继续优化。
 - 旧自动化仍有多项把完整树、路线图和详细文案视为成功条件，必须随对应实现小节改写，不能保留为新流程的阻塞门。
 - V5R、旧场景和旧 UI 文件暂时仍在仓库；完成标准是正式运行与 Registry 不再引用，而不是提前删除文件。
 

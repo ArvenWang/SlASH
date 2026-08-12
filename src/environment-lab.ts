@@ -36,12 +36,11 @@ const rendererRuntime = createRendererRuntime({
   qualityMode: params.get("quality") === "compatibility" ? "compatibility" : "high",
   environmentId: profile.id,
   lightingProfileId: profile.lightingProfileId,
+  arenaBounds: { minX: -20, maxX: 20, minZ: -12.5, maxZ: 12.5 },
 });
 rendererRuntime.environment.setRainDensity(Number(rainInput.value));
 rendererRuntime.environment.setFogDensity(Number(fogInput.value));
 exposureInput.value = String(rendererRuntime.renderer.toneMappingExposure);
-rendererRuntime.camera.position.set(32.2, 31.01, 43.7);
-rendererRuntime.camera.lookAt(-0.5, -3, -3.5);
 
 function snapshot() {
   return {

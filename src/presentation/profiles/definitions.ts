@@ -43,7 +43,7 @@ export interface LightingProfileDefinition {
   readonly hemisphere: { sky: number; ground: number; intensity: number };
   readonly key: { color: number; intensity: number; position: readonly [number, number, number] };
   readonly coldRim: { color: number; intensity: number; position: readonly [number, number, number] };
-  readonly cityFill: { color: number; intensity: number; position: readonly [number, number, number] };
+  readonly environmentFill: { color: number; intensity: number; position: readonly [number, number, number] };
   readonly arenaFill: { color: number; intensity: number; position: readonly [number, number, number] };
   readonly hostileRim: { color: number; intensity: number; position: readonly [number, number, number] };
   readonly heroAnchor: { color: number; intensity: number };
@@ -111,6 +111,21 @@ export const audioProfileRegistry = new DefinitionRegistry<AudioProfileDefinitio
 
 export const lightingProfileRegistry = new DefinitionRegistry<LightingProfileDefinition>([
   {
+    id: "clean-arena-neutral-v2",
+    runtimeId: "clean-arena-lighting-v2",
+    quality: { high: "full", compatibility: "reduced" },
+    exposure: 1.04,
+    hemisphere: { sky: 0xc8e2e7, ground: 0x090d10, intensity: 0.62 },
+    key: { color: 0xe4f7fa, intensity: 2.45, position: [-22, 36, 24] },
+    coldRim: { color: 0x75d4e2, intensity: 330, position: [24, 18, -22] },
+    environmentFill: { color: 0x36515b, intensity: 0.4, position: [0, 30, -42] },
+    arenaFill: { color: 0xb5e1e5, intensity: 72, position: [0, 14, 5] },
+    hostileRim: { color: 0xff4d2a, intensity: 54, position: [-18, 5, -8] },
+    heroAnchor: { color: 0xc9f7fa, intensity: 2.1 },
+    heroKey: { color: 0xd6edf0, intensity: 330 },
+    shadowMapSize: { high: 1536, compatibility: 1024 },
+  },
+  {
     id: "transit-cathedral-night-rain",
     runtimeId: "transit-cathedral-lighting-current",
     quality: { high: "full", compatibility: "reduced" },
@@ -118,7 +133,7 @@ export const lightingProfileRegistry = new DefinitionRegistry<LightingProfileDef
     hemisphere: { sky: MATERIAL_TOKENS.environment.coldLight, ground: 0x080d12, intensity: 0.46 },
     key: { color: 0xd9f7ff, intensity: 2.25, position: [-18, 34, 19] },
     coldRim: { color: MATERIAL_TOKENS.environment.coolRim, intensity: 610, position: [20, 20, -24] },
-    cityFill: { color: 0x5a86a0, intensity: 1.08, position: [5, 38, -86] },
+    environmentFill: { color: 0x5a86a0, intensity: 1.08, position: [5, 38, -86] },
     arenaFill: { color: 0xa8d8df, intensity: 82, position: [0, 13, 5] },
     hostileRim: { color: 0xff3b1c, intensity: 58, position: [-17, 4.5, -7] },
     heroAnchor: { color: 0xb9f7ff, intensity: 2.2 },
@@ -133,7 +148,7 @@ export const lightingProfileRegistry = new DefinitionRegistry<LightingProfileDef
     hemisphere: { sky: 0xd8edf0, ground: 0x17232a, intensity: 0.72 },
     key: { color: 0xf0fbff, intensity: 2.8, position: [-14, 36, 16] },
     coldRim: { color: 0x90d9e8, intensity: 360, position: [20, 20, -24] },
-    cityFill: { color: 0x8eaab4, intensity: 1.35, position: [5, 38, -86] },
+    environmentFill: { color: 0x8eaab4, intensity: 1.35, position: [5, 38, -86] },
     arenaFill: { color: 0xc0d9dd, intensity: 105, position: [0, 13, 5] },
     hostileRim: { color: 0xff5736, intensity: 42, position: [-17, 4.5, -7] },
     heroAnchor: { color: 0xd9fbff, intensity: 2 },
@@ -162,6 +177,23 @@ export const postFxImpactProfileRegistry = new DefinitionRegistry<PostFxImpactPr
 ]);
 
 export const environmentProfileRegistry = new DefinitionRegistry<EnvironmentProfileDefinition>([
+  {
+    id: "clean-arena-v2",
+    runtimeId: "clean-arena-runtime-v2",
+    lightingProfileId: "clean-arena-neutral-v2",
+    postFxProfileId: "cinematic-current-v1",
+    background: 0x080d11,
+    fogColor: 0x080d11,
+    fogDensity: 0,
+    rainDensity: 0,
+    modules: [
+      "clean-arena/surface",
+      "clean-arena/surface-detail",
+      "clean-arena/boundary-light",
+      "clean-arena/lighting",
+    ],
+    quality: { high: "full", compatibility: "full" },
+  },
   {
     id: "transit-cathedral-v1",
     runtimeId: "transit-cathedral-runtime-current",

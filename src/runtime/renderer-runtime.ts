@@ -1,9 +1,13 @@
 import * as THREE from "three";
 import { createAudioRuntime } from "../audio";
 import { createDiagnostics } from "../diagnostics";
+import type { ArenaBounds } from "../game/domain/types";
 import { createPostFx } from "../postfx";
 import { GAMEPLAY_CAMERA_CONFIG } from "../presentation/camera-config";
+import { fitGameplayCameraV2 } from "../presentation/camera-fit-v2";
 import { createProfiledAudioRuntime, type ProfiledAudioRuntime } from "../presentation/audio/profiled-audio-runtime";
+import { cleanArenaProvider } from "../presentation/environments/clean-arena-provider";
+import type { EnvironmentRuntime as CleanArenaRuntime } from "../presentation/environments/environment-provider";
 import { createProfiledPostFxRuntime, type ProfiledPostFxRuntime } from "../presentation/postfx/profiled-postfx-runtime";
 import { createProfiledVfxRuntime, type ProfiledVfxRuntime } from "../presentation/vfx/profiled-vfx-runtime";
 import {
@@ -12,8 +16,10 @@ import {
   lightingRegistry,
   postFxRegistry,
 } from "../presentation/registry";
-import { createEnvironment, type EnvironmentRuntime } from "../scene/environment";
+import { createEnvironment, type EnvironmentRuntime as LegacyEnvironmentRuntime } from "../scene/environment";
 import { createVfxRuntime } from "../vfx";
+
+type EnvironmentRuntime = LegacyEnvironmentRuntime | CleanArenaRuntime;
 
 export type QualityMode = "high" | "compatibility";
 
@@ -47,6 +53,7 @@ export interface RendererRuntimeOptions {
   readonly qualityMode: QualityMode;
   readonly environmentId: string;
   readonly lightingProfileId: string;
+  readonly arenaBounds: ArenaBounds;
 }
 
 export function createRendererRuntime(options: RendererRuntimeOptions): RendererRuntime {
@@ -57,13 +64,19 @@ export function createRendererRuntime(options: RendererRuntimeOptions): Renderer
   }
   const lightingProfile = lightingRegistry.get(environmentProfile.lightingProfileId);
   const postFxProfile = postFxRegistry.get(environmentProfile.postFxProfileId);
-  if (lightingProfile.runtimeId !== "transit-cathedral-lighting-current") {
+  if (
+    lightingProfile.runtimeId !== "transit-cathedral-lighting-current"
+    && lightingProfile.runtimeId !== "clean-arena-lighting-v2"
+  ) {
     throw new Error(`Unsupported lighting runtime: ${lightingProfile.runtimeId}`);
   }
   if (postFxProfile.runtimeId !== "cinematic-postfx-current") {
     throw new Error(`Unsupported post FX runtime: ${postFxProfile.runtimeId}`);
   }
-  if (environmentProfile.runtimeId !== "transit-cathedral-runtime-current") {
+  if (
+    environmentProfile.runtimeId !== "transit-cathedral-runtime-current"
+    && environmentProfile.runtimeId !== "clean-arena-runtime-v2"
+  ) {
     throw new Error(`Unsupported environment runtime: ${environmentProfile.runtimeId}`);
   }
   const compatibilityMode = options.qualityMode === "compatibility";
@@ -122,10 +135,13 @@ export function createRendererRuntime(options: RendererRuntimeOptions): Renderer
   coldRim.position.set(...lightingProfile.coldRim.position);
   coldRim.target.position.set(-2, 0, 1);
   scene.add(coldRim, coldRim.target);
-  const cityFill = new THREE.DirectionalLight(lightingProfile.cityFill.color, lightingProfile.cityFill.intensity);
-  cityFill.position.set(...lightingProfile.cityFill.position);
-  cityFill.target.position.set(0, 2, -52);
-  scene.add(cityFill, cityFill.target);
+  const environmentFill = new THREE.DirectionalLight(
+    lightingProfile.environmentFill.color,
+    lightingProfile.environmentFill.intensity,
+  );
+  environmentFill.position.set(...lightingProfile.environmentFill.position);
+  environmentFill.target.position.set(0, 2, -52);
+  scene.add(environmentFill, environmentFill.target);
   const arenaFill = new THREE.PointLight(lightingProfile.arenaFill.color, lightingProfile.arenaFill.intensity, 58, 1.8);
   arenaFill.position.set(...lightingProfile.arenaFill.position);
   scene.add(arenaFill);
@@ -143,13 +159,15 @@ export function createRendererRuntime(options: RendererRuntimeOptions): Renderer
   heroKey.target = heroKeyTarget;
   scene.add(heroKey, heroKeyTarget);
 
-  const environment = createEnvironment(scene, {
-    background: environmentProfile.background,
-    fogColor: environmentProfile.fogColor,
-    fogDensity: environmentProfile.fogDensity,
-    rainDensity: environmentProfile.rainDensity,
-    modules: environmentProfile.modules,
-  });
+  const environment: EnvironmentRuntime = environmentProfile.runtimeId === "clean-arena-runtime-v2"
+    ? cleanArenaProvider.create({ scene, gameplayArena: options.arenaBounds })
+    : createEnvironment(scene, {
+      background: environmentProfile.background,
+      fogColor: environmentProfile.fogColor,
+      fogDensity: environmentProfile.fogDensity,
+      rainDensity: environmentProfile.rainDensity,
+      modules: environmentProfile.modules,
+    });
   const basePostFx = createPostFx(
     renderer,
     scene,
@@ -180,6 +198,7 @@ export function createRendererRuntime(options: RendererRuntimeOptions): Renderer
     resize() {
       const width = Math.max(1, options.canvas.clientWidth);
       const height = Math.max(1, options.canvas.clientHeight);
+      const cameraFit = fitGameplayCameraV2(options.arenaBounds, { width, height });
       const mobile = Math.min(width, height) < 700;
       const pixelRatio = Math.min(
         window.devicePixelRatio,
@@ -187,7 +206,14 @@ export function createRendererRuntime(options: RendererRuntimeOptions): Renderer
       );
       renderer.setPixelRatio(pixelRatio);
       renderer.setSize(width, height, false);
-      camera.aspect = width / height;
+      cameraBase.set(...cameraFit.position);
+      cameraTarget.set(...cameraFit.target);
+      camera.position.copy(cameraBase);
+      camera.fov = cameraFit.fov;
+      camera.aspect = cameraFit.aspect;
+      camera.near = cameraFit.near;
+      camera.far = cameraFit.far;
+      camera.lookAt(cameraTarget);
       camera.updateProjectionMatrix();
       postFx.resize(width, height, pixelRatio);
     },

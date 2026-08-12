@@ -25,6 +25,7 @@
     "verify:character-assets": "node validation/tools/inspect-glb-character-assets.mjs",
     "capture:tripo-model": "node validation/tools/capture-tripo-model-lab.mjs",
     "verify:labs": "node validation/tools/verify-presentation-labs.mjs",
+    "verify:clean-arena": "node validation/tools/capture-clean-arena-v2.mjs",
     "verify:assets": "node validation/tools/audit-runtime-assets.mjs",
     "verify:full-game-design": "node validation/tools/verify-full-game-design.mjs",
     "verify:encounters": "node validation/tools/generate-encounter-content-report.mjs",

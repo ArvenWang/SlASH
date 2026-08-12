@@ -93,6 +93,7 @@ export async function bootstrapSlashApplication(): Promise<void> {
     qualityMode,
     environmentId: initialLevel.environmentId,
     lightingProfileId: initialLevel.lightingProfileId,
+    arenaBounds: initialLevel.arena,
   });
   rendererRuntime.audio.setEnabled(initialSettings.audioEnabled);
   setLoadingPhase(0.62, "ASSEMBLING COMBAT SPACE");

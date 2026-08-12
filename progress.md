@@ -264,3 +264,12 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 真实浏览器：4 / 4 Boss 由 Playwright 在生产 Canvas 上真实点击、长按松开和按 Space 选择三点完成；HUD、Rail 锁定线、Siege 背核环、Mirror Path、Rail Grid / Finale 三节点均有截图；390×844 无横向溢出，Console 0。
 - 当前边界：自动 FG-B01–B03 已通过；每个 Boss 至少 3 次真人完成、失败原因复述与 120–300s 节奏目标仍属于最终人工体验门，不能用 400 次全知状态机代替。
 - 下一步：P8 Profile / Dossier / Threat / Assist / Settings / Statistics，再进入完整 Run Replay Matrix 与最终质量门。
+
+## 2026-08-13 — Redesign V2 Clean Arena 与自适应镜头
+
+- 正式关卡运行时已从旧 Transit Cathedral 切换到 `clean-arena-v2`，并使用对应的 `clean-arena-neutral-v2` 灯光配置；正式画面不再创建 city、transit、train 或 weather 模块，雨量与雾密度均为 0。
+- Gameplay 继续使用 40×25 的逻辑竞技区（X：-20～20，Z：-12.5～12.5）；Clean Arena Provider 另行创建 1600×1400 的视觉大平面。视觉延伸不扩大碰撞、出生或玩法边界，逻辑空间与表现空间保持分离。
+- 镜头改为按逻辑竞技区和当前画幅实时计算：桌面保持原斜俯视方向并采用至少 1.5× 旧镜头距离的远景；竖屏会独立调整距离、视野角和取景范围，以容纳竞技区并避免直接套用桌面参数。
+- 真实浏览器已覆盖 1920×1080、1366×768、390×844 三种画幅：均进入正式 Combat、识别 `clean-arena-v2`，旧 city / transit / train / weather 均未出现，无横向溢出，Console 0。
+- 定向测试复跑通过：`clean-arena-provider-v2` 与 `camera-fit-v2` 共 2 个测试文件、13 项测试通过；本轮没有据此扩大声明到玩法、Boss、性能或全浏览器矩阵。
+- 当前角色仍是现有 V5R 正式运行时，本轮尚未替换为 Redesign V2 目标角色；Clean Arena 与镜头画面也尚未获得最终主观视觉签核，因此这里只确认运行时切换、自适应取景和定向验证完成，不代表整体视觉已最终通过。
