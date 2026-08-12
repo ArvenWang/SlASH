@@ -67,3 +67,50 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 ## 暂勿并行修改
 
 - Tripo 生成已延期；发布基线已同步，后续工作从当前 `main` 与本进度文档继续。
+
+## 2026-08-11 / 启动页与 Vector Focus 恢复（已完成）
+
+- 当前分支：`codex/phase2a-foundation`。
+- 已完成玩法层迁移：通用 Ability Resource、选点/路线 Active Ability、命令、Event 2.0、Replay v2；Vector Focus 保留旧版 14/32/54/80/100 充能、100 能量、3 秒三点选路、0.12 倍敌人时间与三段链斩规则。
+- 已接入启动生命周期：普通地址默认进入 `title`，不推进游戏模拟；点击、Enter 或 Space 才进入 `playing` 并解锁音频；`?validation=1` / `?autostart=1` 可供自动化直接开战。
+- 已完成表现层能量 HUD、路线标记、链斩 VFX/Audio/Post FX，并新增单一专项浏览器检查脚本 `validation/tools/verify-start-vector-focus.mjs`。
+- 最终相关验证：12 个测试文件 / 45 项通过；生产构建通过；真实 Chromium 的默认 Title、静止、点击开战、满能、Space 进入/取消、三点路线、链斩完成与表现 Profile 共 10 项通过，浏览器错误 0。
+- 该阶段当时的本地生产预览运行于 `http://127.0.0.1:4175/`，代码尚未提交、推送；后续视觉方案已确认并完成 V5R 实施，当前状态见文末最新记录。
+
+## 2026-08-12 / 3D 视觉重设计验收标准（已完成）
+
+- 用户已确认开始视觉重设计，并要求先以最终验收质量为目标完善标准。
+- `docs/ACCEPTANCE_STANDARD.md` 升级为 v2.0：新增 V5R 四视图、未绑骨模型、标准骨架、蒙皮压力姿势、正式动画、武器握持、模块替换、游戏内一致性和场景层级硬门。
+- `docs/CHARACTER_ART_BIBLE.md` 升级为 v1.4：保留 V5 视觉风格，身体与武器分离；旧主角刀约身高 93% 的规则废止，新目标为总长 `58–66%`，首轮比较 `58% / 62% / 66%`。
+- 已明确当前生产战场仍使用程序化角色、Tripo GLB 原生 Clip 为 0、随机骨骼名硬编码和武器握点缺失均不满足最终门。
+- 验证节奏锁定为每个小节一次针对性小验证，相关实现未改动时不重复；角色、场景和正式 Provider 全部接入后执行一次整体验收。
+- 本节仅修改规范和进度事实源，尚未调用 Tripo、未消耗 API 额度。下一步制作 V5R 四视图、独立武器、动作和场景设计资产。
+
+## 2026-08-12 / V5R 正式资产输入（已完成）
+
+- 主角/敌人四视图 A-Pose 已保存到 `art/characters/production/`，身体不携带武器；四方向已裁为 `art/characters/tripo-inputs/{hero-v5r,enemy-v5r}/` 下 8 张 1024×1024 输入。
+- 敌人左视图首轮裁切混入相邻手臂，已被输入硬门拦截并重新裁切；修复后四张图均无相邻视图污染。
+- 主角已补齐 Ready/Anticipation/Dash/Arrival/Recovery/Focus、Selection/三段 Chain Slash/Death 动作基准；敌人已补齐 Idle/Run/Attack/Hit/Delayed Cut/Separation。
+- 图像生成无法可靠遵守精确刀长，连续两版因总长或握柄比例错误被拒绝；最终改用 `hero-v5r-weapon-proportion.svg` 数值锁定 58/62/66% 比较、默认 62%、Grip 11% 和全部武器锚点。
+- 场景目标图保留 Transit Cathedral，但平台成为主体，背景轨道/拱架/城市退入雾层；仅作为后续实时场景实现目标，不冒充游戏内完成。
+- 新增 `CHARACTER_ANIMATION_SPEC.md` 与 `VISUAL_ASSET_CONTRACT.md`；本节通过 JSON、尺寸、whitespace 和全部图片目视检查。尚未调用 Tripo、未消耗额度。
+
+## 2026-08-12 / V5R 生产角色、武器与场景接入（自动整合完成，待用户签核）
+
+- Tripo 候选筛选完成：Hero 13,348 triangles、78 骨 Rig v2.5；Enemy 11,683 triangles、55 骨 Rig v2.5。预设动作因脚部、重心和敌人抬臂异常被拒绝，未进入生产。
+- 生产 Registry 已切换到 `gltf-hero-v5r` / `gltf-enemy-v5r`；程序化角色保留为回退。原始 Tripo 骨骼名只存在于 Semantic Skeleton Profile，旧随机骨骼名 Runtime 已删除。
+- Hero 12 个、Enemy 11 个正式 `THREE.AnimationClip` 已按语义状态接入；Enemy 死亡使用当前 Skinned Pose 烘焙与真实两段分体。
+- Hero 刀长固定为身高 62%（2.046m），刀脊与单侧切削边分离；刀尖、刃口、正握和角色空间稳定挂点已纠正。Tripo 指骨权重尖刺由可替换 Grip Presentation Attachment 收口。
+- `transit-platform-v5r` 场景配置已接入：Transit/City 后移降权，中央巨柱退出主视线；Arena 增加服务板、维护舱、格栅、紧固件和分层边缘立面，Gameplay 碰撞未改变。
+- 角色小节证据：`validation/character-providers-v5r-weapon-grip-final/`、`validation/character-v5r-pose-final/`；场景小节证据：`validation/environment-v5r-after-2/`。类型检查与浏览器错误门通过，未重复旧长稳/性能套件。
+- 最终整合：12 个测试文件 / 45 项通过；生产构建、资产审计和 `git diff --check` 通过；真实 Chromium 的启动页、开战、满能、Space 选路、三段 Vector Focus 与 Profile 反馈 10 项通过，浏览器错误 0。证据位于 `validation/final-v5r-integration/`。
+- 该阶段验收使用的本地预览为 `http://127.0.0.1:4176/`；当时代码尚未提交、推送，后续 Git 交付状态见文末最新记录。
+
+## 2026-08-12 / V5R 严格视觉重设计专项
+
+- 已建立统一证据目录 `validation/visual-redesign/`，覆盖模型四视图/64px/LOD、Rig 压力姿势、Hero 12 / Enemy 11 动作、七状态刀刃与握持、场景层级及非生产模型替换 Fixture。
+- Hero 主体 LOD 10,260 → 4,308 triangles，Enemy 9,751 → 3,897；近远 64px 轮廓一致。
+- 主角刀长 62%，刀长轴与开刃轴独立；刀柄进入掌心，护手位于手指前方，正反镜头均保持同一物理开刃侧。
+- 场景战场平均亮度提升 8.7%，平台边缘密度提升 9.6%，背景亮度基本不变；碰撞面和关卡规则未修改。
+- 专项浏览器错误为 0。最终综合门按用户要求仅执行一次并已通过：12 文件 / 45 测试、生产构建、资产审计、10 项生产浏览器流程和 diff 检查全部通过；用户真人视觉签核仍未完成。
+- Git 交付：实现提交 `1695906` 已推送到 `origin/codex/phase2a-foundation`；正式源码、模型、美术输入、规范和可复用验证脚本均已同步。按仓库规则，本地大体积验证截图不提交；本地预览服务当前未运行，需要检查时可重新启动。
