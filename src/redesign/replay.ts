@@ -2,7 +2,7 @@ import type { GameCommand, GameCommandResult, GameState } from "./state";
 import { createGame, dispatch, gameplayHash, step } from "./game";
 import { REDESIGN_CONTENT_VERSION } from "./run";
 
-export const REPLAY_VERSION = 2 as const;
+export const REPLAY_VERSION = 3 as const;
 
 export interface ReplayEntry {
   readonly tick: number;

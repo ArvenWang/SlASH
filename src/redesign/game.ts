@@ -76,9 +76,9 @@ export { createInitialState, drainEvents } from "./state";
 export type { GameCommand, GameCommandResult, GameEvent, GameState } from "./state";
 
 const MAX_REALTIME_DELTA_MS = 250;
-const BASIC_DASH_SPEED = 58;
-const CHARGED_DASH_SPEED = 76;
-const ULTIMATE_DASH_SPEED = 96;
+export const BASIC_DASH_SPEED = 86;
+export const CHARGED_DASH_SPEED = 112;
+export const ULTIMATE_DASH_SPEED = 560;
 const BASIC_RECOVERY_MS = 310;
 const CHARGED_RECOVERY_MS = 390;
 const ULTIMATE_RECOVERY_MS = 520;
@@ -99,6 +99,9 @@ export function dispatch(state: GameState, command: GameCommand): GameCommandRes
     state.player.aimTarget = { ...command.target };
     updatePlayerFacing(state);
     if (state.player.action === "charging") state.player.chargeTarget = { ...command.target };
+    if ((state.player.action === "dashing" || state.player.action === "recovering") && state.player.bufferedPrimary?.held) {
+      state.player.bufferedPrimary.target = { ...command.target };
+    }
     return "ignored";
   }
   if (command.type === "start-run") {
@@ -128,6 +131,12 @@ export function dispatch(state: GameState, command: GameCommand): GameCommandRes
   if (state.phase !== "combat" || state.player.action === "dead") return "ignored";
 
   if (command.type === "begin-primary") {
+    if (state.player.action === "dashing" || state.player.action === "recovering") {
+      state.player.aimTarget = { ...command.target };
+      state.player.bufferedPrimary = { target: { ...command.target }, held: true };
+      updatePlayerFacing(state);
+      return "primary-buffered";
+    }
     if (state.player.action !== "ready") return "ignored";
     state.player.aimTarget = { ...command.target };
     updatePlayerFacing(state);
@@ -138,6 +147,12 @@ export function dispatch(state: GameState, command: GameCommand): GameCommandRes
     return "charge-started";
   }
   if (command.type === "release-primary") {
+    if ((state.player.action === "dashing" || state.player.action === "recovering") && state.player.bufferedPrimary) {
+      state.player.aimTarget = { ...command.target };
+      state.player.bufferedPrimary = { target: { ...command.target }, held: false };
+      updatePlayerFacing(state);
+      return "primary-buffer-released";
+    }
     if (state.player.action !== "charging") return "ignored";
     state.player.aimTarget = { ...command.target };
     updatePlayerFacing(state);
@@ -146,6 +161,10 @@ export function dispatch(state: GameState, command: GameCommand): GameCommandRes
     return "dash-started";
   }
   if (command.type === "cancel-primary") {
+    if ((state.player.action === "dashing" || state.player.action === "recovering") && state.player.bufferedPrimary) {
+      state.player.bufferedPrimary = null;
+      return "primary-buffer-cancelled";
+    }
     if (state.player.action !== "charging") return "ignored";
     setPlayerReady(state);
     return "charge-cancelled";
@@ -332,7 +351,7 @@ function advancePlayer(state: GameState, deltaMs: number, deltaSeconds: number):
     advanceDash(state, deltaMs);
   } else if (player.action === "recovering") {
     player.recoveryMs = Math.max(0, player.recoveryMs - deltaMs);
-    if (player.recoveryMs <= 0) setPlayerReady(state);
+    if (player.recoveryMs <= 0) activateBufferedPrimary(state);
   }
 
   advancePlayerMovement(state, deltaSeconds);
@@ -431,7 +450,9 @@ function beginDash(
     hitRadius,
     damage,
     chargePower,
-    totalDurationMs: Math.max(90, totalLength / speed * 1_000),
+    totalDurationMs: kind === "ultimate"
+      ? Math.min(115, Math.max(72, totalLength / speed * 1_000))
+      : Math.max(72, totalLength / speed * 1_000),
     elapsedMs: 0,
     resolvedEnemyIds: [],
     resolvedBossSegmentIndexes: [],
@@ -446,6 +467,7 @@ function beginDash(
   state.player.chargeStartedTick = null;
   state.player.chargeTarget = null;
   state.player.moveVelocity = { x: 0, z: 0 };
+  state.player.bufferedPrimary = null;
   emit(state, { type: "dash-started", dash: structuredClone(dash) });
   for (const segment of dash.segments) {
     if (segment.reflectionPoint && segment.reflectionNormal) {
@@ -1068,6 +1090,23 @@ function setPlayerReady(state: GameState): void {
   state.player.recoveryMs = 0;
 }
 
+function activateBufferedPrimary(state: GameState): void {
+  const buffered = state.player.bufferedPrimary;
+  setPlayerReady(state);
+  if (!buffered) return;
+  state.player.bufferedPrimary = null;
+  state.player.aimTarget = { ...buffered.target };
+  updatePlayerFacing(state);
+  if (!buffered.held) {
+    startDash(state, "basic", buffered.target);
+    return;
+  }
+  state.player.action = "charging";
+  state.player.actionElapsedMs = 0;
+  state.player.chargeStartedTick = state.tick;
+  state.player.chargeTarget = { ...buffered.target };
+}
+
 function setEnemyPhase(enemy: EnemyState, phase: EnemyState["phase"], durationMs: number): void {
   enemy.phase = phase;
   enemy.phaseElapsedMs = 0;
@@ -1164,6 +1203,7 @@ export function renderGameToText(state: GameState): string {
         input: state.player.moveInput,
         velocity: { x: round(state.player.moveVelocity.x), z: round(state.player.moveVelocity.z) },
       },
+      bufferedPrimary: state.player.bufferedPrimary,
       dash: state.player.dash ? {
         kind: state.player.dash.kind,
         hitRadius: round(state.player.dash.hitRadius),

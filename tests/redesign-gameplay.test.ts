@@ -135,6 +135,54 @@ describe("Redesign V2.1 gameplay facts", () => {
     expect(state.player.dash?.hitRadius).toBeCloseTo(0.95 * 1.65, 6);
   });
 
+  test("uses faster dash travel and executes a three-point ultimate almost instantly", () => {
+    const state = createGame(350);
+    dispatch(state, { type: "start-run" });
+    dispatch(state, { type: "begin-primary", target: { x: 40, z: 0 } });
+    dispatch(state, { type: "release-primary", target: { x: 40, z: 0 } });
+    expect(state.player.dash?.totalDurationMs).toBeLessThan(470);
+    while (state.player.action !== "ready") step(state);
+    state.player.ultimateEnergy = 100;
+    expect(dispatch(state, { type: "start-ultimate" })).toBe("ultimate-started");
+    expect(dispatch(state, { type: "add-ultimate-point", target: { x: 12, z: 0 } })).toBe("ultimate-point-added");
+    expect(dispatch(state, { type: "add-ultimate-point", target: { x: -12, z: 0 } })).toBe("ultimate-point-added");
+    expect(dispatch(state, { type: "add-ultimate-point", target: { x: 0, z: 12 } })).toBe("ultimate-executing");
+    expect(state.player.dash?.kind).toBe("ultimate");
+    expect(state.player.dash?.totalDurationMs).toBeLessThanOrEqual(120);
+  });
+
+  test("buffers a quick click during recovery and auto-dashes when recovery ends", () => {
+    const state = createGame(351);
+    dispatch(state, { type: "start-run" });
+    dispatch(state, { type: "begin-primary", target: { x: 12, z: 0 } });
+    dispatch(state, { type: "release-primary", target: { x: 12, z: 0 } });
+    while (state.player.action === "dashing") step(state);
+    expect(state.player.action).toBe("recovering");
+    expect(dispatch(state, { type: "begin-primary", target: { x: -10, z: 5 } })).toBe("primary-buffered");
+    expect(dispatch(state, { type: "release-primary", target: { x: -10, z: 5 } })).toBe("primary-buffer-released");
+    expect(state.player.bufferedPrimary).toEqual({ target: { x: -10, z: 5 }, held: false });
+    while (state.player.action === "recovering") step(state);
+    expect(state.player.action).toBe("dashing");
+    expect(state.player.dash?.kind).toBe("basic");
+    expect(state.player.bufferedPrimary).toBeNull();
+  });
+
+  test("buffers a held press during recovery and starts charging at recovery end", () => {
+    const state = createGame(352);
+    dispatch(state, { type: "start-run" });
+    dispatch(state, { type: "begin-primary", target: { x: 12, z: 0 } });
+    dispatch(state, { type: "release-primary", target: { x: 12, z: 0 } });
+    while (state.player.action === "dashing") step(state);
+    expect(dispatch(state, { type: "begin-primary", target: { x: -8, z: 3 } })).toBe("primary-buffered");
+    dispatch(state, { type: "aim", target: { x: -14, z: 7 } });
+    while (state.player.action === "recovering") step(state);
+    expect(state.player.action).toBe("charging");
+    expect(state.player.chargeTarget).toEqual({ x: -14, z: 7 });
+    advanceTicks(state, Math.ceil(CHARGE_THRESHOLD_MS / (1_000 / 120)));
+    expect(dispatch(state, { type: "release-primary", target: { x: -14, z: 7 } })).toBe("dash-started");
+    expect(state.player.dash?.kind).toBe("charged");
+  });
+
   test("slows the combat world during ultimate planning and exposes the full planned route", () => {
     const state = createGame(36);
     dispatch(state, { type: "start-run" });

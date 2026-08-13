@@ -5,7 +5,7 @@ import type { Vec2 } from "./math";
 import { vec2 } from "./math";
 
 export const FIXED_STEP_MS = 1000 / 120;
-export const STATE_VERSION = 2 as const;
+export const STATE_VERSION = 3 as const;
 
 export type GamePhase = "title" | "combat" | "reward" | "victory" | "defeat";
 export type PlayerAction = "ready" | "charging" | "dashing" | "recovering" | "ultimate-planning" | "dead";
@@ -62,6 +62,10 @@ export interface PlayerState extends VerticalBodyState {
   chargeTarget: Vec2 | null;
   dash: DashState | null;
   recoveryMs: number;
+  bufferedPrimary: null | {
+    target: Vec2;
+    held: boolean;
+  };
   ultimateEnergy: number;
   ultimatePoints: Vec2[];
   ultimatePlanningMs: number;
@@ -232,6 +236,9 @@ export type GameCommandResult =
   | "charge-started"
   | "dash-started"
   | "charge-cancelled"
+  | "primary-buffered"
+  | "primary-buffer-released"
+  | "primary-buffer-cancelled"
   | "movement-updated"
   | "ultimate-started"
   | "ultimate-point-added"
@@ -290,6 +297,7 @@ export function createPlayer(): PlayerState {
     chargeTarget: null,
     dash: null,
     recoveryMs: 0,
+    bufferedPrimary: null,
     ultimateEnergy: 0,
     ultimatePoints: [],
     ultimatePlanningMs: 0,

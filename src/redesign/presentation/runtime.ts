@@ -457,7 +457,7 @@ export function createPresentationRuntime(
   function syncPreview(game: GameState): void {
     const visible = game.phase === "combat"
       && game.player.action !== "dashing"
-      && game.player.action !== "recovering"
+      && (game.player.action !== "recovering" || game.player.bufferedPrimary !== null)
       && game.player.action !== "dead";
     if (!visible) {
       previewSegments.forEach((preview) => { preview.mesh.visible = false; });
@@ -484,11 +484,21 @@ export function createPresentationRuntime(
       );
     } else {
       const path = previewPrimaryPath(game);
+      const buffered = game.player.action === "recovering" && game.player.bufferedPrimary !== null;
       previewSegmentCount = path.segments.length;
       previewWidth = path.hitRadius;
       ultimatePreviewSegmentCount = 0;
       confirmedUltimateSegmentCount = 0;
-      syncRibbonPreviews(previewSegments, path.segments, path.hitRadius, 0.5, presentationElapsed, chargeProgress(game));
+      syncRibbonPreviews(
+        previewSegments,
+        path.segments,
+        path.hitRadius,
+        buffered ? 0.44 : 0.5,
+        presentationElapsed,
+        chargeProgress(game),
+        path.segments.length,
+        buffered ? 0xffc66d : 0x8df4ff,
+      );
     }
     if (game.storedPath) {
       syncRibbonPreviews(storedPreviewSegments, game.storedPath.segments, 0.24, 0.2, game.elapsedMs / 1_000, 0);

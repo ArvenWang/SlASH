@@ -58,4 +58,19 @@ describe("V2.1 replay", () => {
     expect(replay.matched).toBe(true);
     expect(replay.hash).toBe(log.expectedHash);
   });
+
+  test("replays buffered recovery input deterministically", () => {
+    const state = createGame(329);
+    const recorder = createReplayRecorder(state);
+    recorder.dispatch({ type: "start-run" });
+    recorder.dispatch({ type: "begin-primary", target: { x: 12, z: 0 } });
+    recorder.dispatch({ type: "release-primary", target: { x: 12, z: 0 } });
+    while (state.player.action === "dashing") step(state);
+    expect(recorder.dispatch({ type: "begin-primary", target: { x: -10, z: 4 } })).toBe("primary-buffered");
+    expect(recorder.dispatch({ type: "release-primary", target: { x: -10, z: 4 } })).toBe("primary-buffer-released");
+    for (let index = 0; index < 90; index += 1) step(state);
+    const log = recorder.finish();
+    const replay = playReplay(log);
+    expect(replay.matched).toBe(true);
+  });
 });

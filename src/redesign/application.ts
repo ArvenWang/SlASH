@@ -115,7 +115,9 @@ export function bootstrapRedesignApplication(): void {
     const target = pointerTarget(event.clientX, event.clientY);
     if (!target) return;
     dispatch(state, { type: "aim", target });
-    if (pointerDown && state.player.action === "charging") dispatch(state, { type: "aim", target });
+    if (pointerDown && (state.player.action === "charging" || state.player.bufferedPrimary?.held)) {
+      dispatch(state, { type: "aim", target });
+    }
   };
   const onPointerDown = (event: PointerEvent): void => {
     if (event.button !== 0 || state.phase !== "combat") return;
