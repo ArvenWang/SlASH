@@ -3,9 +3,11 @@ import { BOSS_MAXIMUM_HP } from "../src/redesign/config";
 import {
   createBossRegressionState,
   createGame,
+  currentWorldTimeScale,
   dispatch,
   forceBossCoreWindow,
   gameplayHash,
+  previewUltimatePath,
   resolveBossRegressionContact,
   step,
 } from "../src/redesign/game";
@@ -131,6 +133,30 @@ describe("Redesign V2.1 gameplay facts", () => {
     expect(state.player.dash?.kind).toBe("charged");
     expect(state.player.dash?.chargePower).toBe(1);
     expect(state.player.dash?.hitRadius).toBeCloseTo(0.95 * 1.65, 6);
+  });
+
+  test("slows the combat world during ultimate planning and exposes the full planned route", () => {
+    const state = createGame(36);
+    dispatch(state, { type: "start-run" });
+    state.player.ultimateEnergy = 100;
+    advanceTicks(state, 1);
+    const enemy = state.enemies[0]!;
+    const enemyBefore = { ...enemy.position };
+    const encounterBefore = state.run.encounterElapsedMs;
+    expect(dispatch(state, { type: "start-ultimate" })).toBe("ultimate-started");
+    expect(currentWorldTimeScale(state)).toBe(0.16);
+    advanceTicks(state, 60);
+    expect(state.run.encounterElapsedMs - encounterBefore).toBeCloseTo(80, 5);
+    expect(Math.hypot(enemy.position.x - enemyBefore.x, enemy.position.z - enemyBefore.z)).toBeLessThan(1.5);
+    expect(state.player.ultimatePlanningMs).toBeCloseTo(3_000, 5);
+    dispatch(state, { type: "aim", target: { x: 8, z: -4 } });
+    expect(previewUltimatePath(state).segments.length).toBeGreaterThan(0);
+    expect(dispatch(state, { type: "add-ultimate-point", target: { x: 8, z: -4 } })).toBe("ultimate-point-added");
+    dispatch(state, { type: "aim", target: { x: -7, z: 5 } });
+    const planned = previewUltimatePath(state);
+    expect(planned.confirmedSegmentCount).toBeGreaterThan(0);
+    expect(planned.segments.length).toBeGreaterThan(planned.confirmedSegmentCount);
+    expect(planned.hitRadius).toBeCloseTo(1.15, 8);
   });
 
   test("bosses reject one-hit kills and apply basic, charged and ultimate damage only in core windows", () => {

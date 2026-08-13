@@ -127,6 +127,7 @@ describe("V2.1 modular geometric presentation", () => {
     expect(new Set(signatures).size).toBeGreaterThanOrEqual(4);
     const boss = provider.createBoss("cube-fortress", ["a", "b", "c", "d"]);
     expect(boss.partRoots.size).toBe(4);
+    expect(boss.shield.scale.x).toBeGreaterThan(player.shell.scale.x * 2.5);
     const allRoots = [player.root, boss.root];
     let skinnedMeshCount = 0;
     let forbiddenNameCount = 0;

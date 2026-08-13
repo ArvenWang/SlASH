@@ -75,6 +75,34 @@ try {
       if (Math.hypot(afterMovement.player.movement.velocity.x, afterMovement.player.movement.velocity.z) > 0.1) {
         issues.push("wasd-release-boundary");
       }
+      await page.evaluate(() => { window.__slashV21.state().player.ultimateEnergy = 100; });
+      const beforeBulletTime = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+      const enemyBeforeBulletTime = beforeBulletTime.enemies[0]?.position;
+      await page.keyboard.press("Space");
+      await page.waitForTimeout(420);
+      const duringBulletTime = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+      const bulletPresentation = await page.evaluate(() => window.__slashV21.presentation());
+      if (!duringBulletTime.player.bulletTime.active || duringBulletTime.player.bulletTime.worldScale !== 0.16) {
+        issues.push("bullet-time-state-boundary");
+      }
+      if (bulletPresentation.bulletTimeEffect < 0.85 || bulletPresentation.ultimatePreviewSegmentCount < 1) {
+        issues.push("bullet-time-presentation-boundary");
+      }
+      if (enemyBeforeBulletTime && duringBulletTime.enemies[0]) {
+        const enemyTravel = Math.hypot(
+          duringBulletTime.enemies[0].position.x - enemyBeforeBulletTime.x,
+          duringBulletTime.enemies[0].position.z - enemyBeforeBulletTime.z,
+        );
+        if (enemyTravel > 1.5) issues.push("bullet-time-enemy-speed-boundary");
+      }
+      await page.mouse.click(viewport.width * 0.72, viewport.height * 0.36);
+      await page.mouse.move(viewport.width * 0.31, viewport.height * 0.32);
+      await page.waitForTimeout(100);
+      const plannedPresentation = await page.evaluate(() => window.__slashV21.presentation());
+      if (plannedPresentation.confirmedUltimateSegmentCount < 1 || plannedPresentation.ultimatePreviewSegmentCount < 2) {
+        issues.push("ultimate-route-boundary");
+      }
+      await page.keyboard.press("Escape");
     }
     if (overflow.width > overflow.viewport || overflow.height > overflow.viewportHeight) issues.push("page-overflow");
     if (await page.locator('.skill-tree, .run-map, .route-card').count() > 0) issues.push("retired-ui-present");

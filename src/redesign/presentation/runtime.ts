@@ -2,11 +2,12 @@ import * as THREE from "three";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { GameEvent, GameState, PathSegmentState } from "../state";
 import { distance, normalize, subtract } from "../math";
-import { chargeProgress, previewPrimaryPath } from "../game";
+import { chargeProgress, currentWorldTimeScale, previewPrimaryPath, previewUltimatePath } from "../game";
 import { computeCameraFrame } from "./camera";
 import { createGeometricArena } from "./environment-provider";
 import { createPrimitiveVisualProvider } from "./primitive-provider";
@@ -36,6 +37,11 @@ export interface PresentationRuntime {
     readonly bossVisual: string | null;
     readonly previewSegmentCount: number;
     readonly previewWidth: number;
+    readonly ultimatePreviewSegmentCount: number;
+    readonly confirmedUltimateSegmentCount: number;
+    readonly worldTimeScale: number;
+    readonly bulletTimeEffect: number;
+    readonly bossVisualScale: number | null;
     readonly sceneObjects: number;
   };
   dispose(): void;
@@ -85,14 +91,14 @@ function createPreviewSegment(color = 0x8df4ff): PreviewSegmentVisual {
         return band * clipRear * clipFront;
       }
       void main() {
-        float edgeFade = smoothstep(0.0, 0.14, vUv.y) * smoothstep(0.0, 0.14, 1.0 - vUv.y);
-        float head = smoothstep(0.72, 0.92, vUv.x);
-        float arrowMask = smoothstep(0.5 - (1.0 - vUv.x) * 0.48, 0.5, vUv.y)
-          * (1.0 - smoothstep(0.5, 0.5 + (1.0 - vUv.x) * 0.48, vUv.y));
+        float lateral = abs(vUv.y - 0.5) * 2.0;
+        float bodyMask = 1.0 - smoothstep(0.96, 1.0, lateral);
+        float edgeLine = smoothstep(0.78, 0.94, lateral) * (1.0 - smoothstep(0.94, 1.0, lateral));
         float flowX = vUv.x * max(2.0, uLength / 3.2) - uTime * (1.7 + uCharge * 1.4);
         float flow = chevron(vec2(flowX, vUv.y));
-        float base = (0.36 + uCharge * 0.18) * edgeFade;
-        float alpha = (base + flow * (0.72 + uCharge * 0.38) + head * 0.42) * arrowMask * uOpacity;
+        float base = 0.24 + uCharge * 0.2;
+        float endCaps = smoothstep(0.0, 0.025, vUv.x) * smoothstep(0.0, 0.025, 1.0 - vUv.x);
+        float alpha = (base + edgeLine * 0.58 + flow * (0.72 + uCharge * 0.38)) * bodyMask * endCaps * uOpacity;
         vec3 color = mix(uColor * 0.72, vec3(0.92, 1.0, 1.0), flow * 0.72 + uCharge * 0.18);
         gl_FragColor = vec4(color, alpha);
       }
@@ -135,9 +141,58 @@ export function createPresentationRuntime(
   const composer = new EffectComposer(renderer);
   const renderPass = new RenderPass(scene, camera);
   const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.16, 0.28, 1.18);
+  const bulletTimePass = new ShaderPass({
+    uniforms: {
+      tDiffuse: { value: null },
+      uCenter: { value: new THREE.Vector2(0.5, 0.5) },
+      uStrength: { value: 0 },
+      uTime: { value: 0 },
+      uAspect: { value: 1 },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D tDiffuse;
+      uniform vec2 uCenter;
+      uniform float uStrength;
+      uniform float uTime;
+      uniform float uAspect;
+      varying vec2 vUv;
+      void main() {
+        vec2 aspectDelta = vUv - uCenter;
+        aspectDelta.x *= uAspect;
+        float radius = length(aspectDelta);
+        vec2 direction = normalize(aspectDelta + vec2(0.0001));
+        direction.x /= uAspect;
+        float pulse = 0.84 + sin(uTime * 3.4 - radius * 18.0) * 0.16;
+        float shift = uStrength * pulse * (0.0009 + radius * 0.0028);
+        vec2 redUv = clamp(vUv + direction * shift, vec2(0.001), vec2(0.999));
+        vec2 cyanUv = clamp(vUv - direction * shift * 0.55, vec2(0.001), vec2(0.999));
+        vec4 base = texture2D(tDiffuse, vUv);
+        float red = texture2D(tDiffuse, redUv).r;
+        vec2 cyan = texture2D(tDiffuse, cyanUv).gb;
+        float radial = smoothstep(0.04, 0.78, radius);
+        vec3 shifted = vec3(red, cyan);
+        vec3 graded = base.rgb * vec3(
+          1.0 + radial * uStrength * 0.12,
+          1.0 - radial * uStrength * 0.045,
+          1.0 - radial * uStrength * 0.065
+        );
+        shifted += vec3(0.055, -0.006, -0.012) * uStrength * radial;
+        shifted *= 1.0 - radial * uStrength * 0.04;
+        gl_FragColor = vec4(mix(graded, shifted, uStrength * 0.42), base.a);
+      }
+    `,
+  });
   const output = new OutputPass();
   composer.addPass(renderPass);
   composer.addPass(bloom);
+  composer.addPass(bulletTimePass);
   composer.addPass(output);
 
   const hemisphere = new THREE.HemisphereLight(0xc8d9dc, 0x10171a, 1.05);
@@ -169,7 +224,7 @@ export function createPresentationRuntime(
   const projectileVisuals = new Map<string, ProjectileVisual>();
   let bossVisual: BossVisual | null = null;
   let bossVisualId: string | null = null;
-  const previewSegments = [createPreviewSegment(), createPreviewSegment(), createPreviewSegment()];
+  const previewSegments = Array.from({ length: 8 }, () => createPreviewSegment());
   previewSegments.forEach((preview) => scene.add(preview.mesh));
   const storedPreviewSegments = [createPreviewSegment(0xff8f61), createPreviewSegment(0xff8f61), createPreviewSegment(0xff8f61)];
   storedPreviewSegments.forEach((preview) => {
@@ -178,6 +233,11 @@ export function createPresentationRuntime(
   });
   let previewSegmentCount = 0;
   let previewWidth = 0;
+  let ultimatePreviewSegmentCount = 0;
+  let confirmedUltimateSegmentCount = 0;
+  let bulletTimeMix = 0;
+  let presentationElapsed = 0;
+  let currentBossVisualScale: number | null = null;
   let disposed = false;
   const raycaster = new THREE.Raycaster();
   const pointerNdc = new THREE.Vector2();
@@ -259,8 +319,9 @@ export function createPresentationRuntime(
     playerVisual.core.rotation.x += 0.025;
     playerVisual.wake.visible = player.action === "dashing";
     const chargedDash = player.action === "dashing" && player.dash?.kind === "charged";
+    const ultimatePlanning = player.action === "ultimate-planning";
     const charge = chargeProgress(game);
-    playerVisual.shockShell.visible = chargedDash || charge > 0.02;
+    playerVisual.shockShell.visible = chargedDash || charge > 0.02 || ultimatePlanning;
     playerVisual.shockCone.visible = chargedDash;
     if (player.action === "dashing") {
       playerVisual.wake.scale.set(
@@ -276,11 +337,16 @@ export function createPresentationRuntime(
         1.35 + Math.sin(time * 22) * 0.12,
       );
     }
-    if (!chargedDash && charge > 0.02) {
+    if (ultimatePlanning) {
+      playerVisual.shockShell.scale.setScalar(1.3 + Math.sin(presentationElapsed * 7) * 0.09);
+      playerVisual.shockShell.rotation.z += 0.085;
+    } else if (!chargedDash && charge > 0.02) {
       playerVisual.shockShell.scale.setScalar(0.65 + charge * 0.72 + Math.sin(time * 10) * 0.04);
       playerVisual.shockShell.rotation.z += 0.025 + charge * 0.04;
     }
-    (playerVisual.shockShell.material as THREE.MeshBasicMaterial).opacity = chargedDash ? 0.5 : 0.16 + charge * 0.34;
+    const shockMaterial = playerVisual.shockShell.material as THREE.MeshBasicMaterial;
+    shockMaterial.color.setHex(ultimatePlanning ? 0xff5042 : 0xb9fbff);
+    shockMaterial.opacity = ultimatePlanning ? 0.68 : chargedDash ? 0.5 : 0.16 + charge * 0.34;
     (playerVisual.shockCone.material as THREE.MeshBasicMaterial).opacity = chargedDash ? 0.2 : 0;
     playerVisual.core.scale.setScalar(0.3 + charge * 0.22 + Math.sin(time * 14) * charge * 0.03);
   }
@@ -310,11 +376,11 @@ export function createPresentationRuntime(
         else part.rotation.z = Math.sin(time * 3 + index * 1.7 + idlePhase) * 0.08;
       });
       if (enemy.alive) {
-        const visualScale = enemy.archetype === "splitter-shard" ? 1.05 : 1.16;
+        const visualScale = enemyVisualScale(enemy.archetype);
         visual.root.scale.setScalar(visualScale);
       } else {
         const progress = Math.min(1, enemy.deathElapsedMs / 720);
-        visual.root.scale.setScalar(1.16 * (1 - progress * 0.78));
+        visual.root.scale.setScalar(enemyVisualScale(enemy.archetype) * (1 - progress * 0.78));
         visual.root.rotation.z += 0.08;
       }
     }
@@ -348,7 +414,10 @@ export function createPresentationRuntime(
     const boss = game.boss;
     const visual = bossVisual;
     if (!boss || !visual) return;
+    const baseScale = bossVisualScale(boss.archetype);
+    currentBossVisualScale = baseScale;
     visual.root.position.set(boss.position.x, boss.height + Math.sin(time * 1.8) * 0.08, boss.position.z);
+    visual.root.scale.setScalar(baseScale);
     visual.root.rotation.y = Math.atan2(boss.facing.x, boss.facing.z);
     visual.body.rotation.y = boss.archetype === "cube-fortress" ? boss.orbitRadians * 0.35 : Math.sin(time * 1.2) * 0.07;
     visual.body.rotation.z = boss.archetype === "singularity-crown" ? Math.sin(time * 1.4) * 0.12 : 0;
@@ -380,7 +449,7 @@ export function createPresentationRuntime(
     });
     if (boss.actionPhase === "defeated") {
       const progress = Math.min(1, boss.defeatedElapsedMs / 1_000);
-      visual.root.scale.setScalar(1 - progress * 0.72);
+      visual.root.scale.setScalar(baseScale * (1 - progress * 0.72));
       visual.root.rotation.z = progress * 1.8;
     }
   }
@@ -394,11 +463,32 @@ export function createPresentationRuntime(
       previewSegments.forEach((preview) => { preview.mesh.visible = false; });
       previewSegmentCount = 0;
       previewWidth = 0;
+      ultimatePreviewSegmentCount = 0;
+      confirmedUltimateSegmentCount = 0;
+    } else if (game.player.action === "ultimate-planning") {
+      const path = previewUltimatePath(game);
+      previewSegmentCount = path.segments.length;
+      previewWidth = path.hitRadius;
+      ultimatePreviewSegmentCount = path.segments.length;
+      confirmedUltimateSegmentCount = path.confirmedSegmentCount;
+      syncRibbonPreviews(
+        previewSegments,
+        path.segments,
+        path.hitRadius,
+        0.62,
+        presentationElapsed,
+        1,
+        path.confirmedSegmentCount,
+        0xff5545,
+        0xffb06b,
+      );
     } else {
       const path = previewPrimaryPath(game);
       previewSegmentCount = path.segments.length;
       previewWidth = path.hitRadius;
-      syncRibbonPreviews(previewSegments, path.segments, path.hitRadius, 0.5, game.elapsedMs / 1_000, chargeProgress(game));
+      ultimatePreviewSegmentCount = 0;
+      confirmedUltimateSegmentCount = 0;
+      syncRibbonPreviews(previewSegments, path.segments, path.hitRadius, 0.5, presentationElapsed, chargeProgress(game));
     }
     if (game.storedPath) {
       syncRibbonPreviews(storedPreviewSegments, game.storedPath.segments, 0.24, 0.2, game.elapsedMs / 1_000, 0);
@@ -449,6 +539,7 @@ export function createPresentationRuntime(
 
   function update(deltaSeconds: number, game: GameState): void {
     if (disposed) return;
+    presentationElapsed += Math.max(0, deltaSeconds);
     ensureEnemyVisuals(game);
     ensureObstacleVisuals(game);
     ensureProjectileVisuals(game);
@@ -465,6 +556,19 @@ export function createPresentationRuntime(
     camera.position.lerp(new THREE.Vector3(...frame.position), follow);
     cameraLookTarget.lerp(new THREE.Vector3(...frame.target), follow);
     camera.lookAt(cameraLookTarget);
+    const projectedPlayer = new THREE.Vector3(
+      game.player.position.x,
+      game.player.height,
+      game.player.position.z,
+    ).project(camera);
+    bulletTimeMix += ((game.player.action === "ultimate-planning" ? 1 : 0) - bulletTimeMix)
+      * (1 - Math.exp(-Math.max(0, deltaSeconds) * 8.5));
+    bulletTimePass.uniforms.uCenter!.value.set(
+      projectedPlayer.x * 0.5 + 0.5,
+      projectedPlayer.y * 0.5 + 0.5,
+    );
+    bulletTimePass.uniforms.uStrength!.value = bulletTimeMix;
+    bulletTimePass.uniforms.uTime!.value = presentationElapsed;
     environment.update(time, game.player.position.x, game.player.position.z);
     vfx.update(deltaSeconds);
   }
@@ -486,6 +590,7 @@ export function createPresentationRuntime(
     camera.updateProjectionMatrix();
     composer.setSize(width, height);
     bloom.resolution.set(width, height);
+    bulletTimePass.uniforms.uAspect!.value = width / height;
   }
 
   resize(state);
@@ -522,6 +627,11 @@ export function createPresentationRuntime(
         bossVisual: bossVisualId,
         previewSegmentCount,
         previewWidth,
+        ultimatePreviewSegmentCount,
+        confirmedUltimateSegmentCount,
+        worldTimeScale: currentWorldTimeScale(state),
+        bulletTimeEffect: bulletTimeMix,
+        bossVisualScale: currentBossVisualScale,
         sceneObjects: scene.children.length,
       };
     },
@@ -557,6 +667,9 @@ function syncRibbonPreviews(
   opacity: number,
   time: number,
   charge: number,
+  confirmedSegmentCount = segments.length,
+  confirmedColor = 0x8df4ff,
+  pendingColor = confirmedColor,
 ): void {
   visuals.forEach((visual, index) => {
     const segment = segments[index];
@@ -570,12 +683,30 @@ function syncRibbonPreviews(
     );
     visual.mesh.rotation.set(-Math.PI * 0.5, 0, -Math.atan2(segment.to.z - segment.from.z, segment.to.x - segment.from.x));
     visual.mesh.scale.set(segmentLength, hitRadius * 2, 1);
-    visual.material.uniforms.uColor!.value.setHex(segment.reflected ? 0xffc35a : 0x8df4ff);
+    const pathColor = index < confirmedSegmentCount ? confirmedColor : pendingColor;
+    visual.material.uniforms.uColor!.value.setHex(segment.reflected ? 0xffc35a : pathColor);
     visual.material.uniforms.uTime!.value = time;
     visual.material.uniforms.uCharge!.value = charge;
-    visual.material.uniforms.uOpacity!.value = segment.reflected ? opacity * 1.18 : opacity;
+    const confirmationOpacity = index < confirmedSegmentCount ? 1 : 0.72;
+    visual.material.uniforms.uOpacity!.value = (segment.reflected ? opacity * 1.18 : opacity) * confirmationOpacity;
     visual.material.uniforms.uLength!.value = segmentLength;
   });
+}
+
+function enemyVisualScale(archetype: string): number {
+  if (archetype === "splitter-shard") return 0.76;
+  if (archetype === "shooter") return 1.08;
+  if (archetype === "chaser") return 1.18;
+  if (archetype === "splitter") return 1.3;
+  if (archetype === "spinner") return 1.42;
+  if (archetype === "slammer") return 1.56;
+  return 1.16;
+}
+
+function bossVisualScale(archetype: string): number {
+  if (archetype === "prism-hound") return 1.36;
+  if (archetype === "cube-fortress") return 1.5;
+  return 1.62;
 }
 
 function setWorldLine(

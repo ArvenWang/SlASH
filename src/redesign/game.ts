@@ -87,6 +87,7 @@ const PLAYER_INVULNERABILITY_MS = 850;
 const ECHO_DELAY_MS = 400;
 const STORED_PATH_MS = 2_500;
 const CHARGED_WIDTH_MULTIPLIER = 1.65;
+export const ULTIMATE_BULLET_TIME_SCALE = 0.16;
 
 export function createGame(seed = Math.floor(Math.random() * 0x7fffffff)): GameState {
   return createInitialState(seed);
@@ -193,23 +194,32 @@ export function advance(state: GameState, realDeltaMs: number): GameEvent[] {
 
 export function step(state: GameState, deltaMs = FIXED_STEP_MS): void {
   const safeDeltaMs = Math.max(0, deltaMs);
-  const deltaSeconds = safeDeltaMs / 1_000;
+  const playerDeltaSeconds = safeDeltaMs / 1_000;
+  const worldScale = currentWorldTimeScale(state);
+  const worldDeltaMs = safeDeltaMs * worldScale;
+  const worldDeltaSeconds = worldDeltaMs / 1_000;
   state.tick += 1;
-  state.elapsedMs += safeDeltaMs;
+  state.elapsedMs += worldDeltaMs;
   updatePlayerFacing(state);
-  advancePlayer(state, safeDeltaMs, deltaSeconds);
+  advancePlayer(state, safeDeltaMs, playerDeltaSeconds);
   updatePlayerFacing(state);
   if (state.phase === "combat") {
-    state.run.encounterElapsedMs += safeDeltaMs;
+    state.run.encounterElapsedMs += worldDeltaMs;
     advancePendingSpawns(state);
-    advanceEnemies(state, safeDeltaMs, deltaSeconds);
-    advanceBoss(state, safeDeltaMs, deltaSeconds);
-    advanceProjectiles(state, safeDeltaMs, deltaSeconds);
-    advanceScheduledSlashes(state, safeDeltaMs);
-    advanceStoredPath(state, safeDeltaMs);
+    advanceEnemies(state, worldDeltaMs, worldDeltaSeconds);
+    advanceBoss(state, worldDeltaMs, worldDeltaSeconds);
+    advanceProjectiles(state, worldDeltaMs, worldDeltaSeconds);
+    advanceScheduledSlashes(state, worldDeltaMs);
+    advanceStoredPath(state, worldDeltaMs);
     resolvePlayerContact(state);
-    updateCombatCompletion(state, safeDeltaMs);
+    updateCombatCompletion(state, worldDeltaMs);
   }
+}
+
+export function currentWorldTimeScale(state: GameState): number {
+  return state.phase === "combat" && state.player.action === "ultimate-planning"
+    ? ULTIMATE_BULLET_TIME_SCALE
+    : 1;
 }
 
 function resetRunState(state: GameState): void {
@@ -276,7 +286,12 @@ function spawnEnemy(
     archetype,
     position: { ...position },
     facing: normalize(subtract(state.player.position, position)),
-    radius: shard ? 0.56 : archetype === "slammer" ? 1.18 : archetype === "splitter" ? 1.05 : 0.82,
+    radius: shard ? 0.48
+      : archetype === "slammer" ? 1.5
+        : archetype === "spinner" ? 1.18
+          : archetype === "splitter" ? 1.08
+            : archetype === "chaser" ? 0.92
+              : 0.82,
     alive: true,
     phase: "idle",
     phaseElapsedMs: 0,
@@ -382,19 +397,7 @@ function startDash(state: GameState, kind: "basic" | "charged", target: Vec2): v
 }
 
 function startUltimateDash(state: GameState): void {
-  const segments: PathSegmentState[] = [];
-  let origin = { ...state.player.position };
-  for (const target of state.player.ultimatePoints) {
-    const planned = planDashPath(
-      origin,
-      target,
-      state.player.radius,
-      state.run.build,
-      state.obstacles,
-    );
-    segments.push(...planned.segments);
-    origin = { ...(planned.segments.at(-1)?.to ?? origin) };
-  }
+  const segments = planUltimateSegments(state, state.player.ultimatePoints);
   state.player.ultimateEnergy = 0;
   state.player.ultimatePoints = [];
   beginDash(
@@ -796,7 +799,7 @@ function createBoss(state: GameState, archetype: BossArchetype): BossState {
     archetype,
     position: archetype === "prism-hound" ? { x: 0, z: -12 } : { x: 0, z: -8 },
     facing: { x: 0, z: 1 },
-    radius: archetype === "cube-fortress" ? 2.7 : archetype === "singularity-crown" ? 2.9 : 2.25,
+    radius: archetype === "cube-fortress" ? 4.2 : archetype === "singularity-crown" ? 4.4 : 3.4,
     currentHp: maximumHp,
     maximumHp,
     vulnerable: false,
@@ -1151,6 +1154,12 @@ export function renderGameToText(state: GameState): string {
       action: state.player.action,
       hp: state.player.hp,
       energy: round(state.player.ultimateEnergy),
+      bulletTime: {
+        active: state.player.action === "ultimate-planning",
+        worldScale: currentWorldTimeScale(state),
+        remainingMs: round(state.player.ultimatePlanningMs),
+        plannedPoints: state.player.ultimatePoints,
+      },
       movement: {
         input: state.player.moveInput,
         velocity: { x: round(state.player.moveVelocity.x), z: round(state.player.moveVelocity.z) },
@@ -1211,6 +1220,42 @@ export function previewPrimaryPath(state: GameState, target = state.player.aimTa
     state.obstacles,
     1 + (CHARGED_WIDTH_MULTIPLIER - 1) * chargeProgress(state),
   );
+}
+
+export interface UltimatePathPreview {
+  readonly segments: readonly PathSegmentState[];
+  readonly confirmedSegmentCount: number;
+  readonly hitRadius: number;
+}
+
+export function previewUltimatePath(state: GameState): UltimatePathPreview {
+  const confirmed = planUltimateSegments(state, state.player.ultimatePoints);
+  const targets = state.player.ultimatePoints.length < 3
+    ? [...state.player.ultimatePoints, state.player.aimTarget]
+    : state.player.ultimatePoints;
+  const segments = planUltimateSegments(state, targets);
+  return {
+    segments,
+    confirmedSegmentCount: confirmed.length,
+    hitRadius: 1.15 * (skillRank(state.run.build, "wide-slash") > 0 ? 1.12 : 1),
+  };
+}
+
+function planUltimateSegments(state: GameState, targets: readonly Vec2[]): PathSegmentState[] {
+  const segments: PathSegmentState[] = [];
+  let origin = { ...state.player.position };
+  for (const target of targets) {
+    const planned = planDashPath(
+      origin,
+      target,
+      state.player.radius,
+      state.run.build,
+      state.obstacles,
+    );
+    segments.push(...planned.segments.map(copySegment));
+    origin = { ...(planned.segments.at(-1)?.to ?? origin) };
+  }
+  return segments;
 }
 
 export function chargeProgress(state: GameState): number {
