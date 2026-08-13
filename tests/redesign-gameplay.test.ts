@@ -72,6 +72,7 @@ describe("Redesign V2.1 gameplay facts", () => {
     const state = createGame(23);
     dispatch(state, { type: "start-run" });
     step(state);
+    state.player.height = 0.62;
     const initialHeight = state.player.height;
     advanceTicks(state, 120);
     expect(state.player.height).not.toBe(initialHeight);

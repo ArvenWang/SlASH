@@ -27,7 +27,9 @@ export function advanceVerticalBody(
   const damping = options.damping ?? 10.5;
   let acceleration = body.gravity;
   if (supported) {
-    acceleration += (options.targetHeight - body.height) * spring - body.verticalVelocity * damping;
+    acceleration += -body.gravity
+      + (options.targetHeight - body.height) * spring
+      - body.verticalVelocity * damping;
   }
   body.verticalVelocity += acceleration * deltaSeconds;
   body.height += body.verticalVelocity * deltaSeconds;

@@ -31,6 +31,20 @@ Original prompt: 阅读“赛博朋克游戏设计分析”对话与最终 PRD�
 - 定向验证：规则 + Gameplay 共 2 文件 / 13 项通过；覆盖一击必杀、分裂、真实下坠、鼠标朝向、Boss 三类伤害、魔方回归与确定性。TypeScript、whitespace 通过。
 - 下一小节：接入新的正式 Three.js Provider、64m × 40m 场景、Boss 血条与真实浏览器输入。
 
+## 2026-08-13 — V2.1 正式运行时与几何表现
+
+- `src/main.ts` 正式入口已切到独立 V2.1 Application；启动页默认停留，开始后直接 Combat，不再装配旧 Campaign、Skill Tree、Route 或人形表现。
+- 新 UI 只保留三格生命、能量/空格大招、Boss 同源血条、三选一和极简胜负；三选一卡只显示等级、名称和一行效果。
+- 新 Primitive Provider 创建三棱体主角、五类可辨敌人、棱镜猎犬/魔方堡垒/奇点王冠、三类障碍和几何射弹；Gameplay 不持有 Three.js 对象。
+- 新 Environment Provider 使用 160m × 104m 高台承载 64m × 40m Gameplay Arena；中心没有常亮方框，只有接近单侧边缘时出现该侧局部电光反馈。
+- 新 VFX Provider 只生成电光路径带、切面、几何碎片、交叉/砸地冲击和护盾反馈；没有血液、肉块或断肢。
+- 路径预览是有面积的真实击杀带；折射时显示入射段、碰撞点方向和完整反射段，执行直接复用同一个 Path Result。
+- 悬浮支撑已修正为明确抵消重力后围绕目标高度平衡；实机状态为主角 0.78m、普通敌人 0.64m，出界后关闭支撑并下坠。
+- V2.1 Save/Continue 与 Replay 已独立版本化；Checksum、内容/技能池版本、垂直状态、Boss HP 和 Offer 可重建性均受验证，旧/损坏原文不被静默删除。
+- 定向验证：V2.1 共 4 文件 / 21 项通过；完整局 1 项通过，真实命令完成 9 战、8 奖励、3 Boss 并 Replay Hash Match；Production Build 通过。
+- 真实浏览器：启动页停留、开始进入新战斗、四角敌人使用新大场地、三棱体、带状预览、Provider ID、无横向溢出均通过；修正弃用阴影配置后 Console 0。
+- 下一小节：删除旧 V5R/GLB/Weapon/Gore、旧 27 技能、四个旧 Boss、旧 UI/验证和无用依赖，清理后只做一次最终整体验收。
+
 ## 2026-08-13 — Redesign V2 P0 事实源
 
 - 用户已确认整体重构方向，并要求持续使用多个子代理、小任务快速推进、减少重复验证。

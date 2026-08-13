@@ -12,6 +12,7 @@ import {
   planDashPath,
   pointAlongPath,
 } from "./path";
+import type { PlannedDashPath } from "./path";
 import {
   BOSS_HOVER_HEIGHT,
   ENEMY_HOVER_HEIGHT,
@@ -239,7 +240,7 @@ function startEncounter(state: GameState, index: number): void {
 
 function createPlayerForEncounter(previous: GameState["player"]): GameState["player"] {
   const player = createPlayer();
-  player.hp = previous.hp;
+  player.hp = Math.min(previous.maximumHp, previous.hp + 1);
   player.maximumHp = previous.maximumHp;
   player.ultimateEnergy = previous.ultimateEnergy;
   player.aimTarget = { ...previous.aimTarget };
@@ -384,7 +385,7 @@ function beginDash(
     totalDurationMs: Math.max(90, totalLength / speed * 1_000),
     elapsedMs: 0,
     resolvedEnemyIds: [],
-    bossContactResolved: false,
+    resolvedBossSegmentIndexes: [],
     killCount: 0,
     pendingCross: pendingCrossPosition
       ? { position: pendingCrossPosition, radius: crossExecutionRadius(state.run.build), triggered: false }
@@ -413,7 +414,13 @@ function advanceDash(state: GameState, deltaMs: number): void {
   const previousPosition = pointAlongPath(dash.segments, previousDistance);
   const currentPosition = pointAlongPath(dash.segments, currentDistance);
   state.player.position = currentPosition;
-  resolveDashStrip(state, dash, previousPosition, currentPosition);
+  resolveDashStrip(
+    state,
+    dash,
+    previousPosition,
+    currentPosition,
+    pathSegmentIndexAtDistance(dash.segments, (previousDistance + currentDistance) * 0.5),
+  );
   if (dash.pendingCross && !dash.pendingCross.triggered && distanceSquaredToSegment(
     dash.pendingCross.position,
     previousPosition,
@@ -448,7 +455,13 @@ function advanceDash(state: GameState, deltaMs: number): void {
   state.player.recoveryMs = recovery;
 }
 
-function resolveDashStrip(state: GameState, dash: DashState, from: Vec2, to: Vec2): void {
+function resolveDashStrip(
+  state: GameState,
+  dash: DashState,
+  from: Vec2,
+  to: Vec2,
+  pathSegmentIndex: number,
+): void {
   for (const enemy of state.enemies) {
     if (!enemy.alive || dash.resolvedEnemyIds.includes(enemy.id)) continue;
     if (distanceSquaredToSegment(enemy.position, from, to) > (enemy.radius + dash.hitRadius) ** 2) continue;
@@ -469,9 +482,12 @@ function resolveDashStrip(state: GameState, dash: DashState, from: Vec2, to: Vec
     emit(state, { type: "projectile-cut", projectileId: projectile.id, position: { ...projectile.position } });
   }
   const boss = state.boss;
-  if (boss && boss.actionPhase !== "defeated" && !dash.bossContactResolved
+  const bossCanResolve = dash.kind === "ultimate"
+    ? !dash.resolvedBossSegmentIndexes.includes(pathSegmentIndex)
+    : dash.resolvedBossSegmentIndexes.length === 0;
+  if (boss && boss.actionPhase !== "defeated" && bossCanResolve
     && distanceSquaredToSegment(boss.position, from, to) <= (boss.radius + dash.hitRadius) ** 2) {
-    dash.bossContactResolved = true;
+    dash.resolvedBossSegmentIndexes.push(pathSegmentIndex);
     resolveBossContact(state, boss, dash);
   }
 }
@@ -778,6 +794,12 @@ function advanceBoss(state: GameState, deltaMs: number, deltaSeconds: number): v
   boss.shieldFlashMs = Math.max(0, boss.shieldFlashMs - deltaMs);
   boss.orbitRadians += deltaSeconds * (boss.archetype === "cube-fortress" ? 0.75 : 1.15);
   for (const part of boss.parts) part.rotationRadians += deltaSeconds * (part.alive ? 1.7 : 0.25);
+  for (const part of boss.parts) {
+    advanceVerticalBody(part, add(boss.position, part.localPosition), deltaSeconds, {
+      targetHeight: boss.archetype === "cube-fortress" ? 0.8 : 1,
+      supportEnabled: part.alive && boss.actionPhase !== "defeated",
+    });
+  }
   if (boss.actionPhase === "defeated") {
     boss.defeatedElapsedMs += deltaMs;
     advanceVerticalBody(boss, boss.position, deltaSeconds, { targetHeight: 0, supportEnabled: false });
@@ -901,6 +923,18 @@ function defeatBoss(state: GameState, boss: BossState): void {
     part.alive = false;
     part.supported = false;
   }
+  // Boss victory is owned by the core HP, never by auxiliary units. Clearing
+  // surviving summons here prevents the old "only the core remains" deadlock
+  // in both directions: companions cannot block or override a zero-HP core.
+  for (const enemy of state.enemies) {
+    if (!enemy.alive) continue;
+    enemy.alive = false;
+    enemy.phase = "dead";
+    enemy.deathElapsedMs = 0;
+    enemy.supported = false;
+    emit(state, { type: "enemy-killed", enemyId: enemy.id, position: { ...enemy.position }, kind: "ultimate" });
+  }
+  for (const projectile of state.projectiles) projectile.alive = false;
   emit(state, { type: "boss-defeated", bossId: boss.id });
 }
 
@@ -1027,6 +1061,17 @@ function pathLength(segments: readonly PathSegmentState[]): number {
   return segments.reduce((total, segment) => total + distance(segment.from, segment.to), 0);
 }
 
+function pathSegmentIndexAtDistance(segments: readonly PathSegmentState[], distanceAlong: number): number {
+  let remaining = Math.max(0, distanceAlong);
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index]!;
+    const segmentLength = distance(segment.from, segment.to);
+    if (remaining <= segmentLength + EPSILON) return index;
+    remaining -= segmentLength;
+  }
+  return Math.max(0, segments.length - 1);
+}
+
 function copySegment(segment: PathSegmentState): PathSegmentState {
   return {
     from: { ...segment.from },
@@ -1104,6 +1149,18 @@ export function gameplayHash(state: GameState): string {
   return stableHash32(JSON.stringify(copy)).toString(16).padStart(8, "0");
 }
 
+export function previewPrimaryPath(state: GameState, target = state.player.aimTarget): PlannedDashPath {
+  const charged = state.player.action === "charging" && state.player.actionElapsedMs >= CHARGE_THRESHOLD_MS;
+  return planDashPath(
+    state.player.position,
+    target,
+    charged ? CHARGED_DASH_DISTANCE : BASIC_DASH_DISTANCE,
+    state.player.radius,
+    state.run.build,
+    state.obstacles,
+  );
+}
+
 export function createBossRegressionState(archetype: BossArchetype): GameState {
   const state = createInitialState(91_127);
   state.phase = "combat";
@@ -1143,7 +1200,7 @@ export function resolveBossRegressionContact(
     totalDurationMs: 100,
     elapsedMs: 0,
     resolvedEnemyIds: [],
-    bossContactResolved: false,
+    resolvedBossSegmentIndexes: [],
     killCount: 0,
     pendingCross: null,
   };

@@ -3,37 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#05080d" />
+    <meta name="theme-color" content="#060d11" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <title>PROJECT SLASH — Visual Slice</title>
+    <title>PROJECT SLASH</title>
   </head>
   <body>
     <main id="game-shell">
-      <canvas id="game-canvas" aria-label="Project Slash 3D game"></canvas>
+      <canvas id="game-canvas" aria-label="Project Slash 几何战斗场景"></canvas>
       <div id="hud" aria-hidden="true">
-        <div class="brand"><span>PROJECT</span><strong>SLASH</strong></div>
-        <div class="status"><span id="stage-label">第一区</span><i></i><span id="enemy-label">敌人 08</span></div>
-        <div id="combat-modules">
-          <div class="charge-readout"><span id="charge-label">蓄力就绪</span><b><i id="charge-fill"></i></b></div>
-          <div class="energy-readout"><span id="energy-label">能量 000 / 100</span><b><i id="energy-fill"></i></b></div>
-          <span id="vector-label">大招未就绪</span>
+        <div class="hud-top">
+          <div id="health-pips" class="health-pips"></div>
+          <span id="stage-label"></span>
         </div>
-        <div class="hint"><kbd>F</kbd> 全屏 <kbd>M</kbd> 声音</div>
+        <div id="boss-module" class="boss-module">
+          <span id="boss-label"></span>
+          <b class="boss-track"><i id="boss-fill"></i></b>
+        </div>
+        <div id="energy-module" class="energy-module">
+          <span id="energy-label">能量 000</span>
+          <b class="energy-track"><i id="energy-fill"></i></b>
+        </div>
       </div>
-      <div id="phase-banner" aria-hidden="true">
-        <span id="phase-eyebrow">战斗</span>
-        <strong id="phase-title">开始</strong>
-        <small id="phase-subtitle">清除全部敌人</small>
-      </div>
-      <div id="reticle" aria-hidden="true"><span></span></div>
-      <button id="touch-ultimate" type="button" aria-label="发动终极突进">终极</button>
-      <button id="touch-cancel" type="button" aria-label="取消终极突进规划">取消</button>
-      <div id="campaign-ui" class="campaign-ui"></div>
-      <div id="loading">
-        <div class="loader-mark"></div>
-        <p id="loading-label">INITIALIZING RENDERER</p>
-        <div class="loading-track" aria-hidden="true"><span id="loading-progress"></span></div>
-      </div>
+      <div id="reticle" aria-hidden="true"></div>
+      <button id="touch-ultimate" type="button">终极</button>
+      <button id="touch-cancel" type="button">取消</button>
+      <div id="campaign-ui"></div>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -15,7 +15,7 @@ export const PLAYABLE_ARENA: ArenaBounds = Object.freeze({
 });
 
 export const PLAYABLE_ARENA_SIZE = Object.freeze({ width: 64, depth: 40 });
-export const VISUAL_PLATFORM_SIZE = Object.freeze({ width: 96, depth: 64 });
+export const VISUAL_PLATFORM_SIZE = Object.freeze({ width: 160, depth: 104 });
 export const ARENA_SAFE_MARGIN = 2.2;
 
 export const BOSS_MAXIMUM_HP = Object.freeze({

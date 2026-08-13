@@ -38,7 +38,7 @@ export interface DashState {
   readonly totalDurationMs: number;
   elapsedMs: number;
   resolvedEnemyIds: string[];
-  bossContactResolved: boolean;
+  resolvedBossSegmentIndexes: number[];
   killCount: number;
   readonly pendingCross: null | {
     readonly position: Vec2;
