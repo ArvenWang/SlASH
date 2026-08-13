@@ -43,3 +43,23 @@ export function clampToSupportedArena(position: Vec2, margin = ARENA_SAFE_MARGIN
     z: Math.max(PLAYABLE_ARENA.minZ + margin, Math.min(PLAYABLE_ARENA.maxZ - margin, position.z)),
   };
 }
+
+export function clipTargetToSupportedArena(from: Vec2, target: Vec2, margin = 0): Vec2 {
+  const minX = PLAYABLE_ARENA.minX + margin;
+  const maxX = PLAYABLE_ARENA.maxX - margin;
+  const minZ = PLAYABLE_ARENA.minZ + margin;
+  const maxZ = PLAYABLE_ARENA.maxZ - margin;
+  if (!isSupported(from, margin)) return clampToSupportedArena(target, margin);
+  const offsetX = target.x - from.x;
+  const offsetZ = target.z - from.z;
+  let ratio = 1;
+  if (offsetX > 0) ratio = Math.min(ratio, (maxX - from.x) / offsetX);
+  else if (offsetX < 0) ratio = Math.min(ratio, (minX - from.x) / offsetX);
+  if (offsetZ > 0) ratio = Math.min(ratio, (maxZ - from.z) / offsetZ);
+  else if (offsetZ < 0) ratio = Math.min(ratio, (minZ - from.z) / offsetZ);
+  const safeRatio = Math.max(0, Math.min(1, ratio));
+  return {
+    x: Math.max(minX, Math.min(maxX, from.x + offsetX * safeRatio)),
+    z: Math.max(minZ, Math.min(maxZ, from.z + offsetZ * safeRatio)),
+  };
+}

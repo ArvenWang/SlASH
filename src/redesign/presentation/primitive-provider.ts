@@ -59,9 +59,53 @@ function trianglePrismGeometry(): THREE.BufferGeometry {
   return geometry;
 }
 
+function cursorCraftGeometry(): THREE.BufferGeometry {
+  const rearLeft = [-1.02, 0.08, -0.72] as const;
+  const rearRight = [1.02, 0.08, -0.72] as const;
+  const crown = [0, 0.62, -0.18] as const;
+  const nose = [0, 0.02, 1.62] as const;
+  const keel = [0, -0.52, 0.04] as const;
+  const rearKeel = [0, -0.22, -0.78] as const;
+  const faces = [
+    [rearLeft, crown, nose, 0],
+    [crown, rearRight, nose, 1],
+    [rearLeft, rearKeel, crown, 2],
+    [crown, rearKeel, rearRight, 3],
+    [rearLeft, nose, keel, 2],
+    [rearLeft, keel, rearKeel, 3],
+    [nose, rearRight, keel, 1],
+    [rearRight, rearKeel, keel, 3],
+  ] as const;
+  const hullCenter = [rearLeft, rearRight, crown, nose, keel, rearKeel]
+    .reduce((center, point) => center.add(new THREE.Vector3(...point)), new THREE.Vector3())
+    .multiplyScalar(1 / 6);
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const geometry = new THREE.BufferGeometry();
+  faces.forEach(([a, rawB, rawC, materialIndex], faceIndex) => {
+    const va = new THREE.Vector3(...a);
+    let vb = new THREE.Vector3(...rawB);
+    let vc = new THREE.Vector3(...rawC);
+    let normal = new THREE.Vector3().crossVectors(vb.clone().sub(va), vc.clone().sub(va)).normalize();
+    const faceCenter = va.clone().add(vb).add(vc).multiplyScalar(1 / 3);
+    if (normal.dot(faceCenter.sub(hullCenter)) < 0) {
+      [vb, vc] = [vc, vb];
+      normal = new THREE.Vector3().crossVectors(vb.clone().sub(va), vc.clone().sub(va)).normalize();
+    }
+    positions.push(va.x, va.y, va.z, vb.x, vb.y, vb.z, vc.x, vc.y, vc.z);
+    for (let vertex = 0; vertex < 3; vertex += 1) normals.push(normal.x, normal.y, normal.z);
+    geometry.addGroup(faceIndex * 3, 3, materialIndex);
+  });
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
 export function createPrimitiveVisualProvider(): VisualProvider {
   const geometries = {
     triangle: trianglePrismGeometry(),
+    cursorCraft: cursorCraftGeometry(),
     roundedSmall: new RoundedBoxGeometry(1, 1, 1, 3, 0.12),
     roundedLarge: new RoundedBoxGeometry(1, 1, 1, 4, 0.16),
     tetra: new THREE.TetrahedronGeometry(0.5, 0),
@@ -80,8 +124,10 @@ export function createPrimitiveVisualProvider(): VisualProvider {
     new THREE.MeshStandardMaterial({ color, roughness, metalness, emissive, emissiveIntensity })
   );
   const materials = {
-    hero: material(HERO_BASE, 0.28, 0.65, 0x173b43, 0.55),
-    heroDark: material(0x142d33, 0.5, 0.45),
+    heroBright: material(0xf4ffff, 0.2, 0.46, 0x5abdc2, 0.62),
+    hero: material(HERO_BASE, 0.28, 0.65, 0x25565d, 0.72),
+    heroMid: material(0x789ba0, 0.38, 0.62, 0x1b3b40, 0.52),
+    heroDark: material(0x233a3f, 0.5, 0.45, 0x10272a, 0.4),
     heroCore: material(HERO_CORE, 0.15, 0.1, HERO_CORE, 2.8),
     hostile: material(HOSTILE_BASE, 0.36, 0.52, 0x4b120a, 0.4),
     hostileDark: material(HOSTILE_DARK, 0.62, 0.25),
@@ -121,7 +167,7 @@ export function createPrimitiveVisualProvider(): VisualProvider {
   };
 
   const allRoots = new Set<THREE.Group>();
-  const mesh = (geometry: THREE.BufferGeometry, surface: THREE.Material): THREE.Mesh => {
+  const mesh = (geometry: THREE.BufferGeometry, surface: THREE.Material | THREE.Material[]): THREE.Mesh => {
     const result = new THREE.Mesh(geometry, surface);
     result.castShadow = true;
     result.receiveShadow = true;
@@ -155,22 +201,26 @@ export function createPrimitiveVisualProvider(): VisualProvider {
 
   function createPlayer(): PlayerVisual {
     const root = own(new THREE.Group());
-    root.name = "v2-player-tri-prism";
-    const shell = mesh(geometries.triangle, materials.hero);
-    shell.scale.set(1.05, 0.9, 1.05);
-    const rear = mesh(geometries.roundedSmall, materials.heroDark);
-    rear.scale.set(1.26, 0.32, 0.28);
-    rear.position.set(0, -0.05, -0.61);
+    root.name = "v2-player-cursor-craft";
+    const shell = mesh(geometries.cursorCraft, [
+      materials.heroBright,
+      materials.hero,
+      materials.heroMid,
+      materials.heroDark,
+    ]);
+    shell.name = "cursor-craft-faceted-hull";
+    shell.scale.set(1.12, 1.08, 1.12);
     const core = mesh(geometries.tetra, materials.heroCore);
-    core.scale.setScalar(0.5);
-    core.position.set(0, 0.5, 0.05);
+    core.name = "cursor-craft-reactor";
+    core.scale.set(0.3, 0.24, 0.3);
+    core.position.set(0, 0.02, -0.78);
     core.rotation.set(0.65, Math.PI * 0.25, 0.2);
     const wake = mesh(geometries.cone, materials.wake);
-    wake.scale.set(0.85, 0.12, 1.35);
+    wake.scale.set(0.68, 0.1, 1.25);
     wake.rotation.x = Math.PI * 0.5;
-    wake.position.set(0, -0.2, -1.2);
+    wake.position.set(0, -0.16, -1.28);
     wake.visible = false;
-    root.add(shell, rear, core, wake);
+    root.add(shell, core, wake);
     return { root, shell, core, wake };
   }
 

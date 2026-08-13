@@ -36,7 +36,6 @@ describe("V2.1 shared dash path", () => {
     const path = planDashPath(
       { x: 0, z: 0 },
       { x: 20, z: 0 },
-      20,
       0.72,
       upgrades,
       [{ id: "reflector", archetype: "reflector", position: { x: 8, z: 0 }, rotationRadians: 0, pulsePhase: 0 }],
@@ -61,7 +60,6 @@ describe("V2.1 shared dash path", () => {
     const path = planDashPath(
       { x: 0, z: 0 },
       { x: 20, z: 0 },
-      20,
       0.72,
       build([]),
       [{ id: "reflector", archetype: "reflector", position: { x: 8, z: 0 }, rotationRadians: 0, pulsePhase: 0 }],
@@ -69,15 +67,58 @@ describe("V2.1 shared dash path", () => {
     expect(path.segments).toHaveLength(1);
     expect(path.terminalBlocked).toBe(true);
   });
+
+  test("has no invisible range cap and reaches any supported pointer target", () => {
+    const path = planDashPath(
+      { x: -28, z: -16 },
+      { x: 28, z: 16 },
+      0.72,
+      build([]),
+      [],
+    );
+    expect(path.totalLength).toBeGreaterThan(60);
+    expect(path.segments.at(-1)?.to).toEqual({ x: 28, z: 16 });
+  });
+
+  test("clips an outside pointer along its original direction at the support edge", () => {
+    const path = planDashPath(
+      { x: 0, z: 0 },
+      { x: 100, z: 25 },
+      0.72,
+      build([]),
+      [],
+    );
+    const end = path.segments.at(-1)!.to;
+    expect(end.x).toBeCloseTo(PLAYABLE_ARENA.maxX - 0.72, 8);
+    expect(end.z).toBeCloseTo((PLAYABLE_ARENA.maxX - 0.72) * 0.25, 8);
+  });
 });
 
 describe("V2.1 modular geometric presentation", () => {
-  test("creates a triangular-prism player and distinct enemy/Boss geometry without skinned meshes or weapons", () => {
+  test("creates a faceted cursor-craft player and distinct enemy/Boss geometry without skinned meshes or weapons", () => {
     const provider = createPrimitiveVisualProvider();
     const player = provider.createPlayer();
     expect(provider.id).toBe("geometric-forms-v2.1");
-    expect(player.root.name).toContain("tri-prism");
+    expect(player.root.name).toContain("cursor-craft");
     expect((player.shell.geometry.getAttribute("position")?.count ?? 0)).toBeGreaterThanOrEqual(24);
+    expect(Array.isArray(player.shell.material)).toBe(true);
+    player.shell.geometry.computeBoundingBox();
+    const hull = player.shell.geometry.boundingBox!;
+    expect(hull.max.z - hull.min.z).toBeGreaterThan((hull.max.x - hull.min.x) * 1.1);
+    const positions = player.shell.geometry.getAttribute("position")!;
+    const normals = player.shell.geometry.getAttribute("normal")!;
+    for (let index = 0; index < positions.count; index += 3) {
+      const center = new THREE.Vector3();
+      const normal = new THREE.Vector3();
+      for (let vertex = 0; vertex < 3; vertex += 1) {
+        center.x += positions.getX(index + vertex);
+        center.y += positions.getY(index + vertex);
+        center.z += positions.getZ(index + vertex);
+      }
+      center.multiplyScalar(1 / 3);
+      normal.set(normals.getX(index), normals.getY(index), normals.getZ(index));
+      expect(normal.dot(center)).toBeGreaterThan(0);
+    }
     const enemies = ["chaser", "shooter", "spinner", "splitter", "slammer"] as const;
     const signatures = enemies.map((archetype) => {
       const visual = provider.createEnemy(archetype);
@@ -98,12 +139,19 @@ describe("V2.1 modular geometric presentation", () => {
     provider.dispose();
   });
 
-  test("uses a large visual deck and only reveals local edge feedback near the player", () => {
+  test("uses a permanently distinct raised deck and only adds glow near the player", () => {
     const scene = new THREE.Scene();
     const environment = createGeometricArena(scene);
+    const external = environment.root.getObjectByName("external-environment-field") as THREE.Mesh<THREE.BoxGeometry>;
     const platform = environment.root.getObjectByName("open-arena-platform") as THREE.Mesh<THREE.BoxGeometry>;
-    expect(platform.geometry.parameters.width).toBe(VISUAL_PLATFORM_SIZE.width);
-    expect(platform.geometry.parameters.depth).toBe(VISUAL_PLATFORM_SIZE.depth);
+    expect(external.geometry.parameters.width).toBe(VISUAL_PLATFORM_SIZE.width);
+    expect(external.geometry.parameters.depth).toBe(VISUAL_PLATFORM_SIZE.depth);
+    expect(platform.geometry.parameters.width).toBe(64);
+    expect(platform.geometry.parameters.depth).toBe(40);
+    expect(platform.position.y).toBeGreaterThan(external.position.y);
+    expect((platform.material as THREE.MeshStandardMaterial).color.getHex()).not.toBe(
+      (external.material as THREE.MeshStandardMaterial).color.getHex(),
+    );
     environment.update(0, 0, 0);
     const edges = environment.root.children.filter((object) => object.name.startsWith("proximity-edge-")) as THREE.Mesh[];
     expect(edges).toHaveLength(4);

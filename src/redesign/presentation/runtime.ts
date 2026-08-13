@@ -30,7 +30,7 @@ export interface PresentationRuntime {
     readonly providerId: string;
     readonly environmentId: string;
     readonly vfxId: string;
-    readonly playerKind: "triangular-prism";
+    readonly playerKind: "cursor-craft";
     readonly enemyVisualCount: number;
     readonly bossVisual: string | null;
     readonly previewSegmentCount: number;
@@ -146,11 +146,13 @@ export function createPresentationRuntime(
       const visual = provider.createEnemy(enemy.archetype);
       enemyVisuals.set(enemy.id, visual);
       scene.add(visual.root);
+      scene.add(visual.telegraphLine);
     }
     for (const [id, visual] of enemyVisuals) {
       const enemy = game.enemies.find((candidate) => candidate.id === id);
       if (enemy && (enemy.alive || enemy.deathElapsedMs < 850)) continue;
       visual.root.removeFromParent();
+      visual.telegraphLine.removeFromParent();
       enemyVisuals.delete(id);
     }
   }
@@ -186,15 +188,18 @@ export function createPresentationRuntime(
   function ensureBossVisual(game: GameState): void {
     if (!game.boss) {
       bossVisual?.root.removeFromParent();
+      bossVisual?.telegraphLine.removeFromParent();
       bossVisual = null;
       bossVisualId = null;
       return;
     }
     if (bossVisualId === game.boss.id && bossVisual) return;
     bossVisual?.root.removeFromParent();
+    bossVisual?.telegraphLine.removeFromParent();
     bossVisual = provider.createBoss(game.boss.archetype, game.boss.parts.map((part) => part.id));
     bossVisualId = game.boss.id;
     scene.add(bossVisual.root);
+    scene.add(bossVisual.telegraphLine);
   }
 
   function syncPlayer(game: GameState, time: number): void {
@@ -205,7 +210,7 @@ export function createPresentationRuntime(
     playerVisual.root.position.set(player.position.x, player.height + idle, player.position.z);
     playerVisual.root.rotation.set(speedTilt, yaw, Math.sin(time * 2.1) * 0.035);
     const squash = player.action === "charging" ? 0.94 : player.action === "dashing" ? 0.88 : 1 + Math.sin(time * 3.4) * 0.018;
-    playerVisual.root.scale.set(1.22 / squash, 1.22 * squash, 1.22 / squash);
+    playerVisual.root.scale.set(1.52 / squash, 1.52 * squash, 1.52 / squash);
     playerVisual.core.rotation.y += 0.04;
     playerVisual.core.rotation.x += 0.025;
     playerVisual.wake.visible = player.action === "dashing";
@@ -230,7 +235,7 @@ export function createPresentationRuntime(
       visual.telegraph.scale.setScalar(enemy.archetype === "slammer" ? 4.2 : 1.4 + Math.sin(time * 7) * 0.15);
       visual.telegraphLine.visible = enemy.alive && enemy.phase === "telegraph" && enemy.lockedTarget !== null && enemy.archetype !== "spinner" && enemy.archetype !== "slammer";
       if (visual.telegraphLine.visible && enemy.lockedTarget) {
-        setLocalLine(visual.telegraphLine, enemy.position, enemy.lockedTarget, visual.root.position);
+        setWorldLine(visual.telegraphLine, enemy.position, enemy.lockedTarget);
       }
       visual.movingParts.forEach((part, index) => {
         if (enemy.archetype === "spinner") part.rotation.y = time * (enemy.phase === "active" ? 8 : 2.4) + index * Math.PI / 3;
@@ -288,7 +293,9 @@ export function createPresentationRuntime(
     visual.telegraph.visible = boss.actionPhase === "telegraph";
     visual.telegraph.scale.setScalar((boss.archetype === "singularity-crown" ? 5.8 : 4.6) * (0.92 + Math.sin(time * 8) * 0.08));
     visual.telegraphLine.visible = boss.actionPhase === "telegraph" && boss.lockedTarget !== null;
-    if (visual.telegraphLine.visible && boss.lockedTarget) setLocalLine(visual.telegraphLine, boss.position, boss.lockedTarget, visual.root.position);
+    if (visual.telegraphLine.visible && boss.lockedTarget) {
+      setWorldLine(visual.telegraphLine, boss.position, boss.lockedTarget);
+    }
     boss.parts.forEach((part, index) => {
       const partRoot = visual.partRoots.get(part.id);
       if (!partRoot) return;
@@ -431,7 +438,7 @@ export function createPresentationRuntime(
         providerId: provider.id,
         environmentId: environment.root.name,
         vfxId: vfx.id,
-        playerKind: "triangular-prism",
+        playerKind: "cursor-craft",
         enemyVisualCount: enemyVisuals.size,
         bossVisual: bossVisualId,
         previewSegmentCount,
@@ -452,6 +459,8 @@ export function createPresentationRuntime(
         preview.geometry.dispose();
         preview.material.dispose();
       });
+      enemyVisuals.forEach((visual) => visual.telegraphLine.removeFromParent());
+      bossVisual?.telegraphLine.removeFromParent();
       vfx.dispose();
       environment.dispose();
       provider.dispose();
@@ -484,15 +493,20 @@ function syncRibbonPreviews(
   });
 }
 
-function setLocalLine(mesh: THREE.Mesh, from: { x: number; z: number }, to: { x: number; z: number }, rootWorld: THREE.Vector3): void {
-  const length = distance(from, to);
+function setWorldLine(
+  mesh: THREE.Mesh,
+  from: { x: number; z: number },
+  to: { x: number; z: number },
+): void {
+  const deltaX = to.x - from.x;
+  const deltaZ = to.z - from.z;
   mesh.position.set(
-    (from.x + to.x) * 0.5 - rootWorld.x,
-    -0.58,
-    (from.z + to.z) * 0.5 - rootWorld.z,
+    (from.x + to.x) * 0.5,
+    0.06,
+    (from.z + to.z) * 0.5,
   );
-  mesh.rotation.set(0, -Math.atan2(to.z - from.z, to.x - from.x), 0);
-  mesh.scale.set(length, 0.025, 0.14);
+  mesh.rotation.set(0, -Math.atan2(deltaZ, deltaX), 0);
+  mesh.scale.set(Math.hypot(deltaX, deltaZ), 0.025, 0.14);
 }
 
 function stablePhase(value: string): number {

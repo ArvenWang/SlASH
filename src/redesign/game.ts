@@ -5,9 +5,6 @@ import {
   isSupported,
 } from "./config";
 import {
-  BASIC_DASH_DISTANCE,
-  CHARGED_DASH_DISTANCE,
-  ULTIMATE_DASH_DISTANCE,
   firstPathIntersection,
   planDashPath,
   pointAlongPath,
@@ -325,11 +322,9 @@ function advancePlayer(state: GameState, deltaMs: number, deltaSeconds: number):
 }
 
 function startDash(state: GameState, kind: "basic" | "charged", target: Vec2): void {
-  const maximumDistance = kind === "charged" ? CHARGED_DASH_DISTANCE : BASIC_DASH_DISTANCE;
   const path = planDashPath(
     state.player.position,
     target,
-    maximumDistance,
     state.player.radius,
     state.run.build,
     state.obstacles,
@@ -344,7 +339,6 @@ function startUltimateDash(state: GameState): void {
     const planned = planDashPath(
       origin,
       target,
-      ULTIMATE_DASH_DISTANCE,
       state.player.radius,
       state.run.build,
       state.obstacles,
@@ -1150,11 +1144,9 @@ export function gameplayHash(state: GameState): string {
 }
 
 export function previewPrimaryPath(state: GameState, target = state.player.aimTarget): PlannedDashPath {
-  const charged = state.player.action === "charging" && state.player.actionElapsedMs >= CHARGE_THRESHOLD_MS;
   return planDashPath(
     state.player.position,
     target,
-    charged ? CHARGED_DASH_DISTANCE : BASIC_DASH_DISTANCE,
     state.player.radius,
     state.run.build,
     state.obstacles,

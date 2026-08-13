@@ -53,7 +53,7 @@ try {
     if (combat.phase !== "combat" || combat.coordinateSystem !== "x right, z down-screen, height up; arena x -32..32 z -20..20") {
       issues.push("combat-state-boundary");
     }
-    if (presentation.providerId !== "geometric-forms-v2.1" || presentation.playerKind !== "triangular-prism") {
+    if (presentation.providerId !== "geometric-forms-v2.1" || presentation.playerKind !== "cursor-craft") {
       issues.push("presentation-provider-boundary");
     }
     if (presentation.previewSegmentCount < 1 || presentation.previewWidth < 0.95) issues.push("dash-preview-boundary");

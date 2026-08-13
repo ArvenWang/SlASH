@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { PLAYABLE_ARENA, VISUAL_PLATFORM_SIZE } from "../config";
+import { PLAYABLE_ARENA, PLAYABLE_ARENA_SIZE, VISUAL_PLATFORM_SIZE } from "../config";
 import type { EnvironmentProviderRuntime } from "./types";
 
 export const GEOMETRIC_ARENA_PROVIDER_ID = "open-geometric-arena-v2.1";
@@ -21,28 +21,54 @@ export function createGeometricArena(scene: THREE.Scene): EnvironmentProviderRun
   const root = new THREE.Group();
   root.name = GEOMETRIC_ARENA_PROVIDER_ID;
 
-  const platformGeometry = new THREE.BoxGeometry(VISUAL_PLATFORM_SIZE.width, 1.4, VISUAL_PLATFORM_SIZE.depth, 1, 1, 1);
+  const externalGeometry = new THREE.BoxGeometry(VISUAL_PLATFORM_SIZE.width, 1.2, VISUAL_PLATFORM_SIZE.depth, 1, 1, 1);
+  const externalMaterial = new THREE.MeshStandardMaterial({
+    color: 0x03080b,
+    roughness: 0.96,
+    metalness: 0.04,
+  });
+  const external = new THREE.Mesh(externalGeometry, externalMaterial);
+  external.name = "external-environment-field";
+  external.position.y = -1.38;
+  external.receiveShadow = true;
+  root.add(external);
+
+  const lipGeometry = new THREE.BoxGeometry(PLAYABLE_ARENA_SIZE.width + 1.6, 0.34, PLAYABLE_ARENA_SIZE.depth + 1.6);
+  const lipMaterial = new THREE.MeshStandardMaterial({
+    color: 0x12343d,
+    roughness: 0.34,
+    metalness: 0.72,
+    emissive: 0x0a3d47,
+    emissiveIntensity: 0.55,
+  });
+  const lip = new THREE.Mesh(lipGeometry, lipMaterial);
+  lip.name = "arena-edge-lip";
+  lip.position.y = -0.69;
+  lip.receiveShadow = true;
+  root.add(lip);
+
+  const platformGeometry = new THREE.BoxGeometry(PLAYABLE_ARENA_SIZE.width, 0.82, PLAYABLE_ARENA_SIZE.depth);
   const platformMaterial = new THREE.MeshStandardMaterial({
-    color: 0x101b21,
-    roughness: 0.78,
-    metalness: 0.18,
+    color: 0x172c34,
+    roughness: 0.62,
+    metalness: 0.32,
   });
   const platform = new THREE.Mesh(platformGeometry, platformMaterial);
   platform.name = "open-arena-platform";
-  platform.position.y = -0.72;
+  platform.position.y = -0.42;
   platform.receiveShadow = true;
   root.add(platform);
 
   const insetGeometry = new THREE.PlaneGeometry(
-    VISUAL_PLATFORM_SIZE.width - 4,
-    VISUAL_PLATFORM_SIZE.depth - 4,
+    PLAYABLE_ARENA_SIZE.width - 1.4,
+    PLAYABLE_ARENA_SIZE.depth - 1.4,
     1,
     1,
   );
   const insetMaterial = new THREE.MeshStandardMaterial({
-    color: 0x17262d,
-    roughness: 0.64,
-    metalness: 0.22,
+    color: 0x1b343c,
+    roughness: 0.54,
+    metalness: 0.28,
   });
   const inset = new THREE.Mesh(insetGeometry, insetMaterial);
   inset.name = "open-arena-inset";
@@ -101,7 +127,7 @@ export function createGeometricArena(scene: THREE.Scene): EnvironmentProviderRun
   edges.west.rotation.z = Math.PI * 0.5;
   edges.east.rotation.z = Math.PI * 0.5;
 
-  const pointerGeometry = new THREE.PlaneGeometry(VISUAL_PLATFORM_SIZE.width, VISUAL_PLATFORM_SIZE.depth);
+  const pointerGeometry = new THREE.PlaneGeometry(PLAYABLE_ARENA_SIZE.width, PLAYABLE_ARENA_SIZE.depth);
   const pointerMaterial = new THREE.MeshBasicMaterial({
     transparent: true,
     opacity: 0,

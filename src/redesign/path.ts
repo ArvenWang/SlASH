@@ -1,4 +1,5 @@
 import type { ObstacleArchetype } from "./run";
+import { clipTargetToSupportedArena } from "./config";
 import type { CoreSkillBuild } from "./skills";
 import { refractionDistanceMultiplier, wideSlashMultiplier } from "./skills";
 import type { ObstacleState, PathSegmentState } from "./state";
@@ -16,9 +17,6 @@ import {
 } from "./math";
 
 export const BASE_DASH_HIT_RADIUS = 0.95;
-export const BASIC_DASH_DISTANCE = 16;
-export const CHARGED_DASH_DISTANCE = 28;
-export const ULTIMATE_DASH_DISTANCE = 30;
 
 export interface PlannedDashPath {
   readonly segments: readonly PathSegmentState[];
@@ -37,13 +35,13 @@ interface ObstacleHit {
 export function planDashPath(
   from: Vec2,
   requestedTarget: Vec2,
-  maximumDistance: number,
   playerRadius: number,
   build: CoreSkillBuild,
   obstacles: readonly ObstacleState[],
 ): PlannedDashPath {
-  const requestedOffset = subtract(requestedTarget, from);
-  const requestedDistance = Math.min(maximumDistance, Math.max(0.01, Math.hypot(requestedOffset.x, requestedOffset.z)));
+  const supportedTarget = clipTargetToSupportedArena(from, requestedTarget, playerRadius);
+  const requestedOffset = subtract(supportedTarget, from);
+  const requestedDistance = Math.max(0.01, Math.hypot(requestedOffset.x, requestedOffset.z));
   const direction = normalize(requestedOffset);
   const target = add(from, scale(direction, requestedDistance));
   const first = firstObstacleHit(from, target, playerRadius, obstacles);
@@ -72,7 +70,11 @@ export function planDashPath(
   }
 
   const reflectedDirection = reflect(direction, first.normal);
-  const reflectedTarget = add(first.point, scale(reflectedDirection, remaining));
+  const reflectedTarget = clipTargetToSupportedArena(
+    first.point,
+    add(first.point, scale(reflectedDirection, remaining)),
+    playerRadius,
+  );
   const second = firstObstacleHit(first.point, reflectedTarget, playerRadius, obstacles, first.obstacle.id);
   const secondTarget = second?.point ?? reflectedTarget;
   const firstSegment: PathSegmentState = {

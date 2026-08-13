@@ -63,7 +63,7 @@ src/runtime/
 
 src/presentation/characters/
   character-provider.ts         # 稳定 Provider 合同
-  primitive-provider.ts         # 三棱体主角、五类敌人、三个 Boss
+  primitive-provider.ts         # Cursor 飞船楔体主角、五类敌人、三个 Boss
   motion-presenter.ts           # 倾斜、压缩、预警等纯表现
 
 src/presentation/environments/
