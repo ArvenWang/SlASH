@@ -135,7 +135,7 @@ describe("Redesign V2.1 gameplay facts", () => {
     expect(state.player.dash?.hitRadius).toBeCloseTo(0.95 * 1.65, 6);
   });
 
-  test("uses faster dash travel and executes a three-point ultimate almost instantly", () => {
+  test("uses faster dash travel and keeps a three-point ultimate visibly animated", () => {
     const state = createGame(350);
     dispatch(state, { type: "start-run" });
     dispatch(state, { type: "begin-primary", target: { x: 40, z: 0 } });
@@ -148,7 +148,17 @@ describe("Redesign V2.1 gameplay facts", () => {
     expect(dispatch(state, { type: "add-ultimate-point", target: { x: -12, z: 0 } })).toBe("ultimate-point-added");
     expect(dispatch(state, { type: "add-ultimate-point", target: { x: 0, z: 12 } })).toBe("ultimate-executing");
     expect(state.player.dash?.kind).toBe("ultimate");
-    expect(state.player.dash?.totalDurationMs).toBeLessThanOrEqual(120);
+    expect(state.player.dash?.totalDurationMs).toBeGreaterThanOrEqual(720);
+    expect(state.player.dash?.totalDurationMs).toBeLessThanOrEqual(1_050);
+    const ultimateEvents: number[] = [];
+    for (let guard = 0; guard < 180 && state.player.action === "dashing"; guard += 1) {
+      step(state);
+      ultimateEvents.push(...state.events
+        .filter((event) => event.type === "ultimate-segment-started")
+        .map((event) => event.segmentIndex));
+      state.events = [];
+    }
+    expect(new Set(ultimateEvents)).toEqual(new Set([0, 1, 2]));
   });
 
   test("buffers a quick click during recovery and auto-dashes when recovery ends", () => {

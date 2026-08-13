@@ -178,6 +178,7 @@ export type GameEvent =
   | { readonly type: "run-started"; readonly seed: number }
   | { readonly type: "encounter-started"; readonly encounter: EncounterDefinition }
   | { readonly type: "dash-started"; readonly dash: DashState }
+  | { readonly type: "ultimate-segment-started"; readonly dashId: number; readonly segmentIndex: number; readonly segment: PathSegmentState }
   | { readonly type: "dash-ended"; readonly kind: DashKind; readonly position: Vec2; readonly hitRadius: number }
   | { readonly type: "dash-reflected"; readonly position: Vec2; readonly normal: Vec2 }
   | { readonly type: "enemy-killed"; readonly enemyId: string; readonly position: Vec2; readonly kind: DashKind }

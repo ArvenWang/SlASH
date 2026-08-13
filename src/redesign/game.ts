@@ -78,7 +78,7 @@ export type { GameCommand, GameCommandResult, GameEvent, GameState } from "./sta
 const MAX_REALTIME_DELTA_MS = 250;
 export const BASIC_DASH_SPEED = 86;
 export const CHARGED_DASH_SPEED = 112;
-export const ULTIMATE_DASH_SPEED = 560;
+export const ULTIMATE_DASH_SPEED = 150;
 const BASIC_RECOVERY_MS = 310;
 const CHARGED_RECOVERY_MS = 390;
 const ULTIMATE_RECOVERY_MS = 520;
@@ -451,7 +451,7 @@ function beginDash(
     damage,
     chargePower,
     totalDurationMs: kind === "ultimate"
-      ? Math.min(115, Math.max(72, totalLength / speed * 1_000))
+      ? Math.min(1_050, Math.max(720, totalLength / speed * 1_000))
       : Math.max(72, totalLength / speed * 1_000),
     elapsedMs: 0,
     resolvedEnemyIds: [],
@@ -469,6 +469,14 @@ function beginDash(
   state.player.moveVelocity = { x: 0, z: 0 };
   state.player.bufferedPrimary = null;
   emit(state, { type: "dash-started", dash: structuredClone(dash) });
+  if (kind === "ultimate" && dash.segments[0]) {
+    emit(state, {
+      type: "ultimate-segment-started",
+      dashId: dash.id,
+      segmentIndex: 0,
+      segment: copySegment(dash.segments[0]),
+    });
+  }
   for (const segment of dash.segments) {
     if (segment.reflectionPoint && segment.reflectionNormal) {
       emit(state, { type: "dash-reflected", position: { ...segment.reflectionPoint }, normal: { ...segment.reflectionNormal } });
@@ -485,6 +493,8 @@ function advanceDash(state: GameState, deltaMs: number): void {
   const currentDistance = totalLength * clamp(dash.elapsedMs / dash.totalDurationMs, 0, 1);
   const previousPosition = pointAlongPath(dash.segments, previousDistance);
   const currentPosition = pointAlongPath(dash.segments, currentDistance);
+  const previousSegmentIndex = pathSegmentIndexAtDistance(dash.segments, previousDistance);
+  const currentSegmentIndex = pathSegmentIndexAtDistance(dash.segments, currentDistance);
   state.player.position = currentPosition;
   resolveDashStrip(
     state,
@@ -493,6 +503,18 @@ function advanceDash(state: GameState, deltaMs: number): void {
     currentPosition,
     pathSegmentIndexAtDistance(dash.segments, (previousDistance + currentDistance) * 0.5),
   );
+  if (dash.kind === "ultimate" && currentSegmentIndex > previousSegmentIndex) {
+    for (let index = previousSegmentIndex + 1; index <= currentSegmentIndex; index += 1) {
+      const segment = dash.segments[index];
+      if (!segment) continue;
+      emit(state, {
+        type: "ultimate-segment-started",
+        dashId: dash.id,
+        segmentIndex: index,
+        segment: copySegment(segment),
+      });
+    }
+  }
   if (dash.pendingCross && !dash.pendingCross.triggered && distanceSquaredToSegment(
     dash.pendingCross.position,
     previousPosition,
@@ -1208,6 +1230,8 @@ export function renderGameToText(state: GameState): string {
         kind: state.player.dash.kind,
         hitRadius: round(state.player.dash.hitRadius),
         chargePower: round(state.player.dash.chargePower),
+        elapsedMs: round(state.player.dash.elapsedMs),
+        totalDurationMs: round(state.player.dash.totalDurationMs),
         segments: state.player.dash.segments,
       } : null,
     },

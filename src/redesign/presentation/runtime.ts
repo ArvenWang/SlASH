@@ -9,6 +9,7 @@ import type { GameEvent, GameState, PathSegmentState } from "../state";
 import { distance, normalize, subtract } from "../math";
 import { chargeProgress, currentWorldTimeScale, previewPrimaryPath, previewUltimatePath } from "../game";
 import { computeCameraFrame } from "./camera";
+import type { ArenaBounds } from "../config";
 import { createGeometricArena } from "./environment-provider";
 import { createPrimitiveVisualProvider } from "./primitive-provider";
 import type {
@@ -42,6 +43,8 @@ export interface PresentationRuntime {
     readonly worldTimeScale: number;
     readonly bulletTimeEffect: number;
     readonly bossVisualScale: number | null;
+    readonly ultimateCameraLocked: boolean;
+    readonly ultimateVfxObjectCount: number;
     readonly sceneObjects: number;
   };
   dispose(): void;
@@ -238,6 +241,10 @@ export function createPresentationRuntime(
   let bulletTimeMix = 0;
   let presentationElapsed = 0;
   let currentBossVisualScale: number | null = null;
+  let ultimateCameraBounds: ArenaBounds | null = null;
+  let ultimateCameraReleaseAt = -1;
+  let lastUltimateAfterimageTime = -1;
+  let lastUltimateAfterimagePosition: { x: number; z: number } | null = null;
   let disposed = false;
   const raycaster = new THREE.Raycaster();
   const pointerNdc = new THREE.Vector2();
@@ -319,18 +326,19 @@ export function createPresentationRuntime(
     playerVisual.core.rotation.x += 0.025;
     playerVisual.wake.visible = player.action === "dashing";
     const chargedDash = player.action === "dashing" && player.dash?.kind === "charged";
+    const ultimateDash = player.action === "dashing" && player.dash?.kind === "ultimate";
     const ultimatePlanning = player.action === "ultimate-planning";
     const charge = chargeProgress(game);
-    playerVisual.shockShell.visible = chargedDash || charge > 0.02 || ultimatePlanning;
-    playerVisual.shockCone.visible = chargedDash;
+    playerVisual.shockShell.visible = chargedDash || ultimateDash || charge > 0.02 || ultimatePlanning;
+    playerVisual.shockCone.visible = chargedDash || ultimateDash;
     if (player.action === "dashing") {
       playerVisual.wake.scale.set(
-        chargedDash ? 1.18 : 0.68,
-        chargedDash ? 0.2 : 0.1,
-        (chargedDash ? 2.2 : 1.1) + Math.sin(time * 24) * 0.16,
+        ultimateDash ? 1.48 : chargedDash ? 1.18 : 0.68,
+        ultimateDash ? 0.26 : chargedDash ? 0.2 : 0.1,
+        (ultimateDash ? 3.4 : chargedDash ? 2.2 : 1.1) + Math.sin(time * 24) * 0.16,
       );
-      playerVisual.shockShell.scale.setScalar(0.9 + Math.sin(time * 28) * 0.12);
-      playerVisual.shockShell.rotation.z += chargedDash ? 0.18 : 0;
+      playerVisual.shockShell.scale.setScalar((ultimateDash ? 1.24 : 0.9) + Math.sin(time * 28) * 0.12);
+      playerVisual.shockShell.rotation.z += ultimateDash ? 0.3 : chargedDash ? 0.18 : 0;
       playerVisual.shockCone.scale.set(
         1.05 + Math.sin(time * 32) * 0.08,
         1.05 + Math.sin(time * 32) * 0.08,
@@ -345,9 +353,11 @@ export function createPresentationRuntime(
       playerVisual.shockShell.rotation.z += 0.025 + charge * 0.04;
     }
     const shockMaterial = playerVisual.shockShell.material as THREE.MeshBasicMaterial;
-    shockMaterial.color.setHex(ultimatePlanning ? 0xff5042 : 0xb9fbff);
-    shockMaterial.opacity = ultimatePlanning ? 0.68 : chargedDash ? 0.5 : 0.16 + charge * 0.34;
-    (playerVisual.shockCone.material as THREE.MeshBasicMaterial).opacity = chargedDash ? 0.2 : 0;
+    shockMaterial.color.setHex(ultimatePlanning || ultimateDash ? 0xff4d5f : 0xb9fbff);
+    shockMaterial.opacity = ultimatePlanning ? 0.68 : ultimateDash ? 0.82 : chargedDash ? 0.5 : 0.16 + charge * 0.34;
+    const shockConeMaterial = playerVisual.shockCone.material as THREE.MeshBasicMaterial;
+    shockConeMaterial.color.setHex(ultimateDash ? 0xff6972 : 0x9ff8ff);
+    shockConeMaterial.opacity = ultimateDash ? 0.34 : chargedDash ? 0.2 : 0;
     playerVisual.core.scale.setScalar(0.3 + charge * 0.22 + Math.sin(time * 14) * charge * 0.03);
   }
 
@@ -510,16 +520,34 @@ export function createPresentationRuntime(
   function consume(events: readonly GameEvent[], game: GameState): void {
     for (const event of events) {
       if (event.type === "dash-started") {
-        vfx.spawnPath(
-          event.dash.segments,
-          event.dash.hitRadius,
-          event.dash.kind === "charged" ? 0xd9fdff : 0x8ff7ff,
-          event.dash.kind === "charged" ? 0.52 : 0.32,
-        );
+        if (event.dash.kind === "ultimate") {
+          vfx.spawnUltimateRoute(event.dash.segments, event.dash.hitRadius);
+          ultimateCameraBounds = boundsForUltimateRoute(event.dash.segments);
+          ultimateCameraReleaseAt = -1;
+          lastUltimateAfterimageTime = -1;
+          lastUltimateAfterimagePosition = null;
+        } else {
+          vfx.spawnPath(
+            event.dash.segments,
+            event.dash.hitRadius,
+            event.dash.kind === "charged" ? 0xd9fdff : 0x8ff7ff,
+            event.dash.kind === "charged" ? 0.52 : 0.32,
+          );
+        }
         if (event.dash.kind === "charged") {
           vfx.spawnShockwave(event.dash.segments[0]?.from ?? game.player.position, 2.8, 0xbafcff);
         }
+      } else if (event.type === "ultimate-segment-started") {
+        const direction = normalize(subtract(event.segment.to, event.segment.from));
+        vfx.spawnUltimateSegment(event.segment, event.segmentIndex);
+        vfx.spawnUltimateAfterimage(event.segment.from, direction, 1.08);
       } else if (event.type === "dash-ended") {
+        if (event.kind === "ultimate") {
+          vfx.spawnShockwave(event.position, 5.2, 0xff5868);
+          vfx.spawnBurst(event.position, 4.4, 0xffe4d5);
+          ultimateCameraReleaseAt = presentationElapsed + 0.46;
+          lastUltimateAfterimagePosition = null;
+        }
         if (event.kind === "charged") {
           vfx.spawnShockwave(event.position, 4.2 + event.hitRadius, 0xd8fdff);
           vfx.spawnBurst(event.position, 2.8 + event.hitRadius, 0xd8fdff);
@@ -550,6 +578,10 @@ export function createPresentationRuntime(
   function update(deltaSeconds: number, game: GameState): void {
     if (disposed) return;
     presentationElapsed += Math.max(0, deltaSeconds);
+    if (ultimateCameraReleaseAt >= 0 && presentationElapsed >= ultimateCameraReleaseAt) {
+      ultimateCameraBounds = null;
+      ultimateCameraReleaseAt = -1;
+    }
     ensureEnemyVisuals(game);
     ensureObstacleVisuals(game);
     ensureProjectileVisuals(game);
@@ -561,8 +593,25 @@ export function createPresentationRuntime(
     syncProjectiles(game, time);
     syncBoss(game, time);
     syncPreview(game);
-    const frame = computeCameraFrame(canvas.clientWidth, canvas.clientHeight, game.player.position);
-    const follow = 1 - Math.exp(-Math.max(0, deltaSeconds) * 4.6);
+    const ultimateDashing = game.player.action === "dashing" && game.player.dash?.kind === "ultimate";
+    if (ultimateDashing && (
+      lastUltimateAfterimageTime < 0
+      || presentationElapsed - lastUltimateAfterimageTime >= 0.055
+    ) && (
+      !lastUltimateAfterimagePosition
+      || distance(lastUltimateAfterimagePosition, game.player.position) >= 1.4
+    )) {
+      vfx.spawnUltimateAfterimage(game.player.position, game.player.facing, 0.88);
+      lastUltimateAfterimageTime = presentationElapsed;
+      lastUltimateAfterimagePosition = { ...game.player.position };
+    }
+    const frame = computeCameraFrame(
+      canvas.clientWidth,
+      canvas.clientHeight,
+      game.player.position,
+      ultimateCameraBounds ?? undefined,
+    );
+    const follow = 1 - Math.exp(-Math.max(0, deltaSeconds) * (ultimateCameraBounds ? 2.1 : 4.6));
     camera.position.lerp(new THREE.Vector3(...frame.position), follow);
     cameraLookTarget.lerp(new THREE.Vector3(...frame.target), follow);
     camera.lookAt(cameraLookTarget);
@@ -571,8 +620,11 @@ export function createPresentationRuntime(
       game.player.height,
       game.player.position.z,
     ).project(camera);
-    bulletTimeMix += ((game.player.action === "ultimate-planning" ? 1 : 0) - bulletTimeMix)
+    const focusEffectTarget = game.player.action === "ultimate-planning" ? 1 : ultimateDashing ? 0.46 : 0;
+    bulletTimeMix += (focusEffectTarget - bulletTimeMix)
       * (1 - Math.exp(-Math.max(0, deltaSeconds) * 8.5));
+    bloom.strength += ((ultimateDashing ? 0.44 : 0.16) - bloom.strength)
+      * (1 - Math.exp(-Math.max(0, deltaSeconds) * 10));
     bulletTimePass.uniforms.uCenter!.value.set(
       projectedPlayer.x * 0.5 + 0.5,
       projectedPlayer.y * 0.5 + 0.5,
@@ -586,7 +638,7 @@ export function createPresentationRuntime(
   function resize(game: GameState): void {
     const width = Math.max(1, canvas.clientWidth);
     const height = Math.max(1, canvas.clientHeight);
-    const frame = computeCameraFrame(width, height, game.player.position);
+    const frame = computeCameraFrame(width, height, game.player.position, ultimateCameraBounds ?? undefined);
     const mobile = Math.min(width, height) < 700;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, mobile ? 1.2 : 1.65));
     renderer.setSize(width, height, false);
@@ -642,6 +694,8 @@ export function createPresentationRuntime(
         worldTimeScale: currentWorldTimeScale(state),
         bulletTimeEffect: bulletTimeMix,
         bossVisualScale: currentBossVisualScale,
+        ultimateCameraLocked: ultimateCameraBounds !== null,
+        ultimateVfxObjectCount: countNamedObjects(scene, "vector-focus"),
         sceneObjects: scene.children.length,
       };
     },
@@ -717,6 +771,32 @@ function bossVisualScale(archetype: string): number {
   if (archetype === "prism-hound") return 1.36;
   if (archetype === "cube-fortress") return 1.5;
   return 1.62;
+}
+
+function boundsForUltimateRoute(segments: readonly PathSegmentState[]): ArenaBounds {
+  const points = segments.flatMap((segment) => [segment.from, segment.to]);
+  const minX = Math.min(...points.map((point) => point.x));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const minZ = Math.min(...points.map((point) => point.z));
+  const maxZ = Math.max(...points.map((point) => point.z));
+  const centerX = (minX + maxX) * 0.5;
+  const centerZ = (minZ + maxZ) * 0.5;
+  const halfWidth = Math.max(18, (maxX - minX) * 0.5 + 5);
+  const halfDepth = Math.max(12, (maxZ - minZ) * 0.5 + 5);
+  return {
+    minX: centerX - halfWidth,
+    maxX: centerX + halfWidth,
+    minZ: centerZ - halfDepth,
+    maxZ: centerZ + halfDepth,
+  };
+}
+
+function countNamedObjects(root: THREE.Object3D, token: string): number {
+  let count = 0;
+  root.traverse((object) => {
+    if (object.name.includes(token)) count += 1;
+  });
+  return count;
 }
 
 function setWorldLine(

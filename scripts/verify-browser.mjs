@@ -102,7 +102,20 @@ try {
       if (plannedPresentation.confirmedUltimateSegmentCount < 1 || plannedPresentation.ultimatePreviewSegmentCount < 2) {
         issues.push("ultimate-route-boundary");
       }
-      await page.keyboard.press("Escape");
+      await page.mouse.click(viewport.width * 0.31, viewport.height * 0.32);
+      await page.mouse.move(viewport.width * 0.74, viewport.height * 0.68);
+      await page.mouse.click(viewport.width * 0.74, viewport.height * 0.68);
+      await page.waitForTimeout(24);
+      const ultimateExecution = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+      const executionPresentation = await page.evaluate(() => window.__slashV21.presentation());
+      if (ultimateExecution.player.dash?.kind !== "ultimate"
+        || ultimateExecution.player.dash.totalDurationMs < 720
+        || ultimateExecution.player.dash.totalDurationMs > 1_050) {
+        issues.push("ultimate-visible-travel-boundary");
+      }
+      if (!executionPresentation.ultimateCameraLocked || executionPresentation.ultimateVfxObjectCount < 3) {
+        issues.push("ultimate-execution-vfx-boundary");
+      }
     }
     if (overflow.width > overflow.viewport || overflow.height > overflow.viewportHeight) issues.push("page-overflow");
     if (await page.locator('.skill-tree, .run-map, .route-card').count() > 0) issues.push("retired-ui-present");

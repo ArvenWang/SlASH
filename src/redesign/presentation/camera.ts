@@ -20,13 +20,14 @@ export function computeCameraFrame(
   width: number,
   height: number,
   focus: Vec2,
+  fixedBounds?: ArenaBounds,
 ): CameraFrame {
   const safeWidth = Math.max(1, width);
   const safeHeight = Math.max(1, height);
   const aspect = safeWidth / safeHeight;
   const portrait = aspect < 0.72;
   const fov = portrait ? 46 : 38;
-  const framedBounds = followBounds(focus, portrait);
+  const framedBounds = fixedBounds ?? followBounds(focus, portrait);
   const target = [
     (framedBounds.minX + framedBounds.maxX) * 0.5,
     0,
