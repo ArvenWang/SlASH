@@ -20,11 +20,6 @@ export default defineConfig({
               includeDependenciesRecursively: false,
             },
             {
-              name: "debug-ui",
-              test: /node_modules[\\/]lil-gui/,
-              priority: 15,
-            },
-            {
               name: "vendor",
               test: /node_modules/,
               priority: 10,

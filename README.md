@@ -1,27 +1,25 @@
-# Project Slash
+# Project SlASH
 
-Project Slash 是一个运行于浏览器的 3D 赛博朋克高速动作游戏垂直切片。
+Project SlASH 是一款运行于浏览器的斜俯视 3D 几何动作游戏。玩家不使用传统摇杆移动；每次指向与冲刺同时完成移动、攻击、闪避和重新站位。
 
-玩家没有传统移动和普通攻击。点击竞技场中的目标位置，角色会沿直线高速突刺，并斩杀路径上的全部敌人。一次输入同时完成移动、闪避、攻击和重新站位。
+## 当前版本：Redesign V2.1
 
-![Project Slash gameplay](docs/images/project-slash-gameplay.png)
-
-## 当前内容
-
-- 固定高位 3D 镜头与一张 Transit Cathedral 竞技场；
-- 三个固定关卡，分别包含 8、12、18 名敌人；
-- 无限距离直线突刺、路径多杀、突刺无敌与短 Recovery；
-- 玩家与敌人均为一击致命；
-- 方向性血液、腰斩分离、尸块落地、雨幕与蒸汽扰动；
-- 程序化原创音频、HUD、鼠标和触控输入；
-- WebGL / Three.js 渲染，支持桌面 Web，Steam 版本作为后续方向。
+- 启动页会保持静止，玩家主动开始后才进入战斗。
+- 标准局为 3 章 × 3 战：共 9 战、3 个 Boss、8 次战后三选一。
+- 主角使用三棱体，尖角持续朝向鼠标；敌人、Boss、障碍和射弹统一为模块化几何体。
+- 真实 Gameplay Arena 为 64m × 40m；768m × 512m 视觉高台铺满画面，不用常亮方框标记活动区域。
+- 普通敌人保持一击必杀；Boss 使用 8 / 12 / 16 点生命、可攻击窗口和同源血条。
+- 五个被动技能家族：宽刃、折射、交叉处决、残响斩、杀意；每局最多装备 4 个家族，每个最高 3 级。
+- 切割反馈使用电光切面和几何碎片，不包含刀具、血液、肉块或断肢。
+- Gameplay、角色/敌人/Boss 表现、环境和 VFX 相互解耦，后续可替换视觉 Provider 而不改战斗规则。
 
 ## 操作
 
-- 鼠标左键或触摸：向目标位置突刺；
-- `F`：切换全屏；
-- `M`：静音 / 恢复声音；
-- 死亡后再次点击：立即重开当前关卡。
+- 移动鼠标：调整主角朝向和冲刺引导。
+- 鼠标左键按下 / 松开：蓄力并释放冲刺；快速点击执行基础冲刺。
+- `Space`：能量充满后进入三段终极冲刺规划。
+- `Esc`：取消规划或暂停。
+- 触屏设备使用画面输入与“终极 / 取消”按钮。
 
 ## 本地运行
 
@@ -29,42 +27,36 @@ Project Slash 是一个运行于浏览器的 3D 赛博朋克高速动作游戏�
 
 ```bash
 npm install
-npm run dev
+npm run dev -- --port 4177
 ```
 
-生产构建：
+生产构建与预览：
 
 ```bash
 npm run build
-npm run preview
+npm run preview -- --port 4177
 ```
 
 ## 项目结构
 
-- `src/content/`：敌人、技能、升级、关卡与实体 Definition；
-- `src/game/`：确定性 Gameplay Domain、行为、碰撞、事件与 Replay；
-- `src/runtime/`：输入、游戏、渲染、调试与表现层装配；
-- `src/presentation/`：角色 Provider、动画 Controller、视觉 Profile 与 Registry；
-- `src/characters/`、`src/scene/`、`src/vfx.ts`：当前程序化角色和视觉 Runtime；
-- `art/`：正式视觉概念与角色多视图输入；
-- `docs/architecture/`：Phase 2A 架构、扩展流程与性能预算；
-- `validation/tools/`：可复用的真实浏览器验证工具。
+- `src/redesign/`：V2.1 唯一正式实现，包含确定性战斗、Run、技能、存档、回放、UI 和表现 Provider。
+- `tests/redesign-*`：V2.1 规则、Gameplay、场景表现、存档回放与完整局验证。
+- `docs/REDESIGN_V2_PRD.md`：产品规则事实源。
+- `docs/REDESIGN_V2_ACCEPTANCE.md`：可执行验收标准。
+- `docs/architecture/REDESIGN_V2_BOUNDARIES.md`：模块边界和替换合同。
+- `AGENT_PROGRESS.md`：当前项目统一进展。
 
-## 视觉状态
-
-当前生产默认仍使用项目内原创的程序化多面几何角色。程序角色与 GLB 角色现已统一到 Character Provider 和 Animation Controller，视觉替换不再要求修改 Gameplay。
-
-两份 Rigged GLB 已作为按需加载 Provider 接入，但原文件均没有 AnimationClip，因此当前使用自制骨骼驱动；程序角色继续作为正式回退与基准。当前整体视觉仍未获得用户签核，Phase 2A 完成的是后续重做材质、灯光、环境、VFX、角色与动作所需的生产架构，不代表画面已经合格。
-
-架构入口见 [Phase 2A 架构总览](docs/architecture/README.md)。独立检查台包括 Animation Lab、VFX Lab、Environment Lab 与 Content Sandbox，入口文件位于 `validation/tools/`。
+旧人形 GLB、Tripo 管线、武器/尸体、旧技能树、旧 Boss、旧场景、旧 UI 和旧验证入口已经退出工作树；如需历史对照只能从 Git 历史查看，不能重新接回正式运行路径。
 
 ## 验证
 
 ```bash
 npm run check
 npm test
+npm run verify:full-run
 npm run build
-npm run verify:gameplay
+npm run verify:residue
+npm run verify:browser
 ```
 
-详细门槛见 [验收标准](docs/ACCEPTANCE_STANDARD.md)。大型截图、视频和性能证据保留在本地工作区，不提交到 Git 仓库；可复用脚本与精简审计结果会随源码提交。
+浏览器验证默认检查 `http://127.0.0.1:4177/`，证据写入系统临时目录，不污染项目工作树。
