@@ -35,7 +35,8 @@ Gameplay State / Events
 | Campaign UI | 极简页面与输入转译 | 技能合法性、随机结果、选关逻辑 |
 | Environment Provider | 创建、更新、释放视觉高台和场景材质 | Arena 碰撞、Spawn、过关规则 |
 | Character Provider | 创建可替换外观，消费标准运动输入 | 改写 Gameplay 位置、命中或死亡 |
-| Enemy/Boss Gameplay | AI、射击、分裂、旋转、砸地、阶段与核心生命 | Mesh、材质、骨骼和 UI |
+| Enemy Gameplay | 一击必杀、AI、射击、分裂、旋转和砸地 | Mesh、材质、骨骼和 Boss 生命 |
+| Boss Gameplay | 多段生命、伤害表、阶段、核心窗口和立即胜利 | Mesh、血条 DOM、子节点数量和动画回调 |
 | Vertical Physics | 高度、垂直速度、重力、支撑、跳跃与坠落 | Mesh、骨骼、材质和镜头抖动 |
 | VFX Provider | 电光路径、切面、碎片、预警的视觉生命周期 | 命中判定、伤害、清场规则 |
 | Camera Fit | 根据 Arena 与画幅计算相机 | 修改 Arena 尺寸或 Gameplay 边界 |
@@ -99,6 +100,8 @@ Gameplay State/Event → Presentation
 - Character Provider 不得依赖具体 Skill ID；只消费标准化状态和表现事件。
 - 可视引导路径、实际 Dash 路径和 Replay 路径必须来自同一个 Gameplay Path Result，不得分别计算。
 - Boss 的核心可攻击性和胜利只由 Gameplay 状态决定，不得依赖 Mesh、子节点数量或动画完成回调。
+- 64m × 40m Gameplay Arena 是 Content/Gameplay 事实；Camera 和 Environment 只读取，不能用缩放或视觉平面反向伪造逻辑尺寸。
+- Boss 血条只读取 `currentHp / maximumHp`；UI 不缓存、预测或自行扣除 Boss 生命。
 - Environment Provider 不得创建或修改 Gameplay Collision、Encounter Spawn 或 Route State。
 - 不在旧 `presentation-runtime.ts`、`campaign-ui-runtime.ts` 和 `environment.ts` 中继续增加大段条件分支；迁移后旧路径应停止装配。
 - V2.1 正式路径稳定后，删除无引用的 GLB、V5R、武器、断肢、旧 Boss 和旧技能实现；不能保留隐藏的第二套正式系统。
