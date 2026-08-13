@@ -18,6 +18,7 @@ export interface GeometricVfxRuntime {
   spawnPath(segments: readonly PathSegmentState[], width: number, color?: number, duration?: number): void;
   spawnCut(position: Vec2, direction: Vec2, color?: number): void;
   spawnBurst(position: Vec2, radius: number, color?: number): void;
+  spawnShockwave(position: Vec2, radius: number, color?: number): void;
   spawnShield(position: Vec2): void;
   update(deltaSeconds: number): void;
   dispose(): void;
@@ -176,6 +177,41 @@ export function createGeometricVfx(scene: THREE.Scene): GeometricVfxRuntime {
     });
   }
 
+  function spawnShockwave(position: Vec2, radius: number, color = 0xb5fbff): void {
+    if (disposed) return;
+    const root = new THREE.Group();
+    root.name = "charged-impact-shockwave";
+    root.position.set(position.x, 0.18, position.z);
+    const geometry = new THREE.RingGeometry(0.68, 1, 64);
+    const material = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.84,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+    });
+    const ring = new THREE.Mesh(geometry, material);
+    ring.rotation.x = -Math.PI * 0.5;
+    const innerRing = ring.clone();
+    innerRing.scale.setScalar(0.72);
+    root.add(ring, innerRing);
+    add({
+      root,
+      materials: [material],
+      geometries: [geometry],
+      age: 0,
+      duration: 0.52,
+      update(progress) {
+        const eased = 1 - (1 - progress) ** 3;
+        root.scale.setScalar(0.35 + eased * radius);
+        material.opacity = (1 - progress) * 0.84;
+        root.position.y = 0.18 + progress * 0.32;
+      },
+    });
+  }
+
   function spawnShield(position: Vec2): void {
     if (disposed) return;
     const root = new THREE.Group();
@@ -212,6 +248,7 @@ export function createGeometricVfx(scene: THREE.Scene): GeometricVfxRuntime {
     spawnPath,
     spawnCut,
     spawnBurst,
+    spawnShockwave,
     spawnShield,
     update(deltaSeconds) {
       if (disposed) return;

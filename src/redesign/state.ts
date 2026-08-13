@@ -5,7 +5,7 @@ import type { Vec2 } from "./math";
 import { vec2 } from "./math";
 
 export const FIXED_STEP_MS = 1000 / 120;
-export const STATE_VERSION = 1 as const;
+export const STATE_VERSION = 2 as const;
 
 export type GamePhase = "title" | "combat" | "reward" | "victory" | "defeat";
 export type PlayerAction = "ready" | "charging" | "dashing" | "recovering" | "ultimate-planning" | "dead";
@@ -35,6 +35,7 @@ export interface DashState {
   readonly segments: readonly PathSegmentState[];
   readonly hitRadius: number;
   readonly damage: number;
+  readonly chargePower: number;
   readonly totalDurationMs: number;
   elapsedMs: number;
   resolvedEnemyIds: string[];
@@ -64,6 +65,8 @@ export interface PlayerState extends VerticalBodyState {
   ultimateEnergy: number;
   ultimatePoints: Vec2[];
   ultimatePlanningMs: number;
+  moveInput: Vec2;
+  moveVelocity: Vec2;
 }
 
 export interface EnemyState extends VerticalBodyState {
@@ -171,6 +174,7 @@ export type GameEvent =
   | { readonly type: "run-started"; readonly seed: number }
   | { readonly type: "encounter-started"; readonly encounter: EncounterDefinition }
   | { readonly type: "dash-started"; readonly dash: DashState }
+  | { readonly type: "dash-ended"; readonly kind: DashKind; readonly position: Vec2; readonly hitRadius: number }
   | { readonly type: "dash-reflected"; readonly position: Vec2; readonly normal: Vec2 }
   | { readonly type: "enemy-killed"; readonly enemyId: string; readonly position: Vec2; readonly kind: DashKind }
   | { readonly type: "enemy-split"; readonly enemyId: string; readonly shardIds: readonly string[] }
@@ -215,6 +219,7 @@ export type GameCommand =
   | { readonly type: "begin-primary"; readonly target: Vec2 }
   | { readonly type: "release-primary"; readonly target: Vec2 }
   | { readonly type: "cancel-primary" }
+  | { readonly type: "set-movement"; readonly direction: Vec2 }
   | { readonly type: "start-ultimate" }
   | { readonly type: "add-ultimate-point"; readonly target: Vec2 }
   | { readonly type: "cancel-ultimate" }
@@ -227,6 +232,7 @@ export type GameCommandResult =
   | "charge-started"
   | "dash-started"
   | "charge-cancelled"
+  | "movement-updated"
   | "ultimate-started"
   | "ultimate-point-added"
   | "ultimate-executing"
@@ -287,6 +293,8 @@ export function createPlayer(): PlayerState {
     ultimateEnergy: 0,
     ultimatePoints: [],
     ultimatePlanningMs: 0,
+    moveInput: vec2(0, 0),
+    moveVelocity: vec2(0, 0),
     height: 0.78,
     verticalVelocity: 0,
     gravity: -24,

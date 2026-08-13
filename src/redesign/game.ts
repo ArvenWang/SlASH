@@ -1,11 +1,13 @@
 import {
   BOSS_DASH_DAMAGE,
   BOSS_MAXIMUM_HP,
+  PLAYER_MOVE_SPEED,
   clampToSupportedArena,
   isSupported,
 } from "./config";
 import {
   firstPathIntersection,
+  obstacleRadius,
   planDashPath,
   pointAlongPath,
 } from "./path";
@@ -18,6 +20,7 @@ import {
   advanceVerticalBody,
   launchBody,
   moveToward,
+  separateCircles,
   steerToward,
 } from "./physics";
 import { encounterAt } from "./run";
@@ -60,6 +63,7 @@ import {
   clamp,
   distance,
   distanceSquaredToSegment,
+  length,
   normalize,
   rotate,
   scale,
@@ -82,6 +86,7 @@ const CLEAR_DELAY_MS = 620;
 const PLAYER_INVULNERABILITY_MS = 850;
 const ECHO_DELAY_MS = 400;
 const STORED_PATH_MS = 2_500;
+const CHARGED_WIDTH_MULTIPLIER = 1.65;
 
 export function createGame(seed = Math.floor(Math.random() * 0x7fffffff)): GameState {
   return createInitialState(seed);
@@ -144,6 +149,12 @@ export function dispatch(state: GameState, command: GameCommand): GameCommandRes
     setPlayerReady(state);
     return "charge-cancelled";
   }
+  if (command.type === "set-movement") {
+    if (!Number.isFinite(command.direction.x) || !Number.isFinite(command.direction.z)) return "ignored";
+    const direction = length(command.direction) > 1 ? normalize(command.direction) : { ...command.direction };
+    state.player.moveInput = direction;
+    return "movement-updated";
+  }
   if (command.type === "start-ultimate") {
     if (state.player.action !== "ready" || state.player.ultimateEnergy < 100) return "ignored";
     state.player.action = "ultimate-planning";
@@ -187,6 +198,7 @@ export function step(state: GameState, deltaMs = FIXED_STEP_MS): void {
   state.elapsedMs += safeDeltaMs;
   updatePlayerFacing(state);
   advancePlayer(state, safeDeltaMs, deltaSeconds);
+  updatePlayerFacing(state);
   if (state.phase === "combat") {
     state.run.encounterElapsedMs += safeDeltaMs;
     advancePendingSpawns(state);
@@ -308,6 +320,8 @@ function advancePlayer(state: GameState, deltaMs: number, deltaSeconds: number):
     if (player.recoveryMs <= 0) setPlayerReady(state);
   }
 
+  advancePlayerMovement(state, deltaSeconds);
+
   advanceVerticalBody(player, player.position, deltaSeconds, {
     targetHeight: PLAYER_HOVER_HEIGHT,
     spring: 52,
@@ -321,15 +335,50 @@ function advancePlayer(state: GameState, deltaMs: number, deltaSeconds: number):
   }
 }
 
+function advancePlayerMovement(state: GameState, deltaSeconds: number): void {
+  const player = state.player;
+  const canMove = player.action === "ready" || player.action === "charging" || player.action === "recovering";
+  if (!canMove || length(player.moveInput) <= EPSILON) {
+    player.moveVelocity = { x: 0, z: 0 };
+    return;
+  }
+  const desired = canMove ? scale(player.moveInput, PLAYER_MOVE_SPEED) : { x: 0, z: 0 };
+  const response = 1 - Math.exp(-deltaSeconds * 13);
+  player.moveVelocity = {
+    x: player.moveVelocity.x + (desired.x - player.moveVelocity.x) * response,
+    z: player.moveVelocity.z + (desired.z - player.moveVelocity.z) * response,
+  };
+  if (length(player.moveVelocity) < 0.015) player.moveVelocity = { x: 0, z: 0 };
+  if (length(player.moveVelocity) <= EPSILON) return;
+  let next = clampToSupportedArena(
+    add(player.position, scale(player.moveVelocity, deltaSeconds)),
+    player.radius,
+  );
+  for (const obstacle of state.obstacles) {
+    if (obstacle.archetype === "hazard-prism") continue;
+    next = separateCircles(next, player.radius, obstacle.position, obstacleRadius(obstacle.archetype));
+  }
+  player.position = clampToSupportedArena(next, player.radius);
+}
+
 function startDash(state: GameState, kind: "basic" | "charged", target: Vec2): void {
+  const power = chargeProgress(state);
   const path = planDashPath(
     state.player.position,
     target,
     state.player.radius,
     state.run.build,
     state.obstacles,
+    1 + (CHARGED_WIDTH_MULTIPLIER - 1) * power,
   );
-  beginDash(state, kind, path.segments, path.hitRadius, kind === "charged" ? BOSS_DASH_DAMAGE.charged : BOSS_DASH_DAMAGE.basic);
+  beginDash(
+    state,
+    kind,
+    path.segments,
+    path.hitRadius,
+    kind === "charged" ? BOSS_DASH_DAMAGE.charged : BOSS_DASH_DAMAGE.basic,
+    power,
+  );
 }
 
 function startUltimateDash(state: GameState): void {
@@ -354,6 +403,7 @@ function startUltimateDash(state: GameState): void {
     segments,
     1.15 * (skillRank(state.run.build, "wide-slash") > 0 ? 1.12 : 1),
     BOSS_DASH_DAMAGE.ultimate,
+    1,
   );
 }
 
@@ -363,6 +413,7 @@ function beginDash(
   segments: readonly PathSegmentState[],
   hitRadius: number,
   damage: number,
+  chargePower: number,
 ): void {
   const totalLength = pathLength(segments);
   const speed = kind === "charged" ? CHARGED_DASH_SPEED : kind === "ultimate" ? ULTIMATE_DASH_SPEED : BASIC_DASH_SPEED;
@@ -376,6 +427,7 @@ function beginDash(
     segments: segments.map(copySegment),
     hitRadius,
     damage,
+    chargePower,
     totalDurationMs: Math.max(90, totalLength / speed * 1_000),
     elapsedMs: 0,
     resolvedEnemyIds: [],
@@ -390,6 +442,7 @@ function beginDash(
   state.player.actionElapsedMs = 0;
   state.player.chargeStartedTick = null;
   state.player.chargeTarget = null;
+  state.player.moveVelocity = { x: 0, z: 0 };
   emit(state, { type: "dash-started", dash: structuredClone(dash) });
   for (const segment of dash.segments) {
     if (segment.reflectionPoint && segment.reflectionNormal) {
@@ -443,6 +496,7 @@ function advanceDash(state: GameState, deltaMs: number): void {
       ? ULTIMATE_RECOVERY_MS
       : BASIC_RECOVERY_MS;
   const recovery = baseRecovery * (1 - killMomentumReduction(state.run.build, dash.killCount));
+  emit(state, { type: "dash-ended", kind: dash.kind, position: { ...state.player.position }, hitRadius: dash.hitRadius });
   state.player.dash = null;
   state.player.action = "recovering";
   state.player.actionElapsedMs = 0;
@@ -1079,7 +1133,7 @@ function copySegment(segment: PathSegmentState): PathSegmentState {
 export function renderGameToText(state: GameState): string {
   const encounter = state.phase === "title" ? null : encounterAt(state.run.encounterIndex);
   return JSON.stringify({
-    coordinateSystem: "x right, z down-screen, height up; arena x -32..32 z -20..20",
+    coordinateSystem: "x right, z down-screen, height up; continuous arena x -120..120 z -72..72",
     phase: state.phase,
     encounter: encounter ? {
       id: encounter.id,
@@ -1097,9 +1151,14 @@ export function renderGameToText(state: GameState): string {
       action: state.player.action,
       hp: state.player.hp,
       energy: round(state.player.ultimateEnergy),
+      movement: {
+        input: state.player.moveInput,
+        velocity: { x: round(state.player.moveVelocity.x), z: round(state.player.moveVelocity.z) },
+      },
       dash: state.player.dash ? {
         kind: state.player.dash.kind,
         hitRadius: round(state.player.dash.hitRadius),
+        chargePower: round(state.player.dash.chargePower),
         segments: state.player.dash.segments,
       } : null,
     },
@@ -1150,7 +1209,13 @@ export function previewPrimaryPath(state: GameState, target = state.player.aimTa
     state.player.radius,
     state.run.build,
     state.obstacles,
+    1 + (CHARGED_WIDTH_MULTIPLIER - 1) * chargeProgress(state),
   );
+}
+
+export function chargeProgress(state: GameState): number {
+  if (state.player.action !== "charging") return 0;
+  return clamp(state.player.actionElapsedMs / CHARGE_THRESHOLD_MS, 0, 1);
 }
 
 export function createBossRegressionState(archetype: BossArchetype): GameState {
@@ -1189,6 +1254,7 @@ export function resolveBossRegressionContact(
     }],
     hitRadius: 1,
     damage: BOSS_DASH_DAMAGE[kind],
+    chargePower: kind === "basic" ? 0 : 1,
     totalDurationMs: 100,
     elapsedMs: 0,
     resolvedEnemyIds: [],

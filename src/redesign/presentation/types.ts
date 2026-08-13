@@ -6,6 +6,8 @@ export interface PlayerVisual {
   readonly shell: THREE.Mesh;
   readonly core: THREE.Mesh;
   readonly wake: THREE.Mesh;
+  readonly shockShell: THREE.Mesh;
+  readonly shockCone: THREE.Mesh;
 }
 
 export interface EnemyVisual {

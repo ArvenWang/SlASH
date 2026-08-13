@@ -78,7 +78,7 @@ describe("Redesign V2.1 gameplay facts", () => {
     expect(state.player.height).not.toBe(initialHeight);
     expect(state.player.supported).toBe(true);
 
-    state.player.position = { x: 40, z: 0 };
+    state.player.position = { x: 130, z: 0 };
     const beforeFall = state.player.height;
     advanceTicks(state, 60);
     expect(state.player.supported).toBe(false);
@@ -99,6 +99,38 @@ describe("Redesign V2.1 gameplay facts", () => {
     step(state);
     expect(state.player.facing.x).toBeLessThan(0);
     expect(state.player.facing.z).toBeGreaterThan(0);
+  });
+
+  test("moves with normalized WASD input at walking speed without changing pointer facing", () => {
+    const state = createGame(33);
+    dispatch(state, { type: "start-run" });
+    dispatch(state, { type: "aim", target: { x: -12, z: 20 } });
+    const aimTarget = { ...state.player.aimTarget };
+    expect(dispatch(state, { type: "set-movement", direction: { x: 1, z: 1 } })).toBe("movement-updated");
+    advanceTicks(state, 60);
+    expect(Math.hypot(state.player.position.x, state.player.position.z)).toBeGreaterThan(2);
+    expect(Math.hypot(state.player.position.x, state.player.position.z)).toBeLessThan(3.3);
+    const expectedFacing = Math.atan2(
+      aimTarget.x - state.player.position.x,
+      aimTarget.z - state.player.position.z,
+    );
+    expect(Math.atan2(state.player.facing.x, state.player.facing.z)).toBeCloseTo(expectedFacing, 6);
+    expect(Math.hypot(state.player.moveVelocity.x, state.player.moveVelocity.z)).toBeLessThanOrEqual(6.41);
+    dispatch(state, { type: "set-movement", direction: { x: 0, z: 0 } });
+    advanceTicks(state, 1);
+    expect(Math.hypot(state.player.moveVelocity.x, state.player.moveVelocity.z)).toBe(0);
+  });
+
+  test("grows charged preview and execution width from the same value", () => {
+    const state = createGame(35);
+    dispatch(state, { type: "start-run" });
+    const target = { x: 18, z: 0 };
+    dispatch(state, { type: "begin-primary", target });
+    advanceTicks(state, Math.ceil(CHARGE_THRESHOLD_MS / (1_000 / 120)));
+    expect(dispatch(state, { type: "release-primary", target })).toBe("dash-started");
+    expect(state.player.dash?.kind).toBe("charged");
+    expect(state.player.dash?.chargePower).toBe(1);
+    expect(state.player.dash?.hitRadius).toBeCloseTo(0.95 * 1.65, 6);
   });
 
   test("bosses reject one-hit kills and apply basic, charged and ultimate damage only in core windows", () => {

@@ -8,15 +8,16 @@ export interface ArenaBounds {
 }
 
 export const PLAYABLE_ARENA: ArenaBounds = Object.freeze({
-  minX: -32,
-  maxX: 32,
-  minZ: -20,
-  maxZ: 20,
+  minX: -120,
+  maxX: 120,
+  minZ: -72,
+  maxZ: 72,
 });
 
-export const PLAYABLE_ARENA_SIZE = Object.freeze({ width: 64, depth: 40 });
-export const VISUAL_PLATFORM_SIZE = Object.freeze({ width: 768, depth: 512 });
+export const PLAYABLE_ARENA_SIZE = Object.freeze({ width: 240, depth: 144 });
+export const VISUAL_PLATFORM_SIZE = Object.freeze({ width: 360, depth: 216 });
 export const ARENA_SAFE_MARGIN = 2.2;
+export const PLAYER_MOVE_SPEED = 6.4;
 
 export const BOSS_MAXIMUM_HP = Object.freeze({
   "prism-hound": 8,

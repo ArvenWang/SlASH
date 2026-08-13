@@ -6,7 +6,7 @@ import { SKILL_POOL_VERSION, createRewardOffer, validateBuild } from "./skills";
 
 export const SAVE_STORAGE_KEY = "project-slash:run:v2.1";
 export const SAVE_BACKUP_PREFIX = "project-slash:run:v2.1:backup";
-export const SAVE_SCHEMA_VERSION = 1 as const;
+export const SAVE_SCHEMA_VERSION = 2 as const;
 
 export interface SaveEnvelope {
   readonly schemaVersion: typeof SAVE_SCHEMA_VERSION;
@@ -117,6 +117,9 @@ function validateSavedState(value: unknown): asserts value is GameState {
   if (state.run.selectedUpgradeIds.join("|") !== state.run.build.selectedUpgradeIds.join("|")) throw new Error("Build history mismatch.");
   if (!isRecord(state.player) || !Array.isArray(state.enemies) || !Array.isArray(state.projectiles) || !Array.isArray(state.obstacles)) {
     throw new Error("Invalid combat state.");
+  }
+  if (![state.player.moveInput?.x, state.player.moveInput?.z, state.player.moveVelocity?.x, state.player.moveVelocity?.z].every(Number.isFinite)) {
+    throw new Error("Invalid player movement state.");
   }
   for (const body of [state.player, ...state.enemies, ...state.projectiles, ...(state.boss ? [state.boss, ...state.boss.parts] : [])]) {
     if (![body.height, body.verticalVelocity, body.gravity].every(Number.isFinite)

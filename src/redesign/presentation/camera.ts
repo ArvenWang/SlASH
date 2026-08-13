@@ -25,10 +25,8 @@ export function computeCameraFrame(
   const safeHeight = Math.max(1, height);
   const aspect = safeWidth / safeHeight;
   const portrait = aspect < 0.72;
-  const fov = portrait ? 46 : 36;
-  const framedBounds = portrait
-    ? portraitBounds(focus)
-    : scaleBounds(PLAYABLE_ARENA, 1.06);
+  const fov = portrait ? 46 : 38;
+  const framedBounds = followBounds(focus, portrait);
   const target = [
     (framedBounds.minX + framedBounds.maxX) * 0.5,
     0,
@@ -66,24 +64,11 @@ export function computeCameraFrame(
   };
 }
 
-function portraitBounds(focus: Vec2): ArenaBounds {
-  const halfWidth = 22;
-  const halfDepth = 16;
+function followBounds(focus: Vec2, portrait: boolean): ArenaBounds {
+  const halfWidth = portrait ? 22 : 34;
+  const halfDepth = portrait ? 16 : 21;
   const centerX = clamp(focus.x, PLAYABLE_ARENA.minX + halfWidth, PLAYABLE_ARENA.maxX - halfWidth);
   const centerZ = clamp(focus.z, PLAYABLE_ARENA.minZ + halfDepth, PLAYABLE_ARENA.maxZ - halfDepth);
-  return {
-    minX: centerX - halfWidth,
-    maxX: centerX + halfWidth,
-    minZ: centerZ - halfDepth,
-    maxZ: centerZ + halfDepth,
-  };
-}
-
-function scaleBounds(bounds: ArenaBounds, factor: number): ArenaBounds {
-  const centerX = (bounds.minX + bounds.maxX) * 0.5;
-  const centerZ = (bounds.minZ + bounds.maxZ) * 0.5;
-  const halfWidth = (bounds.maxX - bounds.minX) * factor * 0.5;
-  const halfDepth = (bounds.maxZ - bounds.minZ) * factor * 0.5;
   return {
     minX: centerX - halfWidth,
     maxX: centerX + halfWidth,

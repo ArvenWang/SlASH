@@ -118,28 +118,30 @@ export function createPrimitiveVisualProvider(): VisualProvider {
     shield: new THREE.IcosahedronGeometry(1, 1),
     projectile: new RoundedBoxGeometry(0.38, 0.32, 1.25, 2, 0.09),
     groundRing: new THREE.RingGeometry(0.72, 0.88, 40),
+    shockRing: new THREE.TorusGeometry(1.15, 0.06, 8, 36),
+    shockCone: new THREE.ConeGeometry(1.2, 3.8, 28, 1, true),
   };
 
   const material = (color: number, roughness: number, metalness: number, emissive = 0, emissiveIntensity = 0): THREE.MeshStandardMaterial => (
     new THREE.MeshStandardMaterial({ color, roughness, metalness, emissive, emissiveIntensity })
   );
   const materials = {
-    heroBright: material(0xf4ffff, 0.2, 0.46, 0x5abdc2, 0.62),
-    hero: material(HERO_BASE, 0.28, 0.65, 0x25565d, 0.72),
-    heroMid: material(0x789ba0, 0.38, 0.62, 0x1b3b40, 0.52),
-    heroDark: material(0x233a3f, 0.5, 0.45, 0x10272a, 0.4),
-    heroCore: material(HERO_CORE, 0.15, 0.1, HERO_CORE, 2.8),
-    hostile: material(HOSTILE_BASE, 0.36, 0.52, 0x4b120a, 0.4),
+    heroBright: material(0xe8f4f4, 0.42, 0.28, 0x305b5f, 0.18),
+    hero: material(HERO_BASE, 0.48, 0.32, 0x1d3f43, 0.24),
+    heroMid: material(0x789ba0, 0.58, 0.28, 0x172f33, 0.15),
+    heroDark: material(0x233a3f, 0.7, 0.18, 0x10272a, 0.1),
+    heroCore: material(HERO_CORE, 0.34, 0.06, HERO_CORE, 1.15),
+    hostile: material(HOSTILE_BASE, 0.52, 0.26, 0x4b120a, 0.16),
     hostileDark: material(HOSTILE_DARK, 0.62, 0.25),
-    hostileCore: material(HOSTILE_CORE, 0.18, 0.12, HOSTILE_CORE, 2.5),
-    boss: material(0x6d2530, 0.29, 0.7, 0x3d0710, 0.5),
+    hostileCore: material(HOSTILE_CORE, 0.38, 0.06, HOSTILE_CORE, 1.05),
+    boss: material(0x6d2530, 0.5, 0.32, 0x3d0710, 0.18),
     bossDark: material(0x171014, 0.52, 0.58),
-    bossCore: material(BOSS_CORE, 0.14, 0.12, BOSS_CORE, 3.2),
+    bossCore: material(BOSS_CORE, 0.34, 0.08, BOSS_CORE, 1.25),
     obstacle: material(0x28343a, 0.74, 0.36),
-    reflector: material(0x1e5962, 0.24, 0.72, REFLECTOR, 1.3),
-    hazard: material(0x5b2619, 0.42, 0.48, 0xff4c26, 1.1),
-    projectile: material(0xff7b4f, 0.18, 0.24, 0xff4a28, 3.6),
-    bossProjectile: material(0xffd05c, 0.16, 0.2, 0xffa32f, 4.2),
+    reflector: material(0x1e5962, 0.45, 0.38, REFLECTOR, 0.52),
+    hazard: material(0x5b2619, 0.56, 0.24, 0xff4c26, 0.48),
+    projectile: material(0xff7b4f, 0.4, 0.08, 0xff4a28, 1.45),
+    bossProjectile: material(0xffd05c, 0.38, 0.08, 0xffa32f, 1.65),
     telegraph: new THREE.MeshBasicMaterial({
       color: 0xff6044,
       transparent: true,
@@ -154,6 +156,24 @@ export function createPrimitiveVisualProvider(): VisualProvider {
       opacity: 0.3,
       depthWrite: false,
       side: THREE.DoubleSide,
+      toneMapped: false,
+    }),
+    shock: new THREE.MeshBasicMaterial({
+      color: 0xb9fbff,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    }),
+    shockCone: new THREE.MeshBasicMaterial({
+      color: 0x9ff8ff,
+      transparent: true,
+      opacity: 0.16,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      wireframe: true,
       toneMapped: false,
     }),
     shield: new THREE.MeshBasicMaterial({
@@ -220,8 +240,21 @@ export function createPrimitiveVisualProvider(): VisualProvider {
     wake.rotation.x = Math.PI * 0.5;
     wake.position.set(0, -0.16, -1.28);
     wake.visible = false;
-    root.add(shell, core, wake);
-    return { root, shell, core, wake };
+    const shockShell = mesh(geometries.shockRing, materials.shock);
+    shockShell.name = "charged-dash-shock-shell";
+    shockShell.position.z = -0.24;
+    shockShell.castShadow = false;
+    shockShell.receiveShadow = false;
+    shockShell.visible = false;
+    const shockCone = mesh(geometries.shockCone, materials.shockCone);
+    shockCone.name = "charged-dash-pressure-cone";
+    shockCone.rotation.x = Math.PI * 0.5;
+    shockCone.position.z = -1.05;
+    shockCone.castShadow = false;
+    shockCone.receiveShadow = false;
+    shockCone.visible = false;
+    root.add(shell, core, wake, shockShell, shockCone);
+    return { root, shell, core, wake, shockShell, shockCone };
   }
 
   function createEnemy(archetype: EnemyArchetype): EnemyVisual {

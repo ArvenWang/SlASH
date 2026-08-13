@@ -1,7 +1,8 @@
 # Redesign V2.1 Architecture Boundaries
 
-> 状态：当前重构边界  
-> 更新日期：2026-08-13  
+> 状态：当前重构边界
+>
+> 更新日期：2026-08-14
 > 目标：保留确定性战斗内核，把五技能短局、几何角色、敌人/Boss、垂直物理和特效分别做成可替换模块，并彻底退出旧双轨路径。
 
 ## 1. 目标数据流
@@ -18,7 +19,7 @@ Seed + Run State
 Gameplay State / Events
   → Presentation Registry
       → Character Provider（主角 / 敌人 / Boss 几何体，未来可换模型）
-      → Environment Provider（V2 干净高台，未来可换场景）
+      → Environment Provider（V2 连续场地，未来可换场景）
       → VFX Provider（电光切割 / 几何碎片）
       → HUD / Reward Presenter
   → Three.js Renderer
@@ -33,7 +34,7 @@ Gameplay State / Events
 | Run Director | 后台选择下一节点，维持节奏、确定性和 Boss 可达 | 向玩家展示地图或让玩家选路 |
 | Campaign Orchestrator | Title / Combat / Upgrade Choice / Victory / Defeat 生命周期 | 具体技能算法、Three.js、场景 Mesh |
 | Campaign UI | 极简页面与输入转译 | 技能合法性、随机结果、选关逻辑 |
-| Environment Provider | 创建、更新、释放视觉高台和场景材质 | Arena 碰撞、Spawn、过关规则 |
+| Environment Provider | 创建、更新、释放连续视觉地表和场景材质 | Arena 碰撞、Spawn、过关规则 |
 | Character Provider | 创建可替换外观，消费标准运动输入 | 改写 Gameplay 位置、命中或死亡 |
 | Enemy Gameplay | 一击必杀、AI、射击、分裂、旋转和砸地 | Mesh、材质、骨骼和 Boss 生命 |
 | Boss Gameplay | 多段生命、伤害表、阶段、核心窗口和立即胜利 | Mesh、血条 DOM、子节点数量和动画回调 |
@@ -68,7 +69,7 @@ src/presentation/characters/
 
 src/presentation/environments/
   environment-provider.ts       # 稳定 Provider 合同
-  clean-arena-provider.ts       # V2 高台实现
+  clean-arena-provider.ts       # V2 连续场地实现
 
 src/game/physics/
   vertical-physics-system.ts    # Player / Enemy / Boss 统一真实重力
@@ -100,7 +101,7 @@ Gameplay State/Event → Presentation
 - Character Provider 不得依赖具体 Skill ID；只消费标准化状态和表现事件。
 - 可视引导路径、实际 Dash 路径和 Replay 路径必须来自同一个 Gameplay Path Result，不得分别计算。
 - Boss 的核心可攻击性和胜利只由 Gameplay 状态决定，不得依赖 Mesh、子节点数量或动画完成回调。
-- 64m × 40m Gameplay Arena 是 Content/Gameplay 事实；Camera 和 Environment 只读取，不能用缩放或视觉平面反向伪造逻辑尺寸。
+- 240m × 144m Gameplay Arena 是 Content/Gameplay 事实；Camera 和 Environment 只读取，不能用缩放或视觉平面反向伪造逻辑尺寸。
 - Boss 血条只读取 `currentHp / maximumHp`；UI 不缓存、预测或自行扣除 Boss 生命。
 - Environment Provider 不得创建或修改 Gameplay Collision、Encounter Spawn 或 Route State。
 - 不在旧 `presentation-runtime.ts`、`campaign-ui-runtime.ts` 和 `environment.ts` 中继续增加大段条件分支；迁移后旧路径应停止装配。
@@ -131,6 +132,6 @@ Gameplay State/Event → Presentation
 
 - 替换技能卡样式不修改 Reward Draft、Skill Hook 或 Replay。
 - 替换三角形/方形/多面体外观不修改 Player、Enemy、Boss、Ability 或 Encounter 规则。
-- 替换高台材质或完整 Environment Provider 不修改 Arena、Spawn 或 Collision。
+- 替换连续地表材质或完整 Environment Provider 不修改 Arena、Spawn 或 Collision。
 - 替换电光/碎片样式不修改 Dash Path、命中宽度、伤害或 Replay。
 - 未来重新使用 GLB 时，只新增 Character Provider 和 Registry 映射；不得再次把骨架、武器插槽或 Clip 名写进 Gameplay。

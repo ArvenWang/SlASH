@@ -83,7 +83,7 @@ describe("V2.1 shared dash path", () => {
   test("clips an outside pointer along its original direction at the support edge", () => {
     const path = planDashPath(
       { x: 0, z: 0 },
-      { x: 100, z: 25 },
+      { x: 200, z: 50 },
       0.72,
       build([]),
       [],
@@ -139,33 +139,25 @@ describe("V2.1 modular geometric presentation", () => {
     provider.dispose();
   });
 
-  test("uses a permanently distinct raised deck and only adds glow near the player", () => {
+  test("uses one continuous field without a raised deck, lip or boundary glow", () => {
     const scene = new THREE.Scene();
     const environment = createGeometricArena(scene);
-    const external = environment.root.getObjectByName("external-environment-field") as THREE.Mesh<THREE.BoxGeometry>;
-    const platform = environment.root.getObjectByName("open-arena-platform") as THREE.Mesh<THREE.BoxGeometry>;
-    expect(external.geometry.parameters.width).toBe(VISUAL_PLATFORM_SIZE.width);
-    expect(external.geometry.parameters.depth).toBe(VISUAL_PLATFORM_SIZE.depth);
-    expect(platform.geometry.parameters.width).toBe(64);
-    expect(platform.geometry.parameters.depth).toBe(40);
-    expect(platform.position.y).toBeGreaterThan(external.position.y);
-    expect((platform.material as THREE.MeshStandardMaterial).color.getHex()).not.toBe(
-      (external.material as THREE.MeshStandardMaterial).color.getHex(),
-    );
+    const field = environment.root.getObjectByName("continuous-arena-field") as THREE.Mesh<THREE.BoxGeometry>;
+    expect(field.geometry.parameters.width).toBe(VISUAL_PLATFORM_SIZE.width);
+    expect(field.geometry.parameters.depth).toBe(VISUAL_PLATFORM_SIZE.depth);
+    expect(environment.root.getObjectByName("arena-edge-lip")).toBeUndefined();
+    expect(environment.root.children.some((object) => object.name.startsWith("proximity-edge-"))).toBe(false);
     environment.update(0, 0, 0);
-    const edges = environment.root.children.filter((object) => object.name.startsWith("proximity-edge-")) as THREE.Mesh[];
-    expect(edges).toHaveLength(4);
-    expect(edges.every((edge) => (edge.material as THREE.MeshBasicMaterial).opacity === 0)).toBe(true);
-    environment.update(0.2, PLAYABLE_ARENA.minX + 1, 0);
-    expect(edges.filter((edge) => (edge.material as THREE.MeshBasicMaterial).opacity > 0)).toHaveLength(1);
     environment.dispose();
     expect(environment.root.parent).toBeNull();
   });
 
-  test("frames the real 64 by 40 arena on desktop and follows a large arena on portrait", () => {
+  test("uses a local follow camera on desktop and portrait instead of framing the whole field", () => {
     const desktop = computeCameraFrame(1920, 1080, { x: 0, z: 0 });
-    expect(desktop.framedBounds.maxX - desktop.framedBounds.minX).toBeGreaterThanOrEqual(64);
-    expect(desktop.framedBounds.maxZ - desktop.framedBounds.minZ).toBeGreaterThanOrEqual(40);
+    expect(desktop.framedBounds.maxX - desktop.framedBounds.minX).toBe(68);
+    expect(desktop.framedBounds.maxZ - desktop.framedBounds.minZ).toBe(42);
+    const desktopMoved = computeCameraFrame(1920, 1080, { x: 40, z: 20 });
+    expect(desktop.target).not.toEqual(desktopMoved.target);
     const portraitCenter = computeCameraFrame(390, 844, { x: 0, z: 0 });
     const portraitRight = computeCameraFrame(390, 844, { x: 18, z: 0 });
     expect(portraitCenter.target).not.toEqual(portraitRight.target);

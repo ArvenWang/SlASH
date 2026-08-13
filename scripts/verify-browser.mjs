@@ -50,13 +50,32 @@ try {
       height: document.documentElement.scrollHeight,
       viewportHeight: innerHeight,
     }));
-    if (combat.phase !== "combat" || combat.coordinateSystem !== "x right, z down-screen, height up; arena x -32..32 z -20..20") {
+    if (combat.phase !== "combat" || combat.coordinateSystem !== "x right, z down-screen, height up; continuous arena x -120..120 z -72..72") {
       issues.push("combat-state-boundary");
     }
     if (presentation.providerId !== "geometric-forms-v2.1" || presentation.playerKind !== "cursor-craft") {
       issues.push("presentation-provider-boundary");
     }
+    if (presentation.environmentId !== "continuous-geometric-field-v2.2") issues.push("continuous-field-boundary");
     if (presentation.previewSegmentCount < 1 || presentation.previewWidth < 0.95) issues.push("dash-preview-boundary");
+    if (viewport.name === "desktop") {
+      const beforeMovement = combat.player.position;
+      await page.keyboard.down("KeyW");
+      await page.keyboard.down("KeyD");
+      await page.waitForTimeout(650);
+      await page.keyboard.up("KeyD");
+      await page.keyboard.up("KeyW");
+      await page.waitForTimeout(80);
+      const afterMovement = JSON.parse(await page.evaluate(() => window.render_game_to_text()));
+      const movementDistance = Math.hypot(
+        afterMovement.player.position.x - beforeMovement.x,
+        afterMovement.player.position.z - beforeMovement.z,
+      );
+      if (movementDistance < 2.4 || movementDistance > 5.2) issues.push("wasd-movement-boundary");
+      if (Math.hypot(afterMovement.player.movement.velocity.x, afterMovement.player.movement.velocity.z) > 0.1) {
+        issues.push("wasd-release-boundary");
+      }
+    }
     if (overflow.width > overflow.viewport || overflow.height > overflow.viewportHeight) issues.push("page-overflow");
     if (await page.locator('.skill-tree, .run-map, .route-card').count() > 0) issues.push("retired-ui-present");
     await page.screenshot({ path: `${outputDir}/${viewport.name}.png`, fullPage: true });

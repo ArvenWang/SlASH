@@ -37,6 +37,7 @@ export function bootstrapRedesignApplication(): void {
   const presentation = createPresentationRuntime(canvas, state);
   let simulationEnabled = true;
   let pointerDown = false;
+  const movementKeys = new Set<string>();
   let lastTime = performance.now();
   let lastSavedPhase = state.phase;
 
@@ -140,7 +141,11 @@ export function bootstrapRedesignApplication(): void {
     dispatchCommand({ type: "cancel-primary" });
   };
   const onKeyDown = (event: KeyboardEvent): void => {
-    if (event.code === "Space") {
+    if (["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight"].includes(event.code)) {
+      event.preventDefault();
+      movementKeys.add(event.code);
+      dispatchMovement();
+    } else if (event.code === "Space") {
       event.preventDefault();
       if (state.player.action === "ultimate-planning") dispatchCommand({ type: "cancel-ultimate" });
       else dispatchCommand({ type: "start-ultimate" });
@@ -153,6 +158,27 @@ export function bootstrapRedesignApplication(): void {
         .finally(() => presentation.resize(state));
     }
   };
+  const onKeyUp = (event: KeyboardEvent): void => {
+    if (!["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight"].includes(event.code)) return;
+    event.preventDefault();
+    movementKeys.delete(event.code);
+    dispatchMovement();
+  };
+  const clearMovement = (): void => {
+    movementKeys.clear();
+    dispatch(state, { type: "set-movement", direction: { x: 0, z: 0 } });
+  };
+  const dispatchMovement = (): void => {
+    const forward = (movementKeys.has("KeyW") || movementKeys.has("ArrowUp") ? 1 : 0)
+      - (movementKeys.has("KeyS") || movementKeys.has("ArrowDown") ? 1 : 0);
+    const right = (movementKeys.has("KeyD") || movementKeys.has("ArrowRight") ? 1 : 0)
+      - (movementKeys.has("KeyA") || movementKeys.has("ArrowLeft") ? 1 : 0);
+    const direction = {
+      x: forward * -0.565 + right * 0.825,
+      z: forward * -0.825 + right * -0.565,
+    };
+    dispatch(state, { type: "set-movement", direction });
+  };
   const onContextMenu = (event: MouseEvent): void => event.preventDefault();
   const onResize = (): void => presentation.resize(state);
   canvas.addEventListener("pointermove", onPointerMove);
@@ -161,6 +187,8 @@ export function bootstrapRedesignApplication(): void {
   canvas.addEventListener("pointercancel", onPointerCancel);
   canvas.addEventListener("contextmenu", onContextMenu);
   window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("keyup", onKeyUp);
+  window.addEventListener("blur", clearMovement);
   window.addEventListener("resize", onResize);
   touchUltimate.addEventListener("click", () => dispatchCommand({ type: "start-ultimate" }));
   touchCancel.addEventListener("click", () => dispatchCommand({ type: "cancel-ultimate" }));

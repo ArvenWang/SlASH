@@ -52,9 +52,10 @@ describe("Redesign V2.1 compact run", () => {
     ]);
   });
 
-  test("uses a real 64 by 40 gameplay arena instead of a camera-only enlargement", () => {
-    expect(PLAYABLE_ARENA).toEqual({ minX: -32, maxX: 32, minZ: -20, maxZ: 20 });
-    expect(PLAYABLE_ARENA_SIZE.width * PLAYABLE_ARENA_SIZE.depth).toBeGreaterThanOrEqual(40 * 25 * 2.5);
+  test("uses a broad continuous gameplay field instead of a central framed deck", () => {
+    expect(PLAYABLE_ARENA).toEqual({ minX: -120, maxX: 120, minZ: -72, maxZ: 72 });
+    expect(PLAYABLE_ARENA_SIZE).toEqual({ width: 240, depth: 144 });
+    expect(PLAYABLE_ARENA_SIZE.width * PLAYABLE_ARENA_SIZE.depth).toBeGreaterThanOrEqual(64 * 40 * 10);
     expect(VISUAL_PLATFORM_SIZE.width).toBeGreaterThan(PLAYABLE_ARENA_SIZE.width);
     expect(VISUAL_PLATFORM_SIZE.depth).toBeGreaterThan(PLAYABLE_ARENA_SIZE.depth);
     const spawns = STANDARD_RUN.flatMap((definition) => definition.enemies.map((spawn) => spawn.position));

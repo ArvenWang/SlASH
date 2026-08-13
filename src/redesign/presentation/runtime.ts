@@ -3,9 +3,10 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { GameEvent, GameState, PathSegmentState } from "../state";
 import { distance, normalize, subtract } from "../math";
-import { previewPrimaryPath } from "../game";
+import { chargeProgress, previewPrimaryPath } from "../game";
 import { computeCameraFrame } from "./camera";
 import { createGeometricArena } from "./environment-provider";
 import { createPrimitiveVisualProvider } from "./primitive-provider";
@@ -43,19 +44,59 @@ export interface PresentationRuntime {
 interface PreviewSegmentVisual {
   readonly mesh: THREE.Mesh;
   readonly geometry: THREE.PlaneGeometry;
-  readonly material: THREE.MeshBasicMaterial;
+  readonly material: THREE.ShaderMaterial;
 }
 
-function createPreviewSegment(): PreviewSegmentVisual {
+function createPreviewSegment(color = 0x8df4ff): PreviewSegmentVisual {
   const geometry = new THREE.PlaneGeometry(1, 1, 1, 1);
-  const material = new THREE.MeshBasicMaterial({
-    color: 0x8df4ff,
+  const material = new THREE.ShaderMaterial({
     transparent: true,
-    opacity: 0.18,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
     side: THREE.DoubleSide,
     toneMapped: false,
+    uniforms: {
+      uColor: { value: new THREE.Color(color) },
+      uTime: { value: 0 },
+      uCharge: { value: 0 },
+      uOpacity: { value: 0.36 },
+      uLength: { value: 1 },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      varying vec2 vUv;
+      uniform vec3 uColor;
+      uniform float uTime;
+      uniform float uCharge;
+      uniform float uOpacity;
+      uniform float uLength;
+      float chevron(vec2 uv) {
+        vec2 cell = vec2(fract(uv.x), uv.y);
+        float arm = abs(cell.y - 0.5) - max(0.0, 0.72 - cell.x) * 0.62;
+        float band = 1.0 - smoothstep(0.025, 0.075, abs(arm));
+        float clipRear = smoothstep(0.08, 0.2, cell.x);
+        float clipFront = 1.0 - smoothstep(0.72, 0.9, cell.x);
+        return band * clipRear * clipFront;
+      }
+      void main() {
+        float edgeFade = smoothstep(0.0, 0.14, vUv.y) * smoothstep(0.0, 0.14, 1.0 - vUv.y);
+        float head = smoothstep(0.72, 0.92, vUv.x);
+        float arrowMask = smoothstep(0.5 - (1.0 - vUv.x) * 0.48, 0.5, vUv.y)
+          * (1.0 - smoothstep(0.5, 0.5 + (1.0 - vUv.x) * 0.48, vUv.y));
+        float flowX = vUv.x * max(2.0, uLength / 3.2) - uTime * (1.7 + uCharge * 1.4);
+        float flow = chevron(vec2(flowX, vUv.y));
+        float base = (0.36 + uCharge * 0.18) * edgeFade;
+        float alpha = (base + flow * (0.72 + uCharge * 0.38) + head * 0.42) * arrowMask * uOpacity;
+        vec3 color = mix(uColor * 0.72, vec3(0.92, 1.0, 1.0), flow * 0.72 + uCharge * 0.18);
+        gl_FragColor = vec4(color, alpha);
+      }
+    `,
   });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.rotation.x = -Math.PI * 0.5;
@@ -81,21 +122,28 @@ export function createPresentationRuntime(
   });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.08;
+  renderer.toneMappingExposure = 0.96;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const roomEnvironment = new RoomEnvironment();
+  const environmentTarget = pmrem.fromScene(roomEnvironment, 0.04);
+  scene.environment = environmentTarget.texture;
+  scene.environmentIntensity = 0.42;
+  roomEnvironment.dispose();
+  pmrem.dispose();
   const composer = new EffectComposer(renderer);
   const renderPass = new RenderPass(scene, camera);
-  const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.32, 0.4, 0.95);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.16, 0.28, 1.18);
   const output = new OutputPass();
   composer.addPass(renderPass);
   composer.addPass(bloom);
   composer.addPass(output);
 
-  const hemisphere = new THREE.HemisphereLight(0xcdf0f3, 0x0a1014, 1.35);
+  const hemisphere = new THREE.HemisphereLight(0xc8d9dc, 0x10171a, 1.05);
   scene.add(hemisphere);
-  const key = new THREE.DirectionalLight(0xe5fbff, 3.85);
-  key.position.set(-24, 38, 26);
+  const key = new THREE.DirectionalLight(0xfff4e5, 2.15);
+  key.position.set(-32, 44, 30);
   key.castShadow = true;
   key.shadow.mapSize.set(1536, 1536);
   key.shadow.camera.left = -42;
@@ -107,12 +155,9 @@ export function createPresentationRuntime(
   key.shadow.bias = -0.0004;
   key.shadow.normalBias = 0.05;
   scene.add(key);
-  const cyanRim = new THREE.PointLight(0x78e9f3, 180, 46, 2);
-  cyanRim.position.set(24, 11, -16);
-  scene.add(cyanRim);
-  const redRim = new THREE.PointLight(0xff5939, 130, 38, 2);
-  redRim.position.set(-22, 8, 16);
-  scene.add(redRim);
+  const fill = new THREE.DirectionalLight(0x89aeb5, 0.72);
+  fill.position.set(30, 20, -24);
+  scene.add(fill);
 
   const provider = createPrimitiveVisualProvider();
   const environment = createGeometricArena(scene);
@@ -126,10 +171,9 @@ export function createPresentationRuntime(
   let bossVisualId: string | null = null;
   const previewSegments = [createPreviewSegment(), createPreviewSegment(), createPreviewSegment()];
   previewSegments.forEach((preview) => scene.add(preview.mesh));
-  const storedPreviewSegments = [createPreviewSegment(), createPreviewSegment(), createPreviewSegment()];
+  const storedPreviewSegments = [createPreviewSegment(0xff8f61), createPreviewSegment(0xff8f61), createPreviewSegment(0xff8f61)];
   storedPreviewSegments.forEach((preview) => {
-    preview.material.color.setHex(0xff8f61);
-    preview.material.opacity = 0.13;
+    preview.material.uniforms.uOpacity!.value = 0.2;
     scene.add(preview.mesh);
   });
   let previewSegmentCount = 0;
@@ -214,7 +258,31 @@ export function createPresentationRuntime(
     playerVisual.core.rotation.y += 0.04;
     playerVisual.core.rotation.x += 0.025;
     playerVisual.wake.visible = player.action === "dashing";
-    if (player.action === "dashing") playerVisual.wake.scale.z = 1.1 + Math.sin(time * 24) * 0.16;
+    const chargedDash = player.action === "dashing" && player.dash?.kind === "charged";
+    const charge = chargeProgress(game);
+    playerVisual.shockShell.visible = chargedDash || charge > 0.02;
+    playerVisual.shockCone.visible = chargedDash;
+    if (player.action === "dashing") {
+      playerVisual.wake.scale.set(
+        chargedDash ? 1.18 : 0.68,
+        chargedDash ? 0.2 : 0.1,
+        (chargedDash ? 2.2 : 1.1) + Math.sin(time * 24) * 0.16,
+      );
+      playerVisual.shockShell.scale.setScalar(0.9 + Math.sin(time * 28) * 0.12);
+      playerVisual.shockShell.rotation.z += chargedDash ? 0.18 : 0;
+      playerVisual.shockCone.scale.set(
+        1.05 + Math.sin(time * 32) * 0.08,
+        1.05 + Math.sin(time * 32) * 0.08,
+        1.35 + Math.sin(time * 22) * 0.12,
+      );
+    }
+    if (!chargedDash && charge > 0.02) {
+      playerVisual.shockShell.scale.setScalar(0.65 + charge * 0.72 + Math.sin(time * 10) * 0.04);
+      playerVisual.shockShell.rotation.z += 0.025 + charge * 0.04;
+    }
+    (playerVisual.shockShell.material as THREE.MeshBasicMaterial).opacity = chargedDash ? 0.5 : 0.16 + charge * 0.34;
+    (playerVisual.shockCone.material as THREE.MeshBasicMaterial).opacity = chargedDash ? 0.2 : 0;
+    playerVisual.core.scale.setScalar(0.3 + charge * 0.22 + Math.sin(time * 14) * charge * 0.03);
   }
 
   function syncEnemy(game: GameState, time: number): void {
@@ -330,10 +398,10 @@ export function createPresentationRuntime(
       const path = previewPrimaryPath(game);
       previewSegmentCount = path.segments.length;
       previewWidth = path.hitRadius;
-      syncRibbonPreviews(previewSegments, path.segments, path.hitRadius, 0.2);
+      syncRibbonPreviews(previewSegments, path.segments, path.hitRadius, 0.5, game.elapsedMs / 1_000, chargeProgress(game));
     }
     if (game.storedPath) {
-      syncRibbonPreviews(storedPreviewSegments, game.storedPath.segments, 0.24, 0.12);
+      syncRibbonPreviews(storedPreviewSegments, game.storedPath.segments, 0.24, 0.2, game.elapsedMs / 1_000, 0);
     } else {
       storedPreviewSegments.forEach((preview) => { preview.mesh.visible = false; });
     }
@@ -342,7 +410,20 @@ export function createPresentationRuntime(
   function consume(events: readonly GameEvent[], game: GameState): void {
     for (const event of events) {
       if (event.type === "dash-started") {
-        vfx.spawnPath(event.dash.segments, event.dash.hitRadius, event.dash.kind === "charged" ? 0xffd05b : 0x8ff7ff, 0.32);
+        vfx.spawnPath(
+          event.dash.segments,
+          event.dash.hitRadius,
+          event.dash.kind === "charged" ? 0xd9fdff : 0x8ff7ff,
+          event.dash.kind === "charged" ? 0.52 : 0.32,
+        );
+        if (event.dash.kind === "charged") {
+          vfx.spawnShockwave(event.dash.segments[0]?.from ?? game.player.position, 2.8, 0xbafcff);
+        }
+      } else if (event.type === "dash-ended") {
+        if (event.kind === "charged") {
+          vfx.spawnShockwave(event.position, 4.2 + event.hitRadius, 0xd8fdff);
+          vfx.spawnBurst(event.position, 2.8 + event.hitRadius, 0xd8fdff);
+        }
       } else if (event.type === "enemy-killed") {
         const direction = normalize(subtract(game.player.position, event.position), game.player.facing);
         vfx.spawnCut(event.position, direction);
@@ -379,13 +460,11 @@ export function createPresentationRuntime(
     syncProjectiles(game, time);
     syncBoss(game, time);
     syncPreview(game);
-    if (canvas.clientWidth / Math.max(1, canvas.clientHeight) < 0.72) {
-      const frame = computeCameraFrame(canvas.clientWidth, canvas.clientHeight, game.player.position);
-      const follow = 1 - Math.exp(-Math.max(0, deltaSeconds) * 3.8);
-      camera.position.lerp(new THREE.Vector3(...frame.position), follow);
-      cameraLookTarget.lerp(new THREE.Vector3(...frame.target), follow);
-      camera.lookAt(cameraLookTarget);
-    }
+    const frame = computeCameraFrame(canvas.clientWidth, canvas.clientHeight, game.player.position);
+    const follow = 1 - Math.exp(-Math.max(0, deltaSeconds) * 4.6);
+    camera.position.lerp(new THREE.Vector3(...frame.position), follow);
+    cameraLookTarget.lerp(new THREE.Vector3(...frame.target), follow);
+    camera.lookAt(cameraLookTarget);
     environment.update(time, game.player.position.x, game.player.position.z);
     vfx.update(deltaSeconds);
   }
@@ -465,6 +544,7 @@ export function createPresentationRuntime(
       environment.dispose();
       provider.dispose();
       composer.dispose();
+      environmentTarget.dispose();
       renderer.dispose();
     },
   };
@@ -475,6 +555,8 @@ function syncRibbonPreviews(
   segments: readonly PathSegmentState[],
   hitRadius: number,
   opacity: number,
+  time: number,
+  charge: number,
 ): void {
   visuals.forEach((visual, index) => {
     const segment = segments[index];
@@ -488,8 +570,11 @@ function syncRibbonPreviews(
     );
     visual.mesh.rotation.set(-Math.PI * 0.5, 0, -Math.atan2(segment.to.z - segment.from.z, segment.to.x - segment.from.x));
     visual.mesh.scale.set(segmentLength, hitRadius * 2, 1);
-    visual.material.color.setHex(segment.reflected ? 0xffc35a : 0x8df4ff);
-    visual.material.opacity = segment.reflected ? opacity * 1.35 : opacity;
+    visual.material.uniforms.uColor!.value.setHex(segment.reflected ? 0xffc35a : 0x8df4ff);
+    visual.material.uniforms.uTime!.value = time;
+    visual.material.uniforms.uCharge!.value = charge;
+    visual.material.uniforms.uOpacity!.value = segment.reflected ? opacity * 1.18 : opacity;
+    visual.material.uniforms.uLength!.value = segmentLength;
   });
 }
 

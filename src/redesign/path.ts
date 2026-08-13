@@ -38,6 +38,7 @@ export function planDashPath(
   playerRadius: number,
   build: CoreSkillBuild,
   obstacles: readonly ObstacleState[],
+  widthMultiplier = 1,
 ): PlannedDashPath {
   const supportedTarget = clipTargetToSupportedArena(from, requestedTarget, playerRadius);
   const requestedOffset = subtract(supportedTarget, from);
@@ -45,7 +46,7 @@ export function planDashPath(
   const direction = normalize(requestedOffset);
   const target = add(from, scale(direction, requestedDistance));
   const first = firstObstacleHit(from, target, playerRadius, obstacles);
-  const hitRadius = BASE_DASH_HIT_RADIUS * wideSlashMultiplier(build);
+  const hitRadius = BASE_DASH_HIT_RADIUS * wideSlashMultiplier(build) * Math.max(1, widthMultiplier);
   if (!first) {
     return {
       segments: [segment(from, target, false)],
